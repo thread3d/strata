@@ -1,5 +1,7 @@
 // src/core/mtp.cpp - see include/strata/core/mtp.hpp.
 #include "strata/core/mtp.hpp"
+
+#include "strata/platform/cuda_capabilities.hpp"
 #include "strata/core/pin_budget.hpp"
 #include "strata/kernels/qsa_prompt_attn.hpp"
 #include "strata/core/coupled_draft.hpp"
@@ -1282,7 +1284,7 @@ bool finish_capture(cudaStream_t cs, bool ok, cudaGraphExec_t& exec, const char*
         return false;
     }
     cudaGraphExec_t got = nullptr;   // (a failed instantiate leaves nothing in the member)
-    const cudaError_t ie = ce != cudaSuccess ? ce : cudaGraphInstantiate(&got, graph, 0);
+    const cudaError_t ie = ce != cudaSuccess ? ce : strata_graph_instantiate(&got, graph, 0);
     if (ie != cudaSuccess) {
         if (graph) cudaGraphDestroy(graph);
         err = std::string("mtp: ") + what + " capture: " + cudaGetErrorString(ie);   // the status that failed

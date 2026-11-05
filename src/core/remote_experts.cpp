@@ -1,6 +1,7 @@
 #include "strata/core/remote_experts.hpp"
 #include "strata/core/device.hpp"   // primary_device() (STRATA_PRIMARY_DEVICE)
 #include "strata/core/remote_expert_opt.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 
 #include "strata/kernels/cpu/expert_layout.hpp"
 #include "strata/kernels/cpu/hadamard.hpp"
@@ -85,7 +86,15 @@ bool RemoteExperts::preflight(int device, double& free_gib, std::string& err) {
     // before the device's context exists, so first thing; STRATA_REMOTE_SPIN=0 keeps the driver's default.
 #if !defined(STRATA_USE_HIP) && !defined(STRATA_GPU_METAL)
     const char* spin = std::getenv("STRATA_REMOTE_SPIN");
-    if (!(spin && spin[0] == '0')) cudaInitDevice(device, cudaDeviceScheduleSpin | cudaDeviceMapHost, 0);
+    if (!(spin && spin[0] == '0')) {
+#if STRATA_HAVE_CUDA_INIT_DEVICE
+        cudaInitDevice(device, cudaDeviceScheduleSpin | cudaDeviceMapHost, 0);
+#else
+        // CUDA 11 has no cudaInitDevice: cudaSetDeviceFlags sets the same scheduling policy on the current device,
+        // and it too has to run before that device's context exists, which is where this call is (docs/JETSON.md).
+        if (cudaSetDevice(device) == cudaSuccess) (void) cudaSetDeviceFlags(cudaDeviceScheduleSpin | cudaDeviceMapHost);
+#endif
+    }
     cudaGetLastError();
 #endif
     // HIP has no cudaInitDevice equivalent; retain its default scheduling policy.

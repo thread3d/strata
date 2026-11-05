@@ -15,6 +15,7 @@
 
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include "strata/platform/cuda_capabilities.hpp"
 
 #define GGML_COMMON_DECL_CUDA
 #define GGML_COMMON_IMPL_CUDA
@@ -3749,6 +3750,7 @@ __global__ void __launch_bounds__(256) s26_down_l_kernel(const unsigned long lon
         for (int q = 0; q < RPW; ++q)
 #pragma unroll
             for (int c = 0; c < GRP_NC; ++c) s[q][c] = 0.0f;
+#if STRATA_DEVICE_CXX20_SYNTAX
         if constexpr (BAL > 0) {   // S26: 5 items per lane instead of 8 / 4, in BAL groups (loads first)
             constexpr int NI = 2 * S26_HMAX, IT = RPW * NI / 32;
             static_assert(RPW * NI % 32 == 0, "whole steps");
@@ -3779,6 +3781,11 @@ __global__ void __launch_bounds__(256) s26_down_l_kernel(const unsigned long lon
                 (group.template operator()<Q * G>(std::make_integer_sequence<int, (IT - Q * G < G ? IT - Q * G : G)>{}), ...);
             }(std::make_integer_sequence<int, BAL>{});
         } else
+#else
+        // nvcc before CUDA 12.0 cannot parse the templated lambdas above (`[&]<int G0, int... J>(...)`), so a build with
+        // it takes the plain loop below: the same sums, one item per lane at a time instead of BAL balanced groups
+        // (docs/JETSON.md).  The kernels are identical; only the load balance the group exists for is missing.
+#endif
         for (int k = lane; k < nb * 2; k += 32) {
             const int kbx = k / 2, iqs = 2 * (k % 2);
             Split<20>::W w[RPW];

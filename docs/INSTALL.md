@@ -25,6 +25,7 @@ install does not need a source checkout or a startup `.bat` file.
 | Apple Silicon Mac, macOS 15 or newer | [Mac guide](MAC.md). Intel Macs are not supported by the Mac package. |
 | AMD Ryzen AI Max / Strix Halo | [Strix Halo guide](STRIX_HALO.md) |
 | NVIDIA DGX Spark (Linux ARM64) | [DGX Spark guide](DGX_SPARK_LINUX.md). Use the Terminal; there is no desktop app for ARM64 Linux. |
+| NVIDIA Jetson AGX Xavier (Linux ARM64) | [Jetson guide](JETSON.md). A source build of the engine on the board, with the CUDA 11.4 toolkit JetPack 5 carries - a build, not a machine anything was measured on. |
 
 Memory and disk needs depend on the **model, quantization, context and enabled features**. Check
 [which model fits](MODELS.md#pick-by-memory); download size is not the same as RAM use. Unified memory counts once.

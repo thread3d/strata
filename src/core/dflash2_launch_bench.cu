@@ -2,6 +2,7 @@
 //
 //     dflash2_launch_bench [n=100]
 #include <cuda_runtime.h>
+#include "strata/platform/cuda_capabilities.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -28,7 +29,7 @@ int main(int argc, char** argv) {
         cudaStreamBeginCapture(cs, cudaStreamCaptureModeThreadLocal);
         for (int i = 0; i < n; ++i) tiny<<<blocks, 256, 0, cs>>>(x, blocks * 256);
         cudaStreamEndCapture(cs, &g);
-        cudaGraphInstantiate(&ge, g, 0);
+        strata_graph_instantiate(&ge, g, 0);
         cudaGraphLaunch(ge, cs);
         cudaStreamSynchronize(cs);
         cudaEventRecord(a, cs);

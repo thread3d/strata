@@ -1,5 +1,8 @@
 // read-bandwidth probe: sum of a 256 MB buffer with float4 loads, a few launch shapes
 #include <cstdio>
+// the braced list in the launch-shape loop below builds a std::initializer_list; libstdc++ before GCC 11, and nvcc
+// before CUDA 12, do not pull that header in for it, so name it (CUDA 11.4 on the Jetson: docs/JETSON.md)
+#include <initializer_list>
 #include <cuda_runtime.h>
 __global__ void rd(const float4* __restrict__ p, size_t n, float* out) {
     float s = 0;

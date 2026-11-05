@@ -1,6 +1,7 @@
 // Exact multi-row BF16/F32 GEMV checks against independent single-row calls.
 // Run with STRATA_MMVF_ROWS=1; synthetic data, no model or private prompts.
 #include "strata/kernels/bf16_gemv.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <cstdio>
@@ -50,7 +51,7 @@ int main() {
         cudaGraph_t graph; cudaGraphExec_t exec;
         ck(cudaStreamBeginCapture(s,cudaStreamCaptureModeThreadLocal));
         k::bf16_gemv_fp32_mmvf_multi(dx,ldx,dw,got,ldy,ni,no,nt,s);
-        ck(cudaStreamEndCapture(s,&graph)); ck(cudaGraphInstantiate(&exec,graph,0));
+        ck(cudaStreamEndCapture(s,&graph)); ck(strata_graph_instantiate(&exec, graph, 0));
         ck(cudaGraphLaunch(exec,s)); ck(cudaStreamSynchronize(s));
         auto compare = [&](float* a, float* b, size_t n) {
             std::vector<uint32_t> aa(n),bb(n);

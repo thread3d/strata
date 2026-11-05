@@ -13,6 +13,7 @@
 //   3. `silu` IS COMPUTED IN DOUBLE then cast, because `ref/gdn.py`'s numpy does.  f32 `expf` differs in the
 //      last bits, and the test measures that rather than asserting it away.
 #include "strata/kernels/dequant_bf16.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 #include "strata/kernels/elementwise.hpp"
 #include "strata/kernels/f16_bits.hpp"
 
@@ -386,7 +387,7 @@ int main(int argc, char** argv) {
                                     n, bits, bias, group, out + 1, stream);
                                 strata::kernels::scale_inplace(out + 1, n, 2.0f, stream);
                                 check(cudaStreamEndCapture(stream, &graph), "embedding capture end");
-                                check(cudaGraphInstantiate(&exec, graph, 0), "embedding instantiate");
+                                check(strata_graph_instantiate(&exec, graph, 0), "embedding instantiate");
                                 check(cudaGraphLaunch(exec, stream), "embedding replay");
                                 check(cudaMemcpyAsync(got.data(), out, got.size() * sizeof(float), cudaMemcpyDeviceToHost, stream), "embedding graph result");
                                 check(cudaStreamSynchronize(stream), "embedding graph sync");

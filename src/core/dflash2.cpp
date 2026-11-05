@@ -1,6 +1,8 @@
 // src/core/dflash2.cpp - see include/strata/core/dflash2.hpp.
 #include "strata/core/dflash2.hpp"
 
+#include "strata/platform/cuda_capabilities.hpp"
+
 #include "strata/core/native_head.hpp"
 #include "strata/core/on_device.hpp"
 #include "strata/core/weights.hpp"
@@ -462,7 +464,7 @@ bool Dflash2Drafter::capture(int n, const float* taps, std::string& err) {
     cudaGraph_t graph = nullptr;
     const cudaError_t ce = cudaStreamEndCapture(cs_, &graph);
     if (!ok) { if (graph) cudaGraphDestroy(graph); return false; }
-    if (ce != cudaSuccess || cudaGraphInstantiate(&exec_[n], graph, 0) != cudaSuccess) {
+    if (ce != cudaSuccess || strata_graph_instantiate(&exec_[n], graph, 0) != cudaSuccess) {
         if (graph) cudaGraphDestroy(graph);
         err = std::string("dflash2: capture: ") + cudaGetErrorString(ce);
         return false;

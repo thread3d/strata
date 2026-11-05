@@ -5,6 +5,7 @@
 #include "strata/core/defaults_026.hpp"
 #include "strata/kernels/gfx_arch.hpp"
 #include "strata/core/verify.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 #include "strata/core/window_evict.hpp"
 #include "strata/core/expert_nibble.hpp"
 #include "strata/core/pin_budget.hpp"
@@ -2716,8 +2717,11 @@ bool Verifier::capture(int T, std::string& err) {
     }
 #endif
     unsigned long long iflags = 0;
-#if !defined(STRATA_USE_HIP) && !defined(STRATA_HIP_GFX906) && !defined(STRATA_GPU_METAL)
-    if (graph_prio_on()) {   // STRATA_GRAPH_PRIO: the nodes run at their own (captured or repaired) priorities
+    // STRATA_GRAPH_PRIO: the nodes run at their own (captured or repaired) priorities.  cudaKernelNodeAttributePriority
+    // and this flag arrived in CUDA 12.0, so an older toolkit instantiates the graph as it always did.
+#if !defined(STRATA_USE_HIP) && !defined(STRATA_HIP_GFX906) && !defined(STRATA_GPU_METAL) && \
+    STRATA_HAVE_CUDA_NODE_PRIORITY
+    if (graph_prio_on()) {
         apply_node_priorities(graph, T);
         iflags = cudaGraphInstantiateFlagUseNodePriority;
     }
@@ -4204,7 +4208,9 @@ void Verifier::note_prio_tail(cudaStream_t on, int prio) {
 // capture copied none from the streams (design 1's R1: some drivers read back 0 everywhere), each priority stream's
 // nodes are found by walking its noted tails back to the noted forks and the attribute is set per node.
 void Verifier::apply_node_priorities(cudaGraph_t graph, int T) {
-#if !defined(STRATA_USE_HIP) && !defined(STRATA_HIP_GFX906) && !defined(STRATA_GPU_METAL)
+    // cudaKernelNodeAttributePriority arrived in CUDA 12.0: below it there is no priority to read or set
+#if !defined(STRATA_USE_HIP) && !defined(STRATA_HIP_GFX906) && !defined(STRATA_GPU_METAL) && \
+    STRATA_HAVE_CUDA_NODE_PRIORITY
     int lo = 0, hi = 0;
     if (cudaDeviceGetStreamPriorityRange(&lo, &hi) != cudaSuccess) { (void) cudaGetLastError(); return; }
     auto histogram = [&](std::map<int, int>& h) {
@@ -4269,14 +4275,14 @@ bool Verifier::instantiate_evicting(cudaGraphExec_t& ex, cudaGraph_t graph, cons
     // (into a local: what a failed instantiate leaves in the output is not specified, and `ex` is a member that
     // capture() reads as "captured" when it is not null)
     cudaGraphExec_t got = nullptr;
-    cudaError_t ie = cudaGraphInstantiate(&got, graph, flags);
+    cudaError_t ie = strata_graph_instantiate(&got, graph, flags);
     int freed = 0;
     for (bool evicted = true; ie == cudaErrorMemoryAllocation && evicted;) {
         (void) cudaGetLastError();
         if (!evict_batch_graph(key, evicted, err)) return false;
         if (evicted) {
             ++freed;
-            ie = cudaGraphInstantiate(&got, graph, flags);
+            ie = strata_graph_instantiate(&got, graph, flags);
         }
     }
     if (freed > 0)
@@ -4289,7 +4295,7 @@ bool Verifier::instantiate_evicting(cudaGraphExec_t& ex, cudaGraph_t graph, cons
         if (!evict_window_graph(keep_t, evicted, err)) return false;
         if (evicted) {
             ++freed_sizes;
-            ie = cudaGraphInstantiate(&got, graph, flags);
+            ie = strata_graph_instantiate(&got, graph, flags);
         }
     }
     if (freed_sizes > 0)

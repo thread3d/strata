@@ -13,6 +13,7 @@
 // Every window runs twice per format: as plain launches and replayed from a graph captured per window size. Issue #2403
 // (q4_0 KV + KV streaming + MTP) is the case this was written for.
 #include "strata/kernels/kv_q4.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 #include "strata/kernels/kv_q8.hpp"
 #include "strata/kernels/kv_stream.hpp"
 #include "strata/kernels/qsa.hpp"
@@ -209,12 +210,12 @@ bool run(int fmt, bool graphs) {
             ck(cudaStreamBeginCapture(cs, cudaStreamCaptureModeThreadLocal), "begin capture");
             record_app(n);
             ck(cudaStreamEndCapture(cs, &g), "end capture");
-            ck(cudaGraphInstantiate(&g_app[n], g, 0), "instantiate append");
+            ck(strata_graph_instantiate(&g_app[n], g, 0), "instantiate append");
             (void) cudaGraphDestroy(g);
             ck(cudaStreamBeginCapture(cs, cudaStreamCaptureModeThreadLocal), "begin capture");
             record_att(n);
             ck(cudaStreamEndCapture(cs, &g), "end capture");
-            ck(cudaGraphInstantiate(&g_att[n], g, 0), "instantiate attention");
+            ck(strata_graph_instantiate(&g_att[n], g, 0), "instantiate attention");
             (void) cudaGraphDestroy(g);
         }
     }

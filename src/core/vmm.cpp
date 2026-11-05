@@ -23,17 +23,31 @@ struct Api {
 };
 
 template <class F> bool resolve(const char* name, F& f) {
-    cudaDriverEntryPointQueryResult q{};
     void* p = nullptr;
 #if CUDART_VERSION >= 12050
+    cudaDriverEntryPointQueryResult q{};
     const cudaError_t e = cudaGetDriverEntryPointByVersion(name, &p, 12000, cudaEnableDefault, &q);
-#else   // the versioned query arrived in CUDA 12.5
-    const cudaError_t e = cudaGetDriverEntryPoint(name, &p, cudaEnableDefault, &q);
-#endif
     if (e != cudaSuccess || q != cudaDriverEntryPointSuccess || p == nullptr) {
         (void) cudaGetLastError();
         return false;
     }
+#elif CUDART_VERSION >= 12000
+    // 12.0 to 12.4: the version-less query arrived in 12.5; this one reports its own status
+    cudaDriverEntryPointQueryResult q{};
+    const cudaError_t e = cudaGetDriverEntryPoint(name, &p, cudaEnableDefault, &q);
+    if (e != cudaSuccess || q != cudaDriverEntryPointSuccess || p == nullptr) {
+        (void) cudaGetLastError();
+        return false;
+    }
+#else
+    // CUDA 11 (the toolkit JetPack 5 ships for the Jetson AGX Xavier) declares the three-argument query: no status
+    // out-parameter and no cudaDriverEntryPointQueryResult, so the return code is the whole answer.
+    const cudaError_t e = cudaGetDriverEntryPoint(name, &p, cudaEnableDefault);
+    if (e != cudaSuccess || p == nullptr) {
+        (void) cudaGetLastError();
+        return false;
+    }
+#endif
     f = (F) p;
     return true;
 }

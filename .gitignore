@@ -90,8 +90,10 @@ node_modules/
 /apps/host/docs/evidence/
 /apps/host/docs/checkpoints/
 
-# DGX Spark build outputs and local venv (docs/DGX_SPARK_LINUX.md)
+# ARM board build outputs and local venv (docs/DGX_SPARK_LINUX.md, docs/JETSON.md)
 /out-spark/
+/out-jetson/
 /build-spark/
+/build-jetson/
 /build-vision-spark/
 /.venv-build/

@@ -26,6 +26,7 @@ unchanged. Numbers are the reporters' own, on one machine each, unless the text 
 | Tesla P40 / P4, GTX 10 series | 6.1 | the CUDA 12 engine | BF16 projections through fp32 (cuBLAS has no BF16 GEMM there); dense weights dequantized by a wide kernel; expert mode 8 and its own interleaved-matvec table; opt-in `STRATA_DENSE_F32=1` ([below](#tesla-p40-sm_61-what-was-measured-and-changed)) |
 | Tesla V100, Titan V | 7.0 | the CUDA 12 engine | BF16 projections on the FP16 tensor cores; prompt attention on `mma.m8n8k4`; a leaner attention kernel. See [NVIDIA_V100.md](NVIDIA_V100.md) |
 | RTX 20 (Turing) | 7.5 | **supported**, the ready-made engine | opt-in `STRATA_BF16_TC=1` runs the BF16 projections on the FP16 tensor cores |
+| Jetson AGX Xavier (arm64 board) | 7.2 | a source build on the board, CUDA 11.4 ([JETSON.md](JETSON.md)) | No CUDA 12 speed paths: no cluster launches, no programmatic dependent launch, no batched memcpy, no graph priorities. Builds and starts; a model on it was not measured |
 
 A card needs enough VRAM to be useful. 12 GB or more is recommended, as for every card. A 2 GB GT 1030 is compute capability 6.1
 too and cannot hold any of the model.

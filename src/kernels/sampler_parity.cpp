@@ -9,6 +9,7 @@
 // DIFFER - then requires the kernel to agree with the specified one.  Without the first half, the test would
 // pass against either order.
 #include "strata/kernels/sampler.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 
 #include <cuda_runtime.h>
 
@@ -1323,7 +1324,7 @@ int main(int argc, char** argv) {
             check(cudaStreamBeginCapture(cs, cudaStreamCaptureModeThreadLocal), "begin capture");
             strata::kernels::sample_tokens(rows.l, T, nv, rows.h, H, p, rows.o, cs);
             check(cudaStreamEndCapture(cs, &graph), "end capture");
-            check(cudaGraphInstantiate(&exec, graph, 0), "instantiate");
+            check(strata_graph_instantiate(&exec, graph, 0), "instantiate");
             for (int replay = 0; replay < 2; ++replay) {
                 check(cudaMemset(rows.o, 0xFF, (size_t) T * sizeof(int)), "fixture 18 refill");
                 check(cudaGraphLaunch(exec, cs), "graph launch");

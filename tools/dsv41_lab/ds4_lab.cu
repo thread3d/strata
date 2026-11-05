@@ -5,6 +5,7 @@
 // math (DeepSeek model.py), not from the kernels.
 //   ds4_lab [--tokens 1,2,3,4,5] [--only name,name] [--ctx 8192] [--reps 100]
 #include "../../src/dsv41/ds4_kernels.cuh"
+#include "strata/platform/cuda_capabilities.hpp"
 #include "attn_split.cuh"
 
 #include <algorithm>
@@ -57,7 +58,7 @@ static double time_us(const std::function<void()>& fn) {
     CK(cudaStreamBeginCapture(g_s, cudaStreamCaptureModeGlobal));
     for (int i = 0; i < inner; ++i) fn();
     CK(cudaStreamEndCapture(g_s, &g));
-    CK(cudaGraphInstantiate(&ge, g, 0));
+    CK(strata_graph_instantiate(&ge, g, 0));
     CK(cudaGraphLaunch(ge, g_s)); CK(cudaStreamSynchronize(g_s));
     cudaEvent_t e0, e1; cudaEventCreate(&e0); cudaEventCreate(&e1);
     const int outer = std::max(1, g_reps / inner);

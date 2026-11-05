@@ -15,6 +15,7 @@
 //      it has none.
 // Also copy_rows_strided against the cudaMemcpy2DAsync it replaces in the verify window.  GPU, synthetic, no model.
 #include "strata/kernels/bf16_bits.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 #include "strata/kernels/bf16_gemv.hpp"
 #include "strata/kernels/native_mmvq.hpp"
 #include "strata/kernels/pdl.hpp"
@@ -167,7 +168,7 @@ cudaGraphExec_t capture(bool pdl, const Bufs& b, void* w_q8, void* w_iq4, uint16
         if (nonkernel_in[kv.first] != 0) ++mixed;
 #endif
     cudaGraphExec_t ex = nullptr;
-    ck(cudaGraphInstantiate(&ex, g, 0), "instantiate");
+    ck(strata_graph_instantiate(&ex, g, 0), "instantiate");
     ck(cudaGraphDestroy(g), "destroy graph");
     return ex;
 }

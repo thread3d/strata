@@ -73,9 +73,32 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# The sources are C++20 (concepts and `requires` clauses in the host code, templated lambdas in one CUDA kernel), so the
+# compiler has to be a C++20 one.  Say which one is too old here, rather than let the first `requires` clause produce a
+# hundred errors three minutes into the build.  The toolkit also caps what the host compiler can be when the CUDA
+# targets are on (nvcc 11.4 accepts up to GCC 10), which is why the floor is GCC 10 and not the newest: Ubuntu 20.04
+# ships GCC 9, and the Jetson AGX Xavier (JetPack 5, CUDA 11.4) can install neither a newer GCC nor a newer toolkit.
+# docs/JETSON.md has the toolchain to use there.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10)
+  message(FATAL_ERROR "Strata's sources are C++20 and need GCC 10 or newer (this build has GCC "
+                      "${CMAKE_CXX_COMPILER_VERSION}); name one with -DCMAKE_CXX_COMPILER=g++-10 "
+                      "(docs/JETSON.md for the Jetson, docs/SOURCE_INSTALL.md otherwise).")
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12)
+  message(FATAL_ERROR "Strata's sources are C++20 and need Clang 12 or newer (this build has Clang "
+                      "${CMAKE_CXX_COMPILER_VERSION}).")
+endif()
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
+
+# glibc before 2.34 keeps the pthread entry points in libpthread, and libc also carries weak stubs of them for a program
+# that never loads it.  Ubuntu's linker default (--as-needed) therefore drops an explicit `-lpthread` when nothing still
+# needs it at that point, and the program links and then fails at RUN time: std::call_once throws "Unknown error -1" and
+# std::thread cannot start, because a weak stub returns an error instead of running the call.  `-pthread` is what
+# survives that link, so ask for it before the first find_package(Threads).  Ubuntu 22.04 and newer (glibc 2.35) merged
+# the two libraries and hides this; it shows on an older system such as the Jetson's Ubuntu 20.04 (docs/JETSON.md).
+set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 option(STRATA_ENABLE_CUDA "Build the CUDA targets (Phase 2+)" OFF)
 # AMD gfx906 (MI50, wave64): the same .cu sources compiled as HIP through the gfx906 compat layer.  The CUDA runtime and
@@ -233,6 +256,16 @@ elseif(STRATA_ENABLE_CUDA)
   # `enable_language(CUDA)` gives the .cu compile rules but NOT the imported targets, so `CUDA::cudart` has to
   # be brought in explicitly for the host-side tests that call cudaMalloc themselves.
   find_package(CUDAToolkit REQUIRED)
+  # nvcc only learned -std=c++20 in CUDA 12.0, and CMake asks every target for the project's C++20 dialect, so an older
+  # toolkit stops at generate time with "Target ... requires the language dialect CUDA20".  No .cu source needs C++20
+  # syntax of its own (the host .cpp files do), so the CUDA targets build as C++17 there and the host stays at C++20.
+  # CUDA 11.4 is the toolkit JetPack 5 ships for the Jetson AGX Xavier, and it cannot be replaced on that board
+  # (JetPack 6 dropped Xavier, and CUDA 13 dropped sm_72) - docs/JETSON.md.
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.0)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    message(STATUS "Strata: CUDA ${CMAKE_CUDA_COMPILER_VERSION} has no -std=c++20; the CUDA targets build as C++17")
+  endif()
   option(STRATA_EXPERIMENTAL_SM60 "community build for GPUs below compute capability 7.5: Pascal sm_60, Volta sm_70 (#236)" OFF)
   if(_strata_cuda_arch_defaulted)
     # a recommendation, not a refusal: the release engine is built for 75;86;89;120, a hand build names its card
@@ -258,7 +291,8 @@ elseif(STRATA_ENABLE_CUDA)
       message(FATAL_ERROR
         "Strata needs an NVIDIA GPU of compute capability 7.5 or newer (RTX 20 / 30 / 40 / 50 series), but "
         "CMAKE_CUDA_ARCHITECTURES is '${CMAKE_CUDA_ARCHITECTURES}'.  (A Pascal sm_60 or Volta sm_70 build is "
-        "-DSTRATA_EXPERIMENTAL_SM60=ON; upstream does not support it.)")
+        "-DSTRATA_EXPERIMENTAL_SM60=ON; upstream does not support it.  A Jetson AGX Xavier is sm_72 and takes the "
+        "same flag with -DCMAKE_CUDA_ARCHITECTURES=72 - docs/JETSON.md.)")
     endif()
     if(_base LESS 52)
       message(FATAL_ERROR "CMAKE_CUDA_ARCHITECTURES '${CMAKE_CUDA_ARCHITECTURES}': even the experimental build "

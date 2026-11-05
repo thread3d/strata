@@ -26,6 +26,7 @@
 #include "strata/core/emulate.hpp"
 
 #include <cuda_runtime.h>
+#include "strata/platform/cuda_capabilities.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -1210,6 +1211,12 @@ int2* split_scratch(void* stream, size_t entries) {
 
 bool sample_greedy_cluster(const float* logits, int n_tokens, int n_vocab, int* out, void* stream) {
 #if defined(__HIPCC__)
+    (void) logits; (void) n_tokens; (void) n_vocab; (void) out; (void) stream;
+    return false;
+#elif !STRATA_HAVE_CUDA_LAUNCH_EX
+    // CUDA before 12.0 has no cudaLaunchKernelEx, so a cluster of kAmCtas CTAs cannot be started at all; and a toolkit
+    // that old cannot be paired with an sm_90 card in the first place.  The caller takes the one-block kernel: the
+    // same token, one CTA per row instead of eight.
     (void) logits; (void) n_tokens; (void) n_vocab; (void) out; (void) stream;
     return false;
 #else

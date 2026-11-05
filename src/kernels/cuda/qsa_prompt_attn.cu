@@ -14,6 +14,7 @@
 
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include "strata/platform/cuda_capabilities.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -174,7 +175,12 @@ __global__ void __launch_bounds__(THREADS) prompt_attn_kernel(const float* __res
         return (page * n_kv_heads + kvh) * page_size + (cell % page_size);
     };
     auto fetch = [&](int c0) {
+#if STRATA_DEVICE_CXX20_SYNTAX
         if constexpr (PREFETCH) {
+#else
+        if (PREFETCH) {   // nvcc before CUDA 12.0 cannot parse `if constexpr` inside a device lambda; PREFETCH is a
+                          // constexpr, so the branch is folded away exactly as before (docs/JETSON.md)
+#endif
 #pragma unroll
             for (int j = 0; j < PPT; ++j) {
                 const int i = t + j * THREADS, c = i / KP, pc = i % KP;

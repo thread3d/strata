@@ -36,6 +36,7 @@
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
+#include "strata/platform/cuda_capabilities.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -2373,7 +2374,7 @@ struct Engine {
             CK(cudaStreamBeginCapture(st, cudaStreamCaptureModeThreadLocal));
             body();
             CK(cudaStreamEndCapture(st, &graph));
-            CK(cudaGraphInstantiate(&gx, graph, 0));
+            CK(strata_graph_instantiate(&gx, graph, 0));
             CK(cudaGraphDestroy(graph));
         }
         CK(cudaGraphLaunch(gx, st));

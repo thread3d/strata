@@ -13,6 +13,7 @@
 // Random bytes are valid codes for every format here (every grid index is in range); only the fp16 block scales are
 // set, small enough that the SwiGLU outputs keep a finite fp16 q8_1 scale.
 #include "strata/kernels/iq_kernels.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 
 #include <cuda_runtime.h>
 
@@ -283,7 +284,7 @@ cudaGraphExec_t make_graph(cudaStream_t s, Setup& S, const Layers& Ls, bool v1, 
     for (int l = 0; l < 48; ++l)
         k::native_expert_grouped(S.L, Ls.ptr[l], S.start, S.n, S.dst, S.tok, S.cap, S.cap, S.xq, S.scr, S.out, s, gy);
     ck(cudaStreamEndCapture(s, &g), "capture");
-    ck(cudaGraphInstantiate(&ge, g, 0), "instantiate");
+    ck(strata_graph_instantiate(&ge, g, 0), "instantiate");
     ck(cudaGraphDestroy(g), "graph");
     k::native_grouped_set_v1(false);
     return ge;

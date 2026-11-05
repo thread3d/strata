@@ -20,6 +20,12 @@ and their limits. Report what you actually measured and label estimates separate
 
 ## Community reports
 
+- [2026-11-05: Jetson AGX Xavier (sm_72, 8 Carmel cores), 30 GiB, CUDA 11.4](../bench/results/jetson-agx-xavier/README.md):
+  Strata 0.1.55 source build for this board (`jetson/build_engine.sh`, experimental sm_60 flag, arm64). **No model was run** - no pack
+  fits 30 GiB - so no decode or prompt tok/s: the CPU test suite (60 tests, all pass), 6 of 7 GPU parity tests, memory read
+  bandwidth 123 GB/s against the module's rated 137, dense Q8_0 GEMV 85-95 GB/s, and the Volta prompt-attention path at 1.64x
+  over the FP32 fallback for int8 K/V but slower for fp16 and int8+q4 V. `gemm_f32_parity` fails: the FP32 dense route and
+  cuBLAS 11.6.6.84 differ bitwise on all 1,278 sizes tested.
 - [2026-09-30: RTX 5090, Core Ultra 9 285K, 64 GB RAM](../bench/results/2026-09-30-community-rtx-5090/README.md):
   Strata 0.1.29, original Flash-Next IQ2_XS, 131,072-token context; three runs
   each at 4,096, 32,768, and 128,000 prompt tokens, plus six recall checks.

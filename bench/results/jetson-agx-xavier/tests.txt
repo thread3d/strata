@@ -1,0 +1,49 @@
+===== sampler_parity =====
+exit=0
+  gumbel: kernel vs reference        matches (0 of 48 draws differ)
+  gumbel: frequencies = softmax      matches (total variation 0.0098 over 10240 draws)
+  gumbel: flag read, greedy unchanged matches (2 of 16 sampled picks equal the inverse-CDF ones; greedy unchanged)
+
+sampler: 0 failures
+sampler_parity OK
+===== elementwise_parity =====
+exit=0
+  a null weight is legal                       0 of 6144 differ
+  embedding gather: 108 row cases, 0 bit mismatches, 0 guard failures, 8141 FMA differences
+  f32 -> bf16 (NaN kept): bulk 0 of 4096 differ from ggml, dequant_bf16 0 of 64 wrong
+
+elementwise: 0 failures
+elementwise_parity OK
+===== gemm_f32_parity =====
+exit=124
+gemm_f32_parity: compute capability 7.2
+prefill gemm: the dense projections' FP16 GEMMs run as cublasSgemm on FP32 copies (STRATA_DENSE_F32=1; gemm_f32_parity checks the bits against this cuBLAS)
+gdn qkv    10240 x 2560 : 1278 sizes from T 256 to 8192, 1278 with different bits
+FAIL gdn qkv: first at T 256, 56911505591 outputs in all
+===== gdn_rec_parity =====
+exit=0
+     T=32768  tc (STRATA_GDN_TC=1), state0 x 50: not on this card (sm_80+, 48 SMs, 122 KB a block)
+     T=32768  tc (STRATA_GDN_TC=1), state0 = 0: not on this card (sm_80+, 48 SMs, 122 KB a block)
+     T=32768  tc (STRATA_GDN_TC=1), v x 50: not on this card (sm_80+, 48 SMs, 122 KB a block)
+     T=32768  tc (STRATA_GDN_TC=1), slow gates: not on this card (sm_80+, 48 SMs, 122 KB a block)
+     T=32768  tc (STRATA_GDN_TC=1), coherent keys: not on this card (sm_80+, 48 SMs, 122 KB a block)
+gdn_rec_parity: 0 failures
+===== kv_q8_parity =====
+exit=0
+kv_q8_parity: OK (worst INT8-vs-FP16 error 0.590 quantization steps)
+===== bf16_gemv_parity =====
+exit=0
+  indexer.q_proj   [2560, 512]       naive 7.96e-08  warp 7.96e-08  split256 7.15e-08
+      bf16 vs fp16 activation        yes (0.1456% apart)
+  ple_value        [2560, 2560]      naive 8.03e-08  warp 8.03e-08  split256 6.81e-08
+      bf16 vs fp16 activation        yes (0.1411% apart)
+
+bf16_gemv: 0 failures
+===== qsa_parity =====
+exit=0
+    yarn 2: the table spare is the unscaled spare times row 0, BIT-EXACT ok     0 of 128 wrong
+    yarn 2: the table's pooled[0] is its spare     ok     0 wrong
+    yarn 2: the native spare carries the same row-0 factor ok     worst relative 0.000000
+    yarn 2: the magnitude correction is observable on the table spare ok     row0 cos 1.069315, 64 dims moved
+
+qsa: 0 failures

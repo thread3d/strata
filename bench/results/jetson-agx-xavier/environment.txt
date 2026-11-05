@@ -1,0 +1,14 @@
+date:        2026-11-05 05:03:25 UTC
+board:       Jetson-AGX
+os:          Ubuntu 20.04.6 LTS
+kernel:      5.10.104-tegra
+cpu:         8 x ARMv8 Processor rev 0 (v8l)
+cpu flags:   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm dcpop
+memory:      30 GiB total, 27 GiB available
+/tmp/run-bench.sh: line 19: nvcc: command not found
+cuda:        
+nvcc:        
+cmake:       cmake version 4.4.4
+host gcc:    g++-10 (Ubuntu 10.5.0-1ubuntu1~20.04) 10.5.0
+power mode:  NV Power Mode: MAXN 0 NVPM ERROR: Error opening /sys/kernel/nvpmodel_emc_cap/emc_iso_cap: 13 NVPM ERROR: failed to read PARAM EMC: ARG MAX_FREQ: PATH /sys/kernel/nvpmodel_emc_cap/emc_iso_cap 
+clocks:      114750000

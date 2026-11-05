@@ -17,6 +17,7 @@
 // The old paths are reached through the public dispatchers with STRATA_QSA_CLUSTER=0 / STRATA_ARGMAX_MULTI=0, set
 // here before their first call (they read the variables once).
 #include "strata/kernels/qsa.hpp"
+#include "strata/platform/cuda_capabilities.hpp"
 #include "strata/kernels/qsa_select.hpp"
 #include "strata/kernels/sampler.hpp"
 
@@ -260,7 +261,7 @@ int run_graph_case(std::mt19937& rng) {
         return -1;
     }
     if (!l1 || !l2) { std::printf("FAIL graph: one cluster kernel did not run\n"); return 1; }
-    ck(cudaGraphInstantiate(&ge, g, 0), "instantiate");
+    ck(strata_graph_instantiate(&ge, g, 0), "instantiate");
     int fails = 0;
     for (int rep = 0; rep < 6; ++rep) {
         const int64_t ctx = 100000 + rep * 4001 + rep % 4;

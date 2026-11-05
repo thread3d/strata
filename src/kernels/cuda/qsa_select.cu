@@ -8,6 +8,7 @@
 #include "strata/kernels/gfx_arch.hpp"
 
 #include <cuda_runtime.h>
+#include "strata/platform/cuda_capabilities.hpp"
 
 #include <atomic>
 #include <cfloat>
@@ -2343,6 +2344,12 @@ static bool topk_active_turing_device() {
 bool qsa_block_topk_cluster(const float* scores, const int32_t* steps, int64_t nq, int64_t max_blocks, int64_t cap,
                             const QsaShapes& s, int32_t* ids, void* stream) {
 #if defined(__HIPCC__)
+    (void) scores; (void) steps; (void) nq; (void) max_blocks; (void) cap; (void) s; (void) ids; (void) stream;
+    return false;
+#elif !STRATA_HAVE_CUDA_LAUNCH_EX
+    // CUDA before 12.0 has no cudaLaunchKernelEx, so a cluster of CL_N CTAs cannot be started.  The cluster kernel is
+    // for sm_90+ only, and the cards without thread-block clusters already take block_topk_wide_kernel below, which is
+    // what this returns false into.
     (void) scores; (void) steps; (void) nq; (void) max_blocks; (void) cap; (void) s; (void) ids; (void) stream;
     return false;
 #else
