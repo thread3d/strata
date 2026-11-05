@@ -1,7 +1,7 @@
 # Runtime Python packages setup.py installs into .venv, pinned so a checkout installs the same ones on any day (#214).
 # CMake and Ninja are in requirements-build.txt and are installed only if a local build needs them.
 # setup.py's pip step reads this file; an install from before it keeps the packages it has.
-# Python 3.10+ (numpy's newest releases need a newer Python: one line per range).
+# Python 3.10+ (numpy's and pillow's newest releases need a newer Python: one line per range).
 numpy==2.5.3; python_version >= "3.12"
 numpy==2.4.6; python_version == "3.11"
 numpy==2.2.6; python_version < "3.11"
@@ -10,7 +10,11 @@ regex==2026.9.10
 pyyaml==6.0.3
 tqdm==4.70.1
 requests==2.34.2
-pillow==12.3.0
+# 13.0.0 fixes every Pillow advisory Dependabot reports against 12.3.0 (5 critical, 23 high, 13 medium) and needs
+# Python 3.11+; a 3.10 install keeps 12.3.0 and those advisories.  Making 3.11 the floor would close them too, which is
+# a decision about the Python we support rather than a pin.
+pillow==13.0.0; python_version >= "3.11"
+pillow==12.3.0; python_version < "3.11"
 psutil==7.2.2
 
 # their dependencies
