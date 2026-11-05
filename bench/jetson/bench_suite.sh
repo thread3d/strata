@@ -6,7 +6,7 @@
 #   ONLY="q8_gemv_bench" N=2 sh ...  # one tool, for a quick check
 #
 # Writes bench/results/jetson-agx-xavier/runs/<tool>/run<NN>.txt, .../manifest.tsv (start/end per run) and
-# .../tegrastats.log for the whole session.
+# .../tegrastats.txt for the whole session.
 set -u
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)" || exit 1   # the repo root
 B=build-jetson
@@ -41,7 +41,7 @@ EOF
 }
 
 # tegrastats for the whole session, timestamped
-tegrastats --interval 500 2>/dev/null | while IFS= read -r l; do printf '%s %s\n' "$(date +%s.%N)" "$l"; done > "$OUT/tegrastats.log" &
+tegrastats --interval 500 2>/dev/null | while IFS= read -r l; do printf '%s %s\n' "$(date +%s.%N)" "$l"; done > "$OUT/tegrastats.txt" &
 TS_PID=$!
 trap 'kill $TS_PID 2>/dev/null' EXIT INT TERM
 

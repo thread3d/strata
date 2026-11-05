@@ -25,7 +25,7 @@ individual measurements over 1,611 measured series.
 - **One warm-up run, then five measured runs** of every tool, in the same order, in one session (`bench/jetson/bench_suite.sh`).
   Every table below gives the **median of the five, the [min-max] range and the coefficient of variation**; a median
   with a wide range is a number to distrust, and the range is printed so that judgement is yours.
-- **`tegrastats` sampled every 500 ms for the whole session** (`tegrastats.log`): GPU busy, GPU/CPU/SoC temperatures.
+- **`tegrastats` sampled every 500 ms for the whole session** (`tegrastats.txt`): GPU busy, GPU/CPU/SoC temperatures.
   The heavy tools held the GPU at 99% and the GPU never passed **62 °C**, so no run in this document was
   thermally throttled. GPU clocks were **not pinned** (that needs root): the mode is MAXN and the board was idle apart
   from the suite.
@@ -423,5 +423,5 @@ python3 bench/jetson/bench_report.py                      # the tables in this f
 ```
 
 The raw output of every run is in `runs/<tool>/run<NN>.txt` (`run00` is the discarded warm-up), the clocks and
-temperatures in `tegrastats.log`, each run's window in `manifest.tsv`, and the statistics the tables came from in
+temperatures in `tegrastats.txt`, each run's window in `manifest.tsv`, and the statistics the tables came from in
 `summary.csv`.
