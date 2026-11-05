@@ -887,7 +887,11 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
   target_include_directories(dflash2_gemm_bench PRIVATE ${_strata_gpu_include_directories})
   target_link_libraries(dflash2_gemm_bench PRIVATE strata_kernels ${_strata_gpu_runtime_target})
   add_executable(dflash2_launch_bench EXCLUDE_FROM_ALL src/core/dflash2_launch_bench.cu)
-  target_include_directories(dflash2_launch_bench PRIVATE ${_strata_gpu_include_directories})
+  # the project's include directory too: this target links only the CUDA runtime, so unlike its neighbours it gets no
+  # include path from a strata library, and it includes strata/platform/cuda_capabilities.hpp for the graph-instantiate
+  # call (CUDA 11 vs 12) - docs/JETSON.md
+  target_include_directories(dflash2_launch_bench PRIVATE ${_strata_gpu_include_directories}
+                                                         ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(dflash2_launch_bench PRIVATE ${_strata_gpu_runtime_target})
   add_executable(dflash2_bw_bench EXCLUDE_FROM_ALL src/core/dflash2_bw_bench.cu)
   target_include_directories(dflash2_bw_bench PRIVATE ${_strata_gpu_include_directories})

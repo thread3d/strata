@@ -7,6 +7,9 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+// the braced list in the block-count loop builds a std::initializer_list; libstdc++ before GCC 11, and nvcc before
+// CUDA 12, do not pull that header in for it (CUDA 11.4 on the Jetson: docs/JETSON.md)
+#include <initializer_list>
 
 __global__ void tiny(float* x, int n) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
