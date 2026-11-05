@@ -14,6 +14,11 @@
 
 #include <cstdint>
 
+// CUDA's built-in types come from its own headers: vector_types.h spells `uint` (unsigned int) and the sources use it
+// bare alongside uint32_t.  Apple's <sys/types.h> says the same on a Mac, but only arm64's pulls it into the include set
+// of these files, so an Intel Mac's compile does not see it: it is spelled here, where CUDA would have left it.
+typedef unsigned int uint;
+
 struct dim3 {
     unsigned x, y, z;
     dim3(unsigned _x = 1, unsigned _y = 1, unsigned _z = 1) : x(_x), y(_y), z(_z) {}

@@ -7,8 +7,12 @@
 #endif
 #include "strata/prefill/warm_policy.hpp"
 #include <atomic>
-#if defined(__cpp_lib_atomic_wait)
-#define STRATA_ATOMIC_WAIT 1   // #1488: std::atomic::wait / notify_all are a GCC 11 library feature; GCC 10 spins instead
+// #1488: std::atomic::wait / notify_all are a GCC 11 library feature; GCC 10 spins instead.  Apple's libc++, in the SDK
+// before the one that ships them (macOS 12's headers on an Intel Mac: "not ABI-stable yet, so we can't ship them"),
+// marks them unavailable and still publishes __cpp_lib_atomic_wait, so the flag it sets for that is asked about as well:
+// that Mac spins, and the Apple Silicon build keeps the wait.
+#if defined(__cpp_lib_atomic_wait) && !defined(_LIBCPP_AVAILABILITY_DISABLE_FTM___cpp_lib_atomic_wait)
+#define STRATA_ATOMIC_WAIT 1
 #endif
 #include "mmq_resident_sort.hpp"
 #include "wmma_gemm.h"

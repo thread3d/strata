@@ -5,6 +5,17 @@
 #include "mtl_rt.h"
 #include "resource_path.h"
 
+// The SDK this file is compiled against.  Apple Silicon Macs build against the macOS 26 SDK, which names Metal 4's GPU
+// family and MTLCompileOptions.mathMode; an older SDK - macOS 12 and Big Sur on an Intel Mac - does not, so those two
+// are left out there and the older spelling is used (see supports_metal4 and compile below).
+#if defined(__MAC_OS_X_VERSION_MAX_ALLOWED)
+#define STRATA_SDK_VERSION __MAC_OS_X_VERSION_MAX_ALLOWED
+#elif defined(MAC_OS_X_VERSION_MAX_ALLOWED)
+#define STRATA_SDK_VERSION MAC_OS_X_VERSION_MAX_ALLOWED
+#else
+#define STRATA_SDK_VERSION 0
+#endif
+
 #include <chrono>
 #if defined(STRATA_DS4_RUNTIME)
 #include <execinfo.h>
@@ -305,10 +316,12 @@ Context::Context() : impl_(new Impl) {
     }
     impl_->q = [impl_->dev newCommandQueue];
 #if defined(STRATA_DS4_RUNTIME)
+#if STRATA_SDK_VERSION >= 150000
     if (ds4_gpu_residency_set && !std::getenv("DS4_NO_RESIDENCY")) {
         id<MTLResidencySet> rs = (__bridge id<MTLResidencySet>)ds4_gpu_residency_set();
         if (rs) [impl_->q addResidencySet:rs];
     }
+#endif   // (no residency set to attach before macOS 15: the device has none)
 #endif
     // env, then <exe dir>/metal/ (a component package), then the compiled-in source-tree path
     ggml_common_path = strata_metal::resource("STRATA_GGML_COMMON", "ggml-common.h", STRATA_GGML_COMMON_DEFAULT);
@@ -322,8 +335,10 @@ bool Context::has_family_apple(int n) const {
     return [impl_->dev supportsFamily:(MTLGPUFamily)(MTLGPUFamilyApple1 + (n - 1))];
 }
 bool Context::supports_metal4() const {
+#if STRATA_SDK_VERSION >= 260000
     if (@available(macOS 26.0, *)) return [impl_->dev supportsFamily:MTLGPUFamilyMetal4];
-    return false;
+#endif
+    return false;   // an SDK older than macOS 26 has no Metal 4 family to ask the device about
 }
 uint64_t Context::recommended_working_set() const { return [impl_->dev recommendedMaxWorkingSetSize]; }
 uint64_t Context::max_buffer_length() const { return [impl_->dev maxBufferLength]; }
@@ -344,11 +359,15 @@ int Context::compile(const std::vector<std::string>& files, const std::string& p
     // (the kernels write their contractions as explicit fma).  Measured free on the M5 Max.
     fast_math = false;
     if (const char* m = std::getenv("STRATA_METAL_MATH")) fast_math = std::string(m) == "fast";
+#if STRATA_SDK_VERSION >= 150000
     if (@available(macOS 15.0, *)) {
         o.mathMode = fast_math ? MTLMathModeFast : MTLMathModeSafe;
     } else {
         o.fastMathEnabled = fast_math;
     }
+#else
+    o.fastMathEnabled = fast_math;   // an SDK older than macOS 15 has no mathMode on MTLCompileOptions
+#endif
     NSError* err = nil;
     id<MTLLibrary> lib = [impl_->dev newLibraryWithSource:[NSString stringWithUTF8String:src.c_str()] options:o error:&err];
     if (!lib) {
@@ -417,6 +436,14 @@ namespace {
 struct ZcBuf { size_t len; void* handle; uint64_t addr; };
 std::map<uintptr_t, ZcBuf> g_zc;
 std::mutex g_zc_mu;
+
+uint64_t zc_device_address(id<MTLBuffer> b) {
+#if STRATA_SDK_VERSION >= 130000
+    return (uint64_t) [b gpuAddress];
+#else
+    return (uint64_t) (uintptr_t) [b contents];   // (an SDK before Metal 3 has no gpuAddress to ask for)
+#endif
+}
 }  // namespace
 
 uint64_t Context::zc_map(const void* p, size_t bytes) {
@@ -433,6 +460,7 @@ uint64_t Context::zc_map(const void* p, size_t bytes) {
     if (g_zc.size() >= cap) return 0;
     id<MTLBuffer> b = [impl_->dev newBufferWithBytesNoCopy:(void*) lo length:hi - lo options:MTLResourceStorageModeShared deallocator:nil];
     if (!b) return 0;
+#if STRATA_SDK_VERSION >= 150000
     if (ds4_gpu_residency_set) {
         id<MTLResidencySet> rs = (__bridge id<MTLResidencySet>)ds4_gpu_residency_set();
         if (rs) {
@@ -440,7 +468,12 @@ uint64_t Context::zc_map(const void* p, size_t bytes) {
             [rs commit];
         }
     }
-    ZcBuf z{hi - lo, (__bridge_retained void*) b, (uint64_t) [b gpuAddress]};
+#endif   // (no residency set before macOS 15; the buffer is held by g_zc instead)
+    // gpuAddress is Metal 3's (macOS 13).  An SDK older than that has no such selector, and the CPU address is what the
+    // handle carries there: a device pointer only where the GPU shares host memory (see docs/MAC.md: an Intel Mac is
+    // unsupported, and this is one of the reasons).  Nothing changes with the macOS 13 SDK or newer.
+    const uint64_t addr = zc_device_address(b);
+    ZcBuf z{hi - lo, (__bridge_retained void*) b, addr};
     g_zc[lo] = z;
     return z.addr + ((uintptr_t) p - lo);
 }

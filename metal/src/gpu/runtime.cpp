@@ -56,6 +56,20 @@ struct Alloc {
     bool purged = false; // purge_device_allocations: its memory given back (any later copy is an error)
 };
 
+// A buffer's device address: MTLBuffer.gpuAddress is Metal 3's (macOS 13), so an earlier macOS - Big Sur on an Intel
+// Mac - has none to ask for and contents() is used instead.  That address is only a device pointer where the GPU shares
+// host memory; a discrete card cannot dereference it, one of the reasons docs/MAC.md calls Intel Macs unsupported.
+// Nothing changes on macOS 13 or newer.
+uint64_t dev_address(MTL::Buffer* b) {
+    if (__builtin_available(macOS 13.0, *)) return b->gpuAddress();
+    return (uint64_t) (uintptr_t) b->contents();
+}
+
+// A residency set is macOS 15's, and the queues hold every buffer through it (the kernel arguments carry raw gpuAddress
+// pointers, which the driver does not track).  An earlier macOS - an Intel Mac's Big Sur - has no residency set at all, so
+// it is absent there: the buffers stay alive because this Runtime keeps their MTLBuffer, and the calls below are skipped.
+bool residency_available() { return __builtin_available(macOS 15.0, *); }
+
 struct Op {
     enum Kind { Dispatch, Copy, Fill, Record, Wait } kind = Dispatch;
     MTL::ComputePipelineState* pipe = nullptr;
@@ -117,9 +131,11 @@ Runtime& rt() {
         auto* x = new Runtime;
         x->dev = MTL::CreateSystemDefaultDevice();
         NS::Error* e = nullptr;
-        MTL::ResidencySetDescriptor* d = MTL::ResidencySetDescriptor::alloc()->init();
-        x->rs = x->dev->newResidencySet(d, &e);
-        d->release();
+        if (residency_available()) {
+            MTL::ResidencySetDescriptor* d = MTL::ResidencySetDescriptor::alloc()->init();
+            x->rs = x->dev->newResidencySet(d, &e);
+            d->release();
+        }
         return x;
     }();
     return *r;
@@ -142,7 +158,7 @@ StreamImpl* make_stream() {
     { std::lock_guard<std::mutex> lk(g_all_streams_mu); g_all_streams.push_back(s); }
 #endif
     s->q = rt().dev->newCommandQueue();
-    s->q->addResidencySet(rt().rs);
+    if (rt().rs) s->q->addResidencySet(rt().rs);   // (absent before macOS 15)
     s->tl = rt().dev->newSharedEvent();
     s->tl->setSignaledValue(0);
     return s;
@@ -377,14 +393,16 @@ Error new_alloc(void** p, size_t bytes, bool host) {
 #endif
     MTL::Buffer* b = r.dev->newBuffer(n, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeUntracked);
     if (!b) return fail(kErrorMemoryAllocation);
-    Alloc a{b, b->gpuAddress(), (uint8_t*) b->contents(), n, host};
+    Alloc a{b, dev_address(b), (uint8_t*) b->contents(), n, host};
     alloc_log(host ? "host alloc" : "device alloc", n);
     {
         std::lock_guard<std::mutex> lk(r.mu);
         r.by_gpu[a.gpu] = a;
         r.by_cpu[(uintptr_t) a.cpu] = a.gpu;
-        r.rs->addAllocation(b);
-        r.rs->commit();
+        if (r.rs) {
+            r.rs->addAllocation(b);
+            r.rs->commit();
+        }
     }
     *p = host ? (void*) a.cpu : (void*) (uintptr_t) a.gpu;
     return kSuccess;
@@ -405,8 +423,10 @@ Error free_alloc(void* p) {
     const uint64_t g = a->gpu;
     r.by_cpu.erase((uintptr_t) a->cpu);
     r.by_gpu.erase(g);
-    r.rs->removeAllocation(b);
-    r.rs->commit();
+    if (r.rs) {
+        r.rs->removeAllocation(b);
+        r.rs->commit();
+    }
     b->release();
     return kSuccess;
 }
@@ -447,12 +467,12 @@ uint64_t purge_device_allocations(size_t min_bytes) {
     uint64_t n = 0;
     for (auto& [gpu, a] : r.by_gpu) {
         if (a.host || a.purged || a.bytes < min_bytes) continue;
-        r.rs->removeAllocation(a.buf);
+        if (r.rs) r.rs->removeAllocation(a.buf);
         a.buf->setPurgeableState(MTL::PurgeableStateEmpty);
         a.purged = true;
         n += a.bytes;
     }
-    r.rs->commit();
+    if (r.rs) r.rs->commit();
     return n;
 }
 
@@ -529,13 +549,15 @@ Error host_register(void* p, size_t bytes, unsigned) {
     const size_t n = (bytes + pg - 1) / pg * pg;
     MTL::Buffer* b = r.dev->newBuffer(p, n, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeUntracked, nullptr);
     if (!b) return fail(kErrorMemoryAllocation);
-    Alloc a{b, b->gpuAddress(), (uint8_t*) b->contents(), n, true};
+    Alloc a{b, dev_address(b), (uint8_t*) b->contents(), n, true};
     alloc_log("host register", n);
     std::lock_guard<std::mutex> lk(r.mu);
     r.by_gpu[a.gpu] = a;
     r.by_cpu[(uintptr_t) a.cpu] = a.gpu;
-    r.rs->addAllocation(b);
-    r.rs->commit();
+    if (r.rs) {
+        r.rs->addAllocation(b);
+        r.rs->commit();
+    }
     return kSuccess;
 }
 Error host_unregister(void* p) { return free_alloc(p); }
@@ -777,7 +799,10 @@ MTL::ComputePipelineState* pipeline(const char* source_name, const char* source,
     NS::Error* e = nullptr;
     if (!lib) {
         MTL::CompileOptions* co = MTL::CompileOptions::alloc()->init();
-        co->setMathMode(MTL::MathModeSafe);   // no fast-math reassociation: parity with the CUDA reference first
+        // No fast-math reassociation: parity with the CUDA reference first.  mathMode is macOS 15's; before it the older
+        // spelling says the same thing (setFastMathEnabled(false)), which is what an Intel Mac's Big Sur is given here.
+        if (__builtin_available(macOS 15.0, *)) co->setMathMode(MTL::MathModeSafe);
+        else co->setFastMathEnabled(false);
         lib = r.dev->newLibrary(NS::String::string(source, NS::UTF8StringEncoding), co, &e);
         co->release();
         if (!lib) {
