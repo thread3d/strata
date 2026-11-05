@@ -121,6 +121,10 @@
 
 namespace strata::metal_engine { void missing(const char* name); }
 
+// A stub yields to a real implementation linked beside it: an Intel Mac compiles the x86 CPU kernels
+// (src/kernels/cpu/iq_avx2.cpp, iq_avx512.cpp, tq_avx2.cpp, tq_avx512.cpp), which define some of the entry points
+// below, and a weak definition lets the real one win instead of colliding with it at link time.
+#pragma clang attribute push(__attribute__((weak)), apply_to = function)
 namespace strata::kernels { void copy_rows_from_mapped_after(unsigned int const* p0, unsigned int p1, float* p2, float const* p3, long long p4, long long p5, int const* p6, int const* p7, void* p8) { strata::metal_engine::missing("strata::kernels::copy_rows_from_mapped_after"); } }
 namespace strata::kernels::cpu { void iq256_gu_rows_exact_one(int p0, unsigned char const* p1, unsigned long p2, unsigned long p3, int p4, void const* p5, float* p6, int p7, int p8) { strata::metal_engine::missing("strata::kernels::cpu::iq256_gu_rows_exact_one"); } }
 namespace strata::kernels { void fused_gr_persist_init() {  } }
@@ -163,3 +167,4 @@ namespace strata::kernels { void ple_iq4nl_dequant(const uint8_t* p0, int64_t p1
 // STRATA_DEQUANT_SIDE (opt-in, CUDA only): off on Metal; the prompt path takes no second scratch and set_dequant_side(nullptr) keeps the serial form.
 namespace strata::prefill { bool gemm_dequant_side() { return false; } }
 auto strata::prefill::Gemm::set_dequant_side(uint16_t* p0, std::string& p1) -> bool { if (p0 == nullptr) return true; strata::metal_engine::missing("strata::prefill::Gemm::set_dequant_side"); return false; }
+#pragma clang attribute pop

@@ -104,6 +104,62 @@ set(STRATA_METAL_HOST_SOURCES
   ${S}/spec/suffix_drafter.cpp ${S}/spec/controller.cpp ${S}/spec/draft_policy.cpp ${S}/spec/draft_source.cpp
   ${S}/kernels/cpu/pool.cpp ${S}/kernels/cpu/expert_layout.cpp ${S}/kernels/cpu/native_expert.cpp
   ${S}/kernels/cpu/hadamard.cpp ${S}/kernels/cpu/tq_cpu.cpp)   # Gyro: the Hadamard rotation, the scalar trellis rows
+
+# The CPU lane on an Intel Mac.  native_expert.cpp, tq_cpu.cpp and the DeepSeek engine's CPU lane (src/dsv41/ds4_tq_cpu.cpp)
+# pick the x86 kernels through cpu_avx2_ok() / cpu_avx512_ok(), which read a real CPUID there, so the files that hold them
+# are compiled and given the flags the PC build gives them (CMakeLists.txt, strata_kernels_cpu): the same kernels under the
+# same run-time selection.  On arm64 the checks are false and none of this is built, so that build is unchanged.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x64|X64)$")
+  # The arch the binary is FOR, not the one CMake runs on: with -DCMAKE_OSX_ARCHITECTURES=arm64 (a cross build, a universal
+  # binary) the arm64 sources stay, and their SSE/AVX intrinsics do not exist for that target.
+  set(STRATA_METAL_ARCHS "${CMAKE_OSX_ARCHITECTURES}")
+  if(NOT STRATA_METAL_ARCHS)
+    set(STRATA_METAL_ARCHS "${CMAKE_SYSTEM_PROCESSOR}")
+  endif()
+  if(STRATA_METAL_ARCHS MATCHES "^(x86_64|AMD64|amd64|x64|X64)$")
+    list(APPEND STRATA_METAL_HOST_SOURCES
+      ${S}/kernels/cpu/iq_avx512.cpp ${S}/kernels/cpu/iq_avx2.cpp ${S}/kernels/cpu/tq_avx2.cpp ${S}/kernels/cpu/tq_avx512.cpp)
+    if(MSVC)
+      set_source_files_properties(${S}/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
+      set_source_files_properties(${S}/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+      set_source_files_properties(${S}/kernels/cpu/tq_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+      set_source_files_properties(${S}/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
+    else()
+      # exactly the feature sets cpu_avx512_ok() and cpu_avx2_ok() test, so nothing above them can leak into either file
+      set_source_files_properties(${S}/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS
+                                  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mavx512vpopcntdq;-mbmi2;-mf16c;-mfma")
+      set_source_files_properties(${S}/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+      set_source_files_properties(${S}/kernels/cpu/tq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+      set_source_files_properties(${S}/kernels/cpu/tq_avx512.cpp PROPERTIES COMPILE_OPTIONS
+                                  "-mavx512f;-mavx512bw;-mavx512vl;-mavx512vnni;-mavx512vbmi;-mavx2;-mfma;-mf16c")
+    endif()
+    # AVX-VNNI's copies inside iq_avx2.cpp (cpu_avxvnni_ok), as the PC build decides it: a compiler without the intrinsics
+    # builds the file without them.
+    include(CheckCXXSourceCompiles)
+    if(MSVC)
+      set(CMAKE_REQUIRED_FLAGS "/arch:AVX2")
+    else()
+      set(CMAKE_REQUIRED_FLAGS "-mavx2 -mfma -mf16c")
+    endif()
+    check_cxx_source_compiles([=[
+#include <immintrin.h>
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((target("avxvnni")))
+#endif
+static __m256i dots(__m256i a, __m256i b) { return _mm256_dpbusd_avx_epi32(_mm256_dpwssd_avx_epi32(a, a, b), a, b); }
+int main() {
+    volatile int x = 1;
+    return _mm256_extract_epi32(dots(_mm256_set1_epi32(x), _mm256_set1_epi32(x)), 0) == 0;
+}
+]=] STRATA_METAL_HAVE_AVXVNNI)
+    unset(CMAKE_REQUIRED_FLAGS)
+    if(STRATA_METAL_HAVE_AVXVNNI)
+      set_property(SOURCE ${S}/kernels/cpu/iq_avx2.cpp APPEND PROPERTY COMPILE_DEFINITIONS STRATA_AVXVNNI=1)
+    else()
+      set_property(SOURCE ${S}/kernels/cpu/iq_avx2.cpp APPEND PROPERTY COMPILE_DEFINITIONS STRATA_AVXVNNI=0)
+    endif()
+  endif()
+endif()
 set_source_files_properties(${S}/core/device.cu ${S}/core/pinned.cu ${DS4}/ds4_vision.cu ${DS4}/vendor/exl3.cu ${DS4}/vendor/moe_win.cu ${DS4}/vendor/sampler.cu
                             PROPERTIES LANGUAGE CXX)
 

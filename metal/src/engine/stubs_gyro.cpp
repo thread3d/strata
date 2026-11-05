@@ -11,6 +11,10 @@ namespace strata::metal_engine {
 void missing(const char* name);
 }
 
+// A stub yields to a real implementation linked beside it: an Intel Mac compiles the x86 CPU kernels
+// (src/kernels/cpu/iq_avx2.cpp, iq_avx512.cpp, tq_avx2.cpp, tq_avx512.cpp), which define some of the entry points
+// below, and a weak definition lets the real one win instead of colliding with it at link time.
+#pragma clang attribute push(__attribute__((weak)), apply_to = function)
 namespace strata::kernels {
 void hadamard_rows(const float*, float*, int64_t, int64_t, int, const float*, void*) {
     strata::metal_engine::missing("strata::kernels::hadamard_rows");
@@ -23,3 +27,4 @@ const float* hadamard_device_signs(const float*, int) {
     return nullptr;
 }
 }  // namespace strata::kernels
+#pragma clang attribute pop

@@ -5,6 +5,10 @@
 
 #include <cstdlib>
 
+// A stub yields to a real implementation linked beside it: an Intel Mac compiles the x86 CPU kernels
+// (src/kernels/cpu/iq_avx2.cpp, iq_avx512.cpp, tq_avx2.cpp, tq_avx512.cpp), which define some of the entry points
+// below, and a weak definition lets the real one win instead of colliding with it at link time.
+#pragma clang attribute push(__attribute__((weak)), apply_to = function)
 namespace strata::kernels::cpu {
 
 bool iq256x_supported(int) noexcept { return false; }
@@ -14,3 +18,4 @@ void iq256x_rows(int, const uint8_t*, size_t, int, const void* const*, int, floa
 }
 
 }   // namespace strata::kernels::cpu
+#pragma clang attribute pop

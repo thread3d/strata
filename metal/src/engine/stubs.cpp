@@ -129,6 +129,10 @@ auto strata::core::RemoteExpertOpt::owns(int64_t p0, int32_t p1) const -> bool {
 auto strata::core::RemoteExpertOpt::prepare(const RemoteExperts & p0, void * p1) const -> void { strata::metal_engine::missing("strata::core::RemoteExpertOpt::prepare"); }
 auto strata::core::RemoteExpertOpt::reduce(RemoteExperts & p0, const void * p1, std::string & p2) -> bool { strata::metal_engine::missing("strata::core::RemoteExpertOpt::reduce"); return {}; }
 strata::core::RemoteExpertOpt::~RemoteExpertOpt() { strata::metal_engine::missing("strata::core::RemoteExpertOpt::~RemoteExpertOpt"); }
+// A stub yields to a real implementation linked beside it: an Intel Mac compiles the x86 CPU kernels
+// (src/kernels/cpu/iq_avx2.cpp, iq_avx512.cpp, tq_avx2.cpp, tq_avx512.cpp), which define some of the entry points
+// below, and a weak definition lets the real one win instead of colliding with it at link time.
+#pragma clang attribute push(__attribute__((weak)), apply_to = function)
 namespace strata::kernels { void add_inplace(float * p0, const float * p1, int64_t p2, void * p3) { strata::metal_engine::missing("strata::kernels::add_inplace"); } }
 namespace strata::kernels { void add_streams_broadcast(const float * p0, const float * p1, float * p2, int64_t p3, int p4, int p5, void * p6) { strata::metal_engine::missing("strata::kernels::add_streams_broadcast"); } }
 namespace strata::kernels { void argmax_rows(const float * p0, int p1, int p2, void * p3, int32_t * p4, void * p5) { strata::metal_engine::missing("strata::kernels::argmax_rows"); } }
@@ -369,3 +373,4 @@ namespace strata::prefill { void swiglu_interleaved(const float * p0, uint16_t *
 namespace strata::prefill { void swiglu_pair(const float * p0, const float * p1, uint16_t * p2, int64_t p3, void * p4) { strata::metal_engine::missing("strata::prefill::swiglu_pair"); } }
 namespace strata::prefill { void to_bf16(const float * p0, uint16_t * p1, int64_t p2, void * p3, uint16_t * p4) { strata::metal_engine::missing("strata::prefill::to_bf16"); } }
 namespace strata::prefill { void to_f16(const float * p0, uint16_t * p1, int64_t p2, void * p3) { strata::metal_engine::missing("strata::prefill::to_f16"); } }
+#pragma clang attribute pop

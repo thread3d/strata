@@ -20,6 +20,10 @@ namespace strata::metal_engine {
 void missing(const char* name);
 }
 
+// A stub yields to a real implementation linked beside it: an Intel Mac compiles the x86 CPU kernels
+// (src/kernels/cpu/iq_avx2.cpp, iq_avx512.cpp, tq_avx2.cpp, tq_avx512.cpp), which define some of the entry points
+// below, and a weak definition lets the real one win instead of colliding with it at link time.
+#pragma clang attribute push(__attribute__((weak)), apply_to = function)
 namespace strata::kernels {
 void iq_dequant_f16(int, const void*, int64_t, uint16_t*, void*, const float*) { strata::metal_engine::missing("strata::kernels::iq_dequant_f16(scale)"); }
 void iq_dequant_gu_f16(int, const void*, const void*, int64_t, int64_t, uint16_t*, void*, const float*) { strata::metal_engine::missing("strata::kernels::iq_dequant_gu_f16(tail)"); }
@@ -62,3 +66,4 @@ bool qsa_block_scores_slots(const float* const*, const float* const*, const floa
 bool qsa_decode_attn_slots(const float*, const QsaAttnSlotPools&, const int32_t*, const int32_t*, int64_t, const QsaShapes&,
                            float*, float*, int64_t, void*) { return false; }
 }  // namespace strata::kernels
+#pragma clang attribute pop
