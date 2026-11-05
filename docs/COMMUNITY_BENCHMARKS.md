@@ -21,10 +21,15 @@ and their limits. Report what you actually measured and label estimates separate
 ## Community reports
 
 - [2026-11-05: Jetson AGX Xavier (sm_72, 8 Carmel cores), 30 GiB, CUDA 11.4](../bench/results/jetson-agx-xavier/README.md):
-  Strata 0.1.55 source build for this board (`jetson/build_engine.sh`, experimental sm_60 flag, arm64). **No model was run** - no pack
-  fits 30 GiB - so no decode or prompt tok/s: the CPU test suite (60 tests, all pass), 6 of 7 GPU parity tests, memory read
-  bandwidth 123 GB/s against the module's rated 137, dense Q8_0 GEMV 85-95 GB/s, and the Volta prompt-attention path at 1.64x
-  over the FP32 fallback for int8 K/V but slower for fp16 and int8+q4 V. `gemm_f32_parity` fails: the FP32 dense route and
+  Strata 0.1.55 source build for this board (`jetson/build_engine.sh`, experimental sm_60 flag, arm64), **no model was run**
+  (no pack fits 30 GiB), so no decode or prompt tok/s. Instead every model-free kernel benchmark in the tree: 18 tool
+  variants, a discarded warm-up plus five measured runs each, 8,035 measurements, with medians, [min-max] and CV, and GPU
+  clocks/temperatures sampled throughout (the GPU never passed 62 C, so nothing was thermally throttled). Headline numbers:
+  memory read 123.1 GB/s of the module's rated 137; decode GEMV 89-95 GB/s on the wide matrices and 31.7 GB/s on the
+  narrow 320-row one; expert decode 45-59 GB/s (37-48% of what the board reads); the QSA layer at 131k context costs
+  0.86 ms a row on its selected path and 2.66 ms on the dense fallback, i.e. a ~1.2k / ~0.38k tok/s ceiling before any
+  expert weight is read; the trellis (Gyro) decode kernels are 3.6x slower per column than Q2_0. Also the CPU suite
+  (60 tests, all pass) and 6 of 7 GPU parity tests - `gemm_f32_parity` fails, because the FP32 dense route and
   cuBLAS 11.6.6.84 differ bitwise on all 1,278 sizes tested.
 - [2026-09-30: RTX 5090, Core Ultra 9 285K, 64 GB RAM](../bench/results/2026-09-30-community-rtx-5090/README.md):
   Strata 0.1.29, original Flash-Next IQ2_XS, 131,072-token context; three runs

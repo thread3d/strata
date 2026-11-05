@@ -1,0 +1,58 @@
+device Xavier cc 7.2
+SUM mmvq TQ2_T     67 x  2560  df4c20a60ba03390  decode-once == per-column
+SUM mmvq TQ2_T      5 x  1024  016183e75cdf257d  decode-once == per-column
+SUM mmvq TQK6      67 x  2560  f64b1945644c5e67  decode-once == per-column
+SUM mmvq TQK6       5 x  1024  be6e0e7481e147a8  decode-once == per-column
+SUM mmvq TQK7      67 x  2560  541c495f845a91ca  decode-once == per-column
+SUM mmvq TQK7       5 x  1024  728db610402d6b1d  decode-once == per-column
+SUM grouped TQ2_T /TQ2_T   2560 x  640  a7905770fa6b9cb2  decode-once == per-column
+SUM grouped TQ2_T /TQK7    2560 x  640  e2f979592bc95c80  decode-once == per-column
+SUM grouped TQK6  /TQ2_T   2560 x  640  8bdeb6a2a7dab0f4  decode-once == per-column
+SUM grouped TQK6  /TQK7    2560 x  640  5da6bfc9846e6f97  decode-once == per-column
+SUM grouped TQ2_T /TQK7    5120 x  640  afef63befec8b69d  decode-once == per-column
+SUM grouped TQ2_T /TQ2_T   2560 x  512  0d730c0c790c1567  decode-once == per-column
+SUM grouped TQ2_T /TQK7    2048 x  256  b706b4a51ec9719f  decode-once == per-column
+SUM grouped TQK6  /TQK7    5120 x  640  a239b4b5a874f315  decode-once == per-column
+SUM grouped TQK6  /TQ2_T   2560 x  512  f1fb7c3a0513200c  decode-once == per-column
+SUM grouped TQK6  /TQK7    2048 x  256  9fd495cb18ab55e6  decode-once == per-column
+SUM mmvq TQP5      67 x  2560  8ac973e31399fe4c  decode-once == per-column
+SUM mmvq TQP5       5 x  1024  c0312d332b0a14f6  decode-once == per-column
+tqp ref TQP5   dequant_f16    67 x  2560: 0 of 171520 fp16 values differ from the definition  bitwise equal
+tqp ref TQP5   mmvq    67 x  2560 x 3 cols: relative L1 error 9.24e-03 (bound 3e-2)  ok
+tqp ref TQP5   dequant_f16     5 x  1024: 0 of 5120 fp16 values differ from the definition  bitwise equal
+tqp ref TQP5   mmvq     5 x  1024 x 3 cols: relative L1 error 1.10e-02 (bound 3e-2)  ok
+SUM grouped TQP5  /TQP5    2560 x  640  5a5d6783f5e75876  decode-once == per-column
+SUM grouped TQP5  /TQP5    5120 x  640  5994fb8bfa62ef79  decode-once == per-column
+SUM mmvq TQP6      67 x  2560  b5e339665679d3de  decode-once == per-column
+SUM mmvq TQP6       5 x  1024  d50554e40c2eb693  decode-once == per-column
+tqp ref TQP6   dequant_f16    67 x  2560: 0 of 171520 fp16 values differ from the definition  bitwise equal
+tqp ref TQP6   mmvq    67 x  2560 x 3 cols: relative L1 error 8.10e-03 (bound 3e-2)  ok
+tqp ref TQP6   dequant_f16     5 x  1024: 0 of 5120 fp16 values differ from the definition  bitwise equal
+tqp ref TQP6   mmvq     5 x  1024 x 3 cols: relative L1 error 1.03e-02 (bound 3e-2)  ok
+SUM grouped TQP6  /TQP6    2560 x  640  08f31c875a42689d  decode-once == per-column
+SUM grouped TQP6  /TQP6    5120 x  640  8bd1fa805e1e8836  decode-once == per-column
+SUM mmvq TQP7      67 x  2560  86c8c98121da51d8  decode-once == per-column
+SUM mmvq TQP7       5 x  1024  17ceac864d8902aa  decode-once == per-column
+tqp ref TQP7   dequant_f16    67 x  2560: 0 of 171520 fp16 values differ from the definition  bitwise equal
+tqp ref TQP7   mmvq    67 x  2560 x 3 cols: relative L1 error 7.93e-03 (bound 3e-2)  ok
+tqp ref TQP7   dequant_f16     5 x  1024: 0 of 5120 fp16 values differ from the definition  bitwise equal
+tqp ref TQP7   mmvq     5 x  1024 x 3 cols: relative L1 error 9.86e-03 (bound 3e-2)  ok
+SUM grouped TQP7  /TQP7    2560 x  640  cfdb91de4cb59b24  decode-once == per-column
+SUM grouped TQP7  /TQP7    5120 x  640  421bee2d7f524278  decode-once == per-column
+SUM grouped TQP6  /TQK7    2560 x  640  c54ceaba012bd281  decode-once == per-column
+SUM grouped TQK6  /TQP6    2560 x  640  0748e335993e3208  decode-once == per-column
+
+--bench: microseconds per call (idle GPU assumed)
+BENCH mmvq TQ2_T  8192 x 2560 (0.006 GB):  nc1 374.5 us (15 GB/s)  nc2 412.2 us (14 GB/s)  nc3 470.8 us (12 GB/s)  nc4 530.4 us (11 GB/s)  nc8 768.1 us (7 GB/s)
+BENCH mmvq TQK6   8192 x 2560 (0.004 GB):  nc1 349.1 us (12 GB/s)  nc2 405.7 us (10 GB/s)  nc3 463.9 us (9 GB/s)  nc4 527.7 us (8 GB/s)  nc8 765.6 us (6 GB/s)
+BENCH mmvq TQK7   8192 x 2560 (0.005 GB):  nc1 349.6 us (14 GB/s)  nc2 405.5 us (12 GB/s)  nc3 463.9 us (11 GB/s)  nc4 528.1 us (9 GB/s)  nc8 765.9 us (6 GB/s)
+BENCH mmvq Q2_0   8192 x 2560 (0.006 GB):  nc1 97.5 us (61 GB/s)  nc2 189.8 us (31 GB/s)  nc3 263.7 us (22 GB/s)  nc4 281.9 us (21 GB/s)  nc8 520.4 us (11 GB/s)
+BENCH rows TQK6    8192 x  2560 nc1 348.8 us
+BENCH rows TQK6    4096 x  5120 nc1 343.3 us
+BENCH rows TQK6    2048 x 10240 nc1 344.2 us
+BENCH rows TQK6    1024 x 20480 nc1 351.2 us
+BENCH grouped TQK6  /TQK7   16 groups of m entries:  m=1 800.2 us (21 GB/s)  m=2 904.2 us (19 GB/s)  m=3 1006.2 us (17 GB/s)  m=4 1112.2 us (15 GB/s)  m=8 2096.8 us (8 GB/s)
+BENCH grouped TQK6  /TQ2_T  16 groups of m entries:  m=1 778.9 us (23 GB/s)  m=2 890.9 us (20 GB/s)  m=3 988.5 us (18 GB/s)  m=4 1098.8 us (16 GB/s)  m=8 2113.5 us (8 GB/s)
+BENCH grouped TQ2_T /TQ2_T  16 groups of m entries:  m=1 733.5 us (28 GB/s)  m=2 875.3 us (24 GB/s)  m=3 1038.1 us (20 GB/s)  m=4 1243.9 us (17 GB/s)  m=8 2173.3 us (10 GB/s)
+BENCH grouped TQ2_T /TQK7   16 groups of m entries:  m=1 760.4 us (26 GB/s)  m=2 909.9 us (22 GB/s)  m=3 1068.2 us (19 GB/s)  m=4 1278.6 us (16 GB/s)  m=8 2215.0 us (9 GB/s)
+tq_pascal_bench: 0 failures

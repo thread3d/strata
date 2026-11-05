@@ -1,0 +1,12 @@
+graph of 100 chained kernels,    1 blocks: 1.09 us per kernel
+single launch from idle, 100 kernels,    1 blocks: events 0.115 ms, wall 0.172 ms
+stream of 100 chained kernels,    1 blocks: 4.76 us per kernel
+graph of 100 chained kernels,   64 blocks: 1.44 us per kernel
+single launch from idle, 100 kernels,   64 blocks: events 0.159 ms, wall 0.222 ms
+stream of 100 chained kernels,   64 blocks: 4.22 us per kernel
+graph of 100 chained kernels,  256 blocks: 3.50 us per kernel
+single launch from idle, 100 kernels,  256 blocks: events 0.369 ms, wall 0.433 ms
+stream of 100 chained kernels,  256 blocks: 5.68 us per kernel
+graph of 100 chained kernels, 1024 blocks: 21.52 us per kernel
+single launch from idle, 100 kernels, 1024 blocks: events 2.174 ms, wall 2.243 ms
+stream of 100 chained kernels, 1024 blocks: 23.56 us per kernel

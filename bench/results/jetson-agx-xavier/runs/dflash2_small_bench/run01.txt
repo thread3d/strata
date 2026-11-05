@@ -1,0 +1,13 @@
+rms_quant (8 x 2560)           10.30 us
+conv_quant                      7.70 us
+conv_rms_quant                  8.40 us
+swiglu_quant (8 x 7680)        12.44 us
+quant_rows (8 x 4096)           5.26 us
+norm_rope_qk                    5.79 us
+kv_ring (3 rows)                4.75 us
+rope_table (8)                  6.25 us
+topk (7 x 106299)             300.39 us
+select (7 rows)                10.13 us
+conv (resid)                    5.87 us
+attention merge+quant only     93.00 us
+gemm 640 x 2560 (tiny)         43.49 us

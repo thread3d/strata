@@ -1,0 +1,5 @@
+Xavier (cc 72)  GDN prompt recurrence: chunked vs token-by-token
+       T    pipe(rec)    warp(rec)    fast(rec)    chunk FMA   chunk wmma   max abs diff vs pipe
+    1024       7.079ms       7.082ms       7.080ms      55.309ms      55.538ms   1.58e-08 (wmma vs pipe)
+    4096      33.974ms      33.905ms      33.847ms     229.091ms     227.707ms   1.68e-08 (wmma vs pipe)
+    8192      67.595ms      68.942ms      67.467ms     455.118ms     456.324ms   2.24e-08 (wmma vs pipe)

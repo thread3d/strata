@@ -1,0 +1,291 @@
+# warning: EXPDEC has no down kernel for pair 16/20: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 17/20: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 18/20: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 21/20: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 22/20: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 16/42: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 17/42: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 18/42: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 21/42: that phase runs the default
+# warning: EXPDEC has no down kernel for pair 22/42: that phase runs the default
+# n_embd 2560, n_ff 640, 10 pair(s), choices: def dec(gu R 1 minb 4, down R 4 iq4_nl 0, rb 0 drb 0, min blocks 800) dec:r2(gu R 2 minb 4, down R 4 iq4_nl 0, rb 0 drb 0, min blocks 800) dec:b4(gu R 1 minb 4, down R 4 iq4_nl 0, rb 0 drb 0, min blocks 800) dec:r2:b4(gu R 2 minb 4, down R 4 iq4_nl 0, rb 0 drb 0, min blocks 800)
+# dev T shape gu/d choice all_us gu_us down_us GB/s pct identical|DIFFERENT
+# pair 16/20: gate/up IQ2_XXS, down IQ4_NL: blob 1.77 MB (gu_row 660, d_row 360), pool 141 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 1.77 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 17.7 MB of weights per call
+0 1 real 16/20 def 378.9 232.1 135.8 46.6 52.9% identical
+strata expdec: CUDA0 gate/up type 16: expdec_gu_kernel R 1 MINB 4, 16 rows per block, grid 80 x 10 (cap 10 groups)
+strata expdec: CUDA0 down type 20 (n_embd 2560, n_ff 640) not covered: the default kernel runs
+0 1 real 16/20 dec 380.6 231.1 136.6 46.4 52.7% identical
+0 1 real 16/20 dec:r2 447.3 294.5 139.2 39.5 44.8% identical
+0 1 real 16/20 dec:b4 386.8 234.4 139.1 45.7 51.8% identical
+0 1 real 16/20 dec:r2:b4 455.0 293.9 140.4 38.8 44.1% identical
+# T=2 real: 20 groups, 20 entries, 35.3 MB of weights per call
+0 2 real 16/20 def 744.0 455.7 267.3 47.5 53.9% identical
+0 2 real 16/20 dec 699.6 410.1 266.6 50.5 57.3% identical
+0 2 real 16/20 dec:r2 859.8 566.0 270.4 41.1 46.6% identical
+0 2 real 16/20 dec:b4 703.8 412.2 268.2 50.2 57.0% identical
+0 2 real 16/20 dec:r2:b4 837.5 608.2 266.8 42.2 47.9% identical
+# T=3 real: 20 groups, 30 entries, 35.3 MB of weights per call
+0 3 real 16/20 def 819.3 514.6 288.9 43.1 48.9% identical
+0 3 real 16/20 dec 745.9 434.0 289.1 47.4 53.7% identical
+0 3 real 16/20 dec:r2 930.5 619.6 289.3 38.0 43.1% identical
+0 3 real 16/20 dec:b4 739.8 431.5 284.9 47.8 54.2% identical
+0 3 real 16/20 dec:r2:b4 933.5 621.5 289.3 37.8 42.9% identical
+# T=4 real: 20 groups, 40 entries, 35.3 MB of weights per call
+0 4 real 16/20 def 905.1 572.4 306.6 39.0 44.3% identical
+0 4 real 16/20 dec 795.7 463.9 307.9 44.4 50.4% identical
+0 4 real 16/20 dec:r2 1056.6 719.3 315.3 33.4 37.9% identical
+0 4 real 16/20 dec:b4 807.9 469.2 313.0 43.7 49.6% identical
+0 4 real 16/20 dec:r2:b4 1052.3 714.5 310.5 33.6 38.1% identical
+# pair 17/20: gate/up IQ2_XS, down IQ4_NL: blob 1.87 MB (gu_row 740, d_row 360), pool 150 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 1.87 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 18.7 MB of weights per call
+0 1 real 17/20 def 410.1 257.1 140.6 45.6 51.7% identical
+strata expdec: CUDA0 gate/up type 17: expdec_gu_kernel R 1 MINB 4, 16 rows per block, grid 80 x 10 (cap 10 groups)
+0 1 real 17/20 dec 402.2 248.4 140.7 46.5 52.7% identical
+0 1 real 17/20 dec:r2 607.0 447.5 145.3 30.8 34.9% identical
+0 1 real 17/20 dec:b4 413.8 255.4 145.8 45.2 51.2% identical
+0 1 real 17/20 dec:r2:b4 603.7 447.5 144.0 31.0 35.1% identical
+# T=2 real: 20 groups, 20 entries, 37.4 MB of weights per call
+0 2 real 17/20 def 800.0 503.9 276.2 46.7 53.0% identical
+0 2 real 17/20 dec 734.7 439.8 272.4 50.9 57.7% identical
+0 2 real 17/20 dec:r2 1123.8 850.2 278.3 33.3 37.7% identical
+0 2 real 17/20 dec:b4 744.7 443.9 277.3 50.2 56.9% identical
+0 2 real 17/20 dec:r2:b4 1141.2 857.2 280.6 32.8 37.2% identical
+# T=3 real: 20 groups, 30 entries, 37.4 MB of weights per call
+0 3 real 17/20 def 882.9 567.2 356.3 42.3 48.0% identical
+0 3 real 17/20 dec 790.1 470.6 302.3 47.3 53.7% identical
+0 3 real 17/20 dec:r2 1275.2 1001.0 302.8 29.3 33.3% identical
+0 3 real 17/20 dec:b4 784.5 466.4 294.9 47.6 54.1% identical
+0 3 real 17/20 dec:r2:b4 1269.1 954.8 302.2 29.4 33.4% identical
+# T=4 real: 20 groups, 40 entries, 37.4 MB of weights per call
+0 4 real 17/20 def 986.3 645.5 318.5 37.9 43.0% identical
+0 4 real 17/20 dec 848.1 505.0 315.4 44.1 50.0% identical
+0 4 real 17/20 dec:r2 1415.4 1087.7 323.1 26.4 30.0% identical
+0 4 real 17/20 dec:b4 862.7 512.2 321.8 43.3 49.2% identical
+0 4 real 17/20 dec:r2:b4 1431.6 1098.1 321.9 26.1 29.6% identical
+# pair 18/20: gate/up IQ3_XXS, down IQ4_NL: blob 2.18 MB (gu_row 980, d_row 360), pool 174 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 2.18 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 21.8 MB of weights per call
+0 1 real 18/20 def 453.2 296.7 138.5 48.0 54.5% identical
+strata expdec: CUDA0 gate/up type 18: expdec_gu_kernel R 1 MINB 4, 16 rows per block, grid 80 x 10 (cap 10 groups)
+0 1 real 18/20 dec 462.5 307.1 138.4 47.0 53.4% identical
+0 1 real 18/20 dec:r2 660.8 504.2 136.9 32.9 37.4% identical
+0 1 real 18/20 dec:b4 457.9 303.8 137.3 47.5 53.9% identical
+0 1 real 18/20 dec:r2:b4 659.7 510.5 139.7 33.0 37.4% identical
+# T=2 real: 20 groups, 20 entries, 43.5 MB of weights per call
+0 2 real 18/20 def 883.2 586.6 272.8 49.3 55.9% identical
+0 2 real 18/20 dec 848.2 548.7 269.6 51.3 58.2% identical
+0 2 real 18/20 dec:r2 1300.4 1011.9 278.2 33.5 38.0% identical
+0 2 real 18/20 dec:b4 859.3 556.0 275.2 50.6 57.5% identical
+0 2 real 18/20 dec:r2:b4 1291.6 992.2 279.0 33.7 38.2% identical
+# T=3 real: 20 groups, 30 entries, 43.5 MB of weights per call
+0 3 real 18/20 def 976.6 646.7 296.0 44.6 50.6% identical
+0 3 real 18/20 dec 920.6 595.8 295.6 47.3 53.6% identical
+0 3 real 18/20 dec:r2 1493.8 1184.1 300.7 29.1 33.1% identical
+0 3 real 18/20 dec:b4 929.8 600.4 297.5 46.8 53.1% identical
+0 3 real 18/20 dec:r2:b4 1511.7 1181.7 298.1 28.8 32.7% identical
+# T=4 real: 20 groups, 40 entries, 43.5 MB of weights per call
+0 4 real 18/20 def 1055.2 714.0 370.1 41.2 46.8% identical
+0 4 real 18/20 dec 971.9 630.3 310.0 44.8 50.8% identical
+0 4 real 18/20 dec:r2 1617.6 1287.3 319.2 26.9 30.5% identical
+0 4 real 18/20 dec:b4 982.5 636.8 317.1 44.3 50.3% identical
+0 4 real 18/20 dec:r2:b4 1614.5 1268.9 313.3 27.0 30.6% identical
+# pair 21/20: gate/up IQ3_S, down IQ4_NL: blob 2.33 MB (gu_row 1100, d_row 360), pool 186 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 2.33 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 23.3 MB of weights per call
+0 1 real 21/20 def 502.9 347.4 138.3 46.3 52.6% identical
+strata expdec: CUDA0 gate/up type 21: expdec_gu_kernel R 1 MINB 4, 16 rows per block, grid 80 x 10 (cap 10 groups)
+0 1 real 21/20 dec 667.2 511.3 140.5 34.9 39.6% identical
+0 1 real 21/20 dec:r2 1405.4 1265.7 144.2 16.6 18.8% identical
+0 1 real 21/20 dec:b4 676.5 515.8 141.2 34.4 39.1% identical
+0 1 real 21/20 dec:r2:b4 1400.3 1245.3 143.2 16.6 18.9% identical
+# T=2 real: 20 groups, 20 entries, 46.6 MB of weights per call
+0 2 real 21/20 def 998.2 696.0 274.9 46.7 53.0% identical
+0 2 real 21/20 dec 1156.3 859.6 272.4 40.3 45.7% identical
+0 2 real 21/20 dec:r2 2765.2 2439.5 279.5 16.8 19.1% identical
+0 2 real 21/20 dec:b4 1179.2 865.0 274.0 39.5 44.8% identical
+0 2 real 21/20 dec:r2:b4 2754.1 2403.1 332.8 16.9 19.2% identical
+# T=3 real: 20 groups, 30 entries, 46.6 MB of weights per call
+0 3 real 21/20 def 1094.3 767.4 302.3 42.6 48.3% identical
+0 3 real 21/20 dec 1220.5 881.8 291.8 38.2 43.3% identical
+0 3 real 21/20 dec:r2 2835.7 2509.2 295.8 16.4 18.6% identical
+0 3 real 21/20 dec:b4 1199.4 879.9 291.7 38.8 44.1% identical
+0 3 real 21/20 dec:r2:b4 2807.2 2523.4 302.2 16.6 18.8% identical
+# T=4 real: 20 groups, 40 entries, 46.6 MB of weights per call
+0 4 real 21/20 def 1167.2 820.4 323.5 39.9 45.3% identical
+0 4 real 21/20 dec 1282.8 946.0 318.2 36.3 41.2% identical
+0 4 real 21/20 dec:r2 2886.5 2530.8 323.3 16.1 18.3% identical
+0 4 real 21/20 dec:b4 1292.3 940.8 314.9 36.1 40.9% identical
+0 4 real 21/20 dec:r2:b4 2865.4 2518.9 314.7 16.3 18.5% identical
+# pair 22/20: gate/up IQ2_S, down IQ4_NL: blob 1.97 MB (gu_row 820, d_row 360), pool 158 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 1.97 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 19.7 MB of weights per call
+0 1 real 22/20 def 417.9 262.5 139.8 47.2 53.5% identical
+strata expdec: CUDA0 gate/up type 22: expdec_gu_kernel R 1 MINB 4, 16 rows per block, grid 80 x 10 (cap 10 groups)
+0 1 real 22/20 dec 451.2 291.1 139.2 43.7 49.6% identical
+0 1 real 22/20 dec:r2 746.3 590.6 139.0 26.4 30.0% identical
+0 1 real 22/20 dec:b4 459.5 291.0 138.8 42.9 48.7% identical
+0 1 real 22/20 dec:r2:b4 739.5 602.5 140.5 26.7 30.2% identical
+# T=2 real: 20 groups, 20 entries, 39.4 MB of weights per call
+0 2 real 22/20 def 811.2 506.9 266.5 48.6 55.1% identical
+0 2 real 22/20 dec 775.3 477.6 267.1 50.9 57.7% identical
+0 2 real 22/20 dec:r2 1472.0 1218.3 274.7 26.8 30.4% identical
+0 2 real 22/20 dec:b4 787.6 486.4 271.6 50.1 56.8% identical
+0 2 real 22/20 dec:r2:b4 1467.8 1164.4 272.4 26.9 30.5% identical
+# T=3 real: 20 groups, 30 entries, 39.4 MB of weights per call
+0 3 real 22/20 def 899.3 576.8 292.5 43.8 49.7% identical
+0 3 real 22/20 dec 851.1 524.2 291.0 46.3 52.6% identical
+0 3 real 22/20 dec:r2 1574.4 1260.2 315.8 25.0 28.4% identical
+0 3 real 22/20 dec:b4 856.8 526.5 294.4 46.0 52.2% identical
+0 3 real 22/20 dec:r2:b4 1597.6 1289.6 296.1 24.7 28.0% identical
+# T=4 real: 20 groups, 40 entries, 39.4 MB of weights per call
+0 4 real 22/20 def 997.0 652.5 315.3 39.5 44.9% identical
+0 4 real 22/20 dec 923.3 560.5 310.6 42.7 48.4% identical
+0 4 real 22/20 dec:r2 1669.0 1390.6 320.7 23.6 26.8% identical
+0 4 real 22/20 dec:b4 928.2 571.6 317.5 42.5 48.2% identical
+0 4 real 22/20 dec:r2:b4 1689.7 1380.9 327.9 23.3 26.5% identical
+# pair 16/42: gate/up IQ2_XXS, down Q2_0: blob 1.31 MB (gu_row 660, d_row 180), pool 104 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 1.31 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 13.1 MB of weights per call
+0 1 real 16/42 def 389.1 240.3 146.6 33.6 38.1% identical
+strata expdec: CUDA0 down type 42 (n_embd 2560, n_ff 640) not covered: the default kernel runs
+0 1 real 16/42 dec 387.0 245.3 146.7 33.7 38.3% identical
+0 1 real 16/42 dec:r2 447.1 301.3 146.3 29.2 33.1% identical
+0 1 real 16/42 dec:b4 385.4 237.4 146.2 33.9 38.4% identical
+0 1 real 16/42 dec:r2:b4 450.4 301.1 146.5 29.0 32.9% identical
+# T=2 real: 20 groups, 20 entries, 26.1 MB of weights per call
+0 2 real 16/42 def 755.3 464.4 285.6 34.6 39.2% identical
+0 2 real 16/42 dec 705.6 418.5 285.6 37.0 42.0% identical
+0 2 real 16/42 dec:r2 855.1 562.8 282.7 30.5 34.7% identical
+0 2 real 16/42 dec:b4 698.2 413.4 283.1 37.4 42.4% identical
+0 2 real 16/42 dec:r2:b4 846.0 558.5 281.0 30.9 35.0% identical
+# T=3 real: 20 groups, 30 entries, 26.1 MB of weights per call
+0 3 real 16/42 def 817.6 512.8 306.5 31.9 36.2% identical
+0 3 real 16/42 dec 742.9 433.4 306.6 35.1 39.9% identical
+0 3 real 16/42 dec:r2 939.4 629.8 308.0 27.8 31.5% identical
+0 3 real 16/42 dec:b4 744.6 435.1 307.9 35.1 39.8% identical
+0 3 real 16/42 dec:r2:b4 938.3 620.3 307.7 27.8 31.6% identical
+# T=4 real: 20 groups, 40 entries, 26.1 MB of weights per call
+0 4 real 16/42 def 912.4 580.4 330.0 28.6 32.5% identical
+0 4 real 16/42 dec 799.1 463.2 328.7 32.7 37.1% identical
+0 4 real 16/42 dec:r2 1062.7 715.6 331.8 24.6 27.9% identical
+0 4 real 16/42 dec:b4 807.6 469.1 330.3 32.3 36.7% identical
+0 4 real 16/42 dec:r2:b4 1061.0 714.6 332.3 24.6 27.9% identical
+# pair 17/42: gate/up IQ2_XS, down Q2_0: blob 1.41 MB (gu_row 740, d_row 180), pool 113 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 1.41 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 14.1 MB of weights per call
+0 1 real 17/42 def 397.7 252.9 144.3 35.4 40.2% identical
+0 1 real 17/42 dec 391.2 245.0 144.1 36.0 40.8% identical
+0 1 real 17/42 dec:r2 579.2 436.5 145.3 24.3 27.6% identical
+0 1 real 17/42 dec:b4 394.0 245.9 144.3 35.7 40.5% identical
+0 1 real 17/42 dec:r2:b4 576.6 431.9 145.2 24.4 27.7% identical
+# T=2 real: 20 groups, 20 entries, 28.2 MB of weights per call
+0 2 real 17/42 def 786.9 501.2 284.1 35.8 40.6% identical
+0 2 real 17/42 dec 723.2 436.0 283.3 38.9 44.2% identical
+0 2 real 17/42 dec:r2 1125.0 837.5 283.8 25.0 28.4% identical
+0 2 real 17/42 dec:b4 723.3 435.9 282.9 38.9 44.2% identical
+0 2 real 17/42 dec:r2:b4 1119.9 906.0 284.8 25.1 28.5% identical
+# T=3 real: 20 groups, 30 entries, 28.2 MB of weights per call
+0 3 real 17/42 def 876.2 561.7 308.3 32.1 36.5% identical
+0 3 real 17/42 dec 777.2 460.9 315.4 36.2 41.1% identical
+0 3 real 17/42 dec:r2 1259.9 954.4 311.0 22.4 25.4% identical
+0 3 real 17/42 dec:b4 780.3 519.2 310.4 36.1 40.9% identical
+0 3 real 17/42 dec:r2:b4 1271.0 948.7 310.3 22.2 25.1% identical
+# T=4 real: 20 groups, 40 entries, 28.2 MB of weights per call
+0 4 real 17/42 def 982.2 643.0 330.3 28.7 32.5% identical
+0 4 real 17/42 dec 841.2 500.1 329.8 33.5 38.0% identical
+0 4 real 17/42 dec:r2 1431.1 1085.5 332.3 19.7 22.3% identical
+0 4 real 17/42 dec:b4 844.3 502.3 330.9 33.4 37.8% identical
+0 4 real 17/42 dec:r2:b4 1418.2 1095.1 335.0 19.9 22.5% identical
+# pair 18/42: gate/up IQ3_XXS, down Q2_0: blob 1.72 MB (gu_row 980, d_row 180), pool 137 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 1.72 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 17.2 MB of weights per call
+0 1 real 18/42 def 457.2 298.2 145.6 37.5 42.6% identical
+0 1 real 18/42 dec 462.7 306.7 145.0 37.1 42.1% identical
+0 1 real 18/42 dec:r2 662.2 508.4 145.8 25.9 29.4% identical
+0 1 real 18/42 dec:b4 462.2 307.4 145.3 37.1 42.1% identical
+0 1 real 18/42 dec:r2:b4 661.1 504.2 145.0 25.9 29.4% identical
+# T=2 real: 20 groups, 20 entries, 34.3 MB of weights per call
+0 2 real 18/42 def 872.9 572.1 282.0 39.3 44.6% identical
+0 2 real 18/42 dec 837.1 541.0 281.3 41.0 46.5% identical
+0 2 real 18/42 dec:r2 1278.0 985.1 286.2 26.8 30.5% identical
+0 2 real 18/42 dec:b4 853.8 552.7 285.1 40.2 45.6% identical
+0 2 real 18/42 dec:r2:b4 1293.9 982.1 283.2 26.5 30.1% identical
+# T=3 real: 20 groups, 30 entries, 34.3 MB of weights per call
+0 3 real 18/42 def 951.2 627.3 306.3 36.1 40.9% identical
+0 3 real 18/42 dec 904.4 580.1 305.6 37.9 43.0% identical
+0 3 real 18/42 dec:r2 1497.8 1184.1 312.6 22.9 26.0% identical
+0 3 real 18/42 dec:b4 930.1 602.2 311.6 36.9 41.8% identical
+0 3 real 18/42 dec:r2:b4 1524.8 1184.0 311.2 22.5 25.5% identical
+# T=4 real: 20 groups, 40 entries, 34.3 MB of weights per call
+0 4 real 18/42 def 1054.5 707.0 332.0 32.5 36.9% identical
+0 4 real 18/42 dec 980.4 630.9 337.5 35.0 39.7% identical
+0 4 real 18/42 dec:r2 1628.7 1284.1 334.5 21.1 23.9% identical
+0 4 real 18/42 dec:b4 990.5 632.6 331.8 34.6 39.3% identical
+0 4 real 18/42 dec:r2:b4 1615.5 1257.6 330.4 21.2 24.1% identical
+# pair 21/42: gate/up IQ3_S, down Q2_0: blob 1.87 MB (gu_row 1100, d_row 180), pool 150 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 1.87 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 18.7 MB of weights per call
+0 1 real 21/42 def 498.7 346.0 144.9 37.5 42.5% identical
+0 1 real 21/42 dec 659.8 541.0 146.4 28.3 32.1% identical
+0 1 real 21/42 dec:r2 1403.9 1235.3 147.1 13.3 15.1% identical
+0 1 real 21/42 dec:b4 676.4 510.8 145.8 27.6 31.4% identical
+0 1 real 21/42 dec:r2:b4 1399.8 1230.4 146.7 13.4 15.1% identical
+# T=2 real: 20 groups, 20 entries, 37.4 MB of weights per call
+0 2 real 21/42 def 999.9 693.7 285.5 37.4 42.4% identical
+0 2 real 21/42 dec 1151.7 865.5 313.8 32.5 36.8% identical
+0 2 real 21/42 dec:r2 2749.5 2406.2 289.3 13.6 15.4% identical
+0 2 real 21/42 dec:b4 1162.9 861.5 286.7 32.1 36.5% identical
+0 2 real 21/42 dec:r2:b4 2734.1 2424.5 291.6 13.7 15.5% identical
+# T=3 real: 20 groups, 30 entries, 37.4 MB of weights per call
+0 3 real 21/42 def 1096.6 760.2 316.8 34.1 38.7% identical
+0 3 real 21/42 dec 1235.9 902.1 314.3 30.2 34.3% identical
+0 3 real 21/42 dec:r2 2844.0 2506.9 314.6 13.1 14.9% identical
+0 3 real 21/42 dec:b4 1221.6 887.3 314.1 30.6 34.7% identical
+0 3 real 21/42 dec:r2:b4 2832.3 2499.4 314.7 13.2 15.0% identical
+# T=4 real: 20 groups, 40 entries, 37.4 MB of weights per call
+0 4 real 21/42 def 1170.1 812.0 334.8 31.9 36.2% identical
+0 4 real 21/42 dec 1297.9 949.7 334.0 28.8 32.7% identical
+0 4 real 21/42 dec:r2 2891.1 2524.8 337.4 12.9 14.7% identical
+0 4 real 21/42 dec:b4 1316.4 932.9 332.0 28.4 32.2% identical
+0 4 real 21/42 dec:r2:b4 2882.9 2518.4 339.1 13.0 14.7% identical
+# pair 22/42: gate/up IQ2_S, down Q2_0: blob 1.51 MB (gu_row 820, d_row 180), pool 121 MB
+# device 0: Xavier (sm_72, 8 SMs, L2 512 KB), 50 reps x 5 rounds, <= 20 groups, pool 80 blobs x 1.51 MB
+# device 0 peak DRAM bandwidth 88.1 GB/s (memory clock 1377000 kHz, bus 256 bit)
+# T=1 real: 10 groups, 10 entries, 15.1 MB of weights per call
+0 1 real 22/42 def 412.2 266.0 146.7 36.6 41.6% identical
+0 1 real 22/42 dec 445.7 295.4 146.0 33.9 38.5% identical
+0 1 real 22/42 dec:r2 744.8 598.8 146.1 20.3 23.0% identical
+0 1 real 22/42 dec:b4 445.9 295.5 146.0 33.9 38.4% identical
+0 1 real 22/42 dec:r2:b4 748.0 601.0 146.3 20.2 22.9% identical
+# T=2 real: 20 groups, 20 entries, 30.2 MB of weights per call
+0 2 real 22/42 def 804.8 518.3 285.7 37.5 42.6% identical
+0 2 real 22/42 dec 780.0 489.0 285.0 38.7 43.9% identical
+0 2 real 22/42 dec:r2 1489.8 1193.5 286.2 20.3 23.0% identical
+0 2 real 22/42 dec:b4 783.9 491.5 286.1 38.5 43.7% identical
+0 2 real 22/42 dec:r2:b4 1465.2 1178.2 286.7 20.6 23.4% identical
+# T=3 real: 20 groups, 30 entries, 30.2 MB of weights per call
+0 3 real 22/42 def 894.8 574.6 310.0 33.8 38.3% identical
+0 3 real 22/42 dec 846.9 526.1 309.5 35.7 40.5% identical
+0 3 real 22/42 dec:r2 1573.2 1255.7 309.4 19.2 21.8% identical
+0 3 real 22/42 dec:b4 840.1 519.6 308.0 36.0 40.8% identical
+0 3 real 22/42 dec:r2:b4 1563.0 1254.7 308.3 19.3 21.9% identical
+# T=4 real: 20 groups, 40 entries, 30.2 MB of weights per call
+0 4 real 22/42 def 977.2 645.8 332.3 30.9 35.1% identical
+0 4 real 22/42 dec 910.5 561.8 330.7 33.2 37.6% identical
+0 4 real 22/42 dec:r2 1709.9 1358.4 331.8 17.7 20.0% identical
+0 4 real 22/42 dec:b4 904.3 560.0 354.3 33.4 37.9% identical
+0 4 real 22/42 dec:r2:b4 1698.1 1368.1 337.1 17.8 20.2% identical
+
+expdec_bench: ok (0 choice comparisons differ)

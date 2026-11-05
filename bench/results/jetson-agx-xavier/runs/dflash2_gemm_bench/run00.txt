@@ -1,0 +1,54 @@
+gate+up 2560->7680 x2          variant 1:   634.0 us    65.9 GB/s
+gate+up 2560->7680 x2          variant 2:   634.2 us    65.9 GB/s
+gate+up 2560->7680 x2          variant 3:   458.2 us    91.2 GB/s
+gate+up 2560->7680 x2          variant 4:   641.3 us    65.1 GB/s
+gate+up 2560->7680 x2          variant 5:   519.0 us    80.5 GB/s
+gate+up 2560->7680 x2          variant 6:   594.3 us    70.3 GB/s
+gate+up 2560->7680 x2          variant 7:   596.8 us    70.0 GB/s
+gate+up 2560->7680 x2          variant 8:   671.4 us    62.2 GB/s
+gate+up 2560->7680 x2          variant 9:   458.2 us    91.2 GB/s
+down 7680->2560                variant 1:   343.1 us    60.9 GB/s
+down 7680->2560                variant 2:   343.9 us    60.7 GB/s
+down 7680->2560                variant 3:   222.7 us    93.8 GB/s
+down 7680->2560                variant 4:   343.4 us    60.8 GB/s
+down 7680->2560                variant 5:   292.3 us    71.5 GB/s
+down 7680->2560                variant 6:   280.2 us    74.6 GB/s
+down 7680->2560                variant 7:   280.9 us    74.4 GB/s
+down 7680->2560                variant 8:   361.1 us    57.8 GB/s
+down 7680->2560                variant 9:   219.0 us    95.4 GB/s
+qkv 2560->(4096,1024,1024)     variant 1:   268.5 us    62.3 GB/s
+qkv 2560->(4096,1024,1024)     variant 2:   267.7 us    62.4 GB/s
+qkv 2560->(4096,1024,1024)     variant 3:   196.3 us    85.1 GB/s
+qkv 2560->(4096,1024,1024)     variant 4:   266.6 us    62.7 GB/s
+qkv 2560->(4096,1024,1024)     variant 5:   228.0 us    73.3 GB/s
+qkv 2560->(4096,1024,1024)     variant 6:   256.8 us    65.1 GB/s
+qkv 2560->(4096,1024,1024)     variant 7:   256.4 us    65.2 GB/s
+qkv 2560->(4096,1024,1024)     variant 8:   283.2 us    59.0 GB/s
+qkv 2560->(4096,1024,1024)     variant 9:   196.1 us    85.2 GB/s
+o 4096->2560                   variant 1:   188.4 us    59.1 GB/s
+o 4096->2560                   variant 2:   188.3 us    59.2 GB/s
+o 4096->2560                   variant 3:   130.3 us    85.5 GB/s
+o 4096->2560                   variant 4:   188.0 us    59.3 GB/s
+o 4096->2560                   variant 5:   166.4 us    67.0 GB/s
+o 4096->2560                   variant 6:   206.9 us    53.8 GB/s
+o 4096->2560                   variant 7:   176.2 us    63.2 GB/s
+o 4096->2560                   variant 8:   244.8 us    45.5 GB/s
+o 4096->2560                   variant 9:   129.7 us    85.9 GB/s
+fc 12800->2560                 variant 1:   565.7 us    61.5 GB/s
+fc 12800->2560                 variant 2:   564.1 us    61.7 GB/s
+fc 12800->2560                 variant 3:   363.5 us    95.8 GB/s
+fc 12800->2560                 variant 4:   569.0 us    61.2 GB/s
+fc 12800->2560                 variant 5:   478.0 us    72.8 GB/s
+fc 12800->2560                 variant 6:   441.6 us    78.8 GB/s
+fc 12800->2560                 variant 7:   435.0 us    80.0 GB/s
+fc 12800->2560                 variant 8:   585.2 us    59.5 GB/s
+fc 12800->2560                 variant 9:   355.5 us    97.9 GB/s
+kv 2560->1024 x2               variant 1:    97.8 us    57.0 GB/s
+kv 2560->1024 x2               variant 2:    97.7 us    57.0 GB/s
+kv 2560->1024 x2               variant 3:    70.9 us    78.6 GB/s
+kv 2560->1024 x2               variant 4:    98.2 us    56.7 GB/s
+kv 2560->1024 x2               variant 5:    86.3 us    64.6 GB/s
+kv 2560->1024 x2               variant 6:    93.5 us    59.6 GB/s
+kv 2560->1024 x2               variant 7:    93.7 us    59.4 GB/s
+kv 2560->1024 x2               variant 8:   102.8 us    54.2 GB/s
+kv 2560->1024 x2               variant 9:    70.6 us    78.9 GB/s

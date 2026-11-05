@@ -1,0 +1,11 @@
+mmq_expert_bench: mode w4a8 (FP4 activations: no), 16 experts a launch, medians of 25
+  R    4  nvfp4 gate/up     1.118 ms      0.4 TOPS
+  R    4  nvfp4 down        0.765 ms      0.3 TOPS
+  R    4  q8_0 down         0.650 ms      0.3 TOPS
+  R    4  iq3_s gate/up     1.073 ms      0.4 TOPS
+  R    4  iq4_nl down       0.510 ms      0.4 TOPS
+  R   16  nvfp4 gate/up     1.258 ms      1.3 TOPS
+  R   16  nvfp4 down        0.852 ms      1.0 TOPS
+  R   16  q8_0 down         0.710 ms      1.2 TOPS
+  R   16  iq3_s gate/up     1.192 ms      1.4 TOPS
+  R   16  iq4_nl down       0.599 ms      1.4 TOPS

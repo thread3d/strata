@@ -1,0 +1,12 @@
+qsa_rows_bench on device 0 (Xavier, 7.2), 100 iterations: context 131072, capacity 262144 cells (max_blocks 65538), selection cap 2051, int8 pools over 131140 cells
+  selections: width 2051 a row; union of 2 rows 2426 cells (1.18x one row) union of 3 rows 2711 cells (1.32x one row) union of 4 rows 2855 cells (1.39x one row)
+-- a QSA layer's decode kernels at the verification window's shape (us a call, median of 3 runs)
+  scores  qsa_block_scores (multi)             T=1    191.5 T=2    312.2 T=3    441.1 T=4    571.8  | +126.7 us a row
+  topk    qsa_block_topk                       T=1     91.8 T=2     95.4 T=3     99.2 T=4    134.9  | +14.4 us a row
+  attn    qsa_decode_attn_batch cap 2051       T=1    138.6 T=2    248.5 T=3    364.9 T=4    464.6  | +108.7 us a row
+  append  native_qsa_indexer_append_steps      T=1      5.1 T=2      5.0 T=3      5.1 T=4      5.2  | +0.0 us a row
+  layer   append + scores + topk + attn        T=1    439.3 T=2    673.7 T=3    923.2 T=4   1204.1  | +254.9 us a row
+-- the drafter's dense window (32768 cells a row): the shape the hypothesis's ~240 us a query comes from
+  dense   qsa_decode_attn_batch cap 32768      T=1   1933.4 T=2   3487.4 T=3   5411.3 T=4   7000.5  | +1689.1 us a row
+-- per row: 254.9 us a QSA layer -> x4 layers (stage 0) 1.02 ms, x8 layers (stage 1) 2.04 ms
+qsa_rows_bench: done

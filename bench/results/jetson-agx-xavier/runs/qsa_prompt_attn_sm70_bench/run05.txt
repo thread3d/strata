@@ -1,0 +1,18 @@
+# int8 KV, ctx 32768, selection 2051 cells, 2048 queries of 24 heads x 256 dims
+q    16: fp32    2.040 ms   volta    1.190 ms    1.71x   max|old-new| 3.81e-06 (1e-06 of scale)
+q    64: fp32    6.965 ms   volta    4.216 ms    1.65x   max|old-new| 4.6e-06 (1.3e-06 of scale)
+q   256: fp32   27.838 ms   volta   16.840 ms    1.65x   max|old-new| 5.22e-06 (1.4e-06 of scale)
+q  1024: fp32  113.685 ms   volta   67.512 ms    1.68x   max|old-new| 5.22e-06 (1.4e-06 of scale)
+q  2048: fp32  226.305 ms   volta  136.715 ms    1.66x   max|old-new| 5.22e-06 (1.4e-06 of scale)
+# int8+q4 V (K8V4) KV, ctx 32768, selection 2051 cells, 2048 queries of 24 heads x 256 dims
+q    16: fp32    1.856 ms   volta    2.468 ms    0.75x   max|old-new| 5.88e-05 (0.00027 of scale)
+q    64: fp32    7.352 ms   volta    9.897 ms    0.74x   max|old-new| 5.97e-05 (0.00026 of scale)
+q   256: fp32   29.403 ms   volta   39.693 ms    0.74x   max|old-new| 6.07e-05 (0.00026 of scale)
+q  1024: fp32  117.937 ms   volta  158.900 ms    0.74x   max|old-new| 6.1e-05 (0.00026 of scale)
+q  2048: fp32  235.348 ms   volta  318.741 ms    0.74x   max|old-new| 6.11e-05 (0.00026 of scale)
+# fp16 KV, ctx 32768, selection 2051 cells, 2048 queries of 24 heads x 256 dims
+q    16: fp32    1.707 ms   volta    1.798 ms    0.95x   max|old-new| 3.46e-06 (1.2e-06 of scale)
+q    64: fp32    6.783 ms   volta    7.201 ms    0.94x   max|old-new| 3.93e-06 (1.1e-06 of scale)
+q   256: fp32   27.058 ms   volta   28.698 ms    0.94x   max|old-new| 4.53e-06 (1.3e-06 of scale)
+q  1024: fp32  110.502 ms   volta  116.744 ms    0.95x   max|old-new| 5.84e-06 (1.3e-06 of scale)
+q  2048: fp32  220.360 ms   volta  231.109 ms    0.95x   max|old-new| 5.84e-06 (1.3e-06 of scale)

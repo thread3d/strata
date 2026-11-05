@@ -1,0 +1,2 @@
+ue4m3 decode: 0 of 256 bytes differ from the ldexpf form
+types 40/40  blob 2764816 B  groups 64 x 2 tokens: best 2.987 ms  mean 3.008 ms  -> 59.2 GB/s of weights (67% of the 88 GB/s DRAM peak)  out hash 054f38e43e6cdb4e

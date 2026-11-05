@@ -1,0 +1,4 @@
+variant 0: 616.3 us per call, K/V 27.3 GB/s   (checksum 11.507508)
+variant 1: 346.5 us per call, K/V 48.6 GB/s   (checksum 6.464830)
+variant 2: 511.0 us per call, K/V 32.9 GB/s   (checksum 0.000000)
+variant 3: 283.2 us per call, K/V 59.4 GB/s   (checksum 0.000000)

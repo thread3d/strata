@@ -1,0 +1,71 @@
+q8_gemv_bench: Xavier
+
+GDN qkv 2560->10240: 27.85 MB, 16 copies
+  1 col :    308.9 us     90.2 GB/s
+  2 cols:    409.5 us     68.0 GB/s
+  3 cols:    435.3 us     64.0 GB/s
+  4 cols:    494.4 us     56.3 GB/s
+  6 cols:    615.7 us     45.2 GB/s
+
+GDN gate 2560->6144: 16.71 MB, 16 copies
+  1 col :    188.4 us     88.7 GB/s
+  2 cols:    248.7 us     67.2 GB/s
+  3 cols:    265.0 us     63.1 GB/s
+  4 cols:    300.2 us     55.7 GB/s
+  6 cols:    373.1 us     44.8 GB/s
+
+GDN/QSA out 6144->2560: 16.71 MB, 16 copies
+  1 col :    172.9 us     96.7 GB/s
+  2 cols:    215.5 us     77.5 GB/s
+  3 cols:    229.7 us     72.7 GB/s
+  4 cols:    260.7 us     64.1 GB/s
+  6 cols:    322.2 us     51.9 GB/s
+
+QSA q 2560->12288: 33.42 MB, 16 copies
+  1 col :    371.7 us     89.9 GB/s
+  2 cols:    492.2 us     67.9 GB/s
+  3 cols:    523.9 us     63.8 GB/s
+  4 cols:    594.9 us     56.2 GB/s
+  6 cols:    740.8 us     45.1 GB/s
+
+QSA k/v 2560->512: 1.39 MB, 16 copies
+  1 col :     19.6 us     71.2 GB/s
+  2 cols:     25.5 us     54.7 GB/s
+  3 cols:     27.0 us     51.7 GB/s
+  4 cols:     30.0 us     46.4 GB/s
+  6 cols:     36.7 us     38.0 GB/s
+
+HC down 10240->320: 3.48 MB, 16 copies
+  1 col :     40.8 us     85.3 GB/s
+  2 cols:     55.1 us     63.2 GB/s
+  3 cols:     57.3 us     60.7 GB/s
+  4 cols:     61.2 us     56.9 GB/s
+  6 cols:     74.0 us     47.1 GB/s
+
+HC up 320->10240: 3.48 MB, 16 copies
+  1 col :    107.2 us     32.5 GB/s
+  2 cols:    137.2 us     25.4 GB/s
+  3 cols:    147.6 us     23.6 GB/s
+  4 cols:    172.9 us     20.1 GB/s
+  6 cols:    228.3 us     15.3 GB/s
+
+shared gate/up 2560->640: 1.74 MB, 16 copies
+  1 col :     22.8 us     76.4 GB/s
+  2 cols:     29.7 us     58.7 GB/s
+  3 cols:     31.5 us     55.2 GB/s
+  4 cols:     35.5 us     49.0 GB/s
+  6 cols:     43.6 us     39.9 GB/s
+
+shared down 640->2560: 1.74 MB, 16 copies
+  1 col :     33.4 us     52.1 GB/s
+  2 cols:     41.3 us     42.1 GB/s
+  3 cols:     45.4 us     38.4 GB/s
+  4 cols:     52.5 us     33.1 GB/s
+  6 cols:     68.8 us     25.3 GB/s
+
+head 2560->248320: 675.43 MB, 1 copies
+  1 col :   7598.6 us     88.9 GB/s
+  2 cols:  10239.7 us     66.0 GB/s
+  3 cols:  10799.0 us     62.5 GB/s
+  4 cols:  12187.4 us     55.4 GB/s
+  6 cols:  15245.4 us     44.3 GB/s

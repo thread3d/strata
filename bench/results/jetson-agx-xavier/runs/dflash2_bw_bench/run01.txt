@@ -1,0 +1,12 @@
+loop   blocks   112: 109.1 GB/s
+unroll blocks   112: 107.0 GB/s
+loop   blocks   224: 105.7 GB/s
+unroll blocks   224: 107.5 GB/s
+loop   blocks   448: 109.0 GB/s
+unroll blocks   448: 109.6 GB/s
+loop   blocks   896: 108.9 GB/s
+unroll blocks   896: 109.8 GB/s
+loop   blocks  3584: 105.4 GB/s
+unroll blocks  3584: 123.1 GB/s
+loop   blocks 14336: 107.9 GB/s
+unroll blocks 14336: 123.3 GB/s
