@@ -1,7 +1,8 @@
 # Strata on a Mac (Apple Silicon, Metal)
 
 This page is for people with an Apple Silicon Mac (M1 or newer). Strata runs there on its own Metal engine: the NVIDIA kernels
-are replaced by Metal ones (`metal/`), and the host code and the server are the PC's. Intel Macs cannot run it.
+are replaced by Metal ones (`metal/`), and the host code and the server are the PC's. Intel Macs cannot run it; the engine does
+build there ([An Intel Mac](#an-intel-mac)).
 
 DeepSeek V4.1-Flash runs on a Mac with 64 GB of memory or more, as text only: [DEEPSEEK_MAC.md](DEEPSEEK_MAC.md). It has its
 own engine, separate from the Qwen one described on this page.
@@ -272,6 +273,46 @@ The code is in `metal/` (the engine's side in `metal/src/engine`, the kernels in
 - **Decode and prompt work** run in Metal kernels: one command buffer per verify window, experts read in place from the mapped
   model file, hyper-connections, GDN state and QSA attention on the GPU, and a whole MTP draft round in one command buffer.
 - **The PC builds are byte-identical** with this code present. Every shared file's change is behind `STRATA_GPU_METAL` or `__APPLE__`.
+
+## An Intel Mac
+
+The engine **builds** on an Intel Mac; it does not **run** there. Running needs three things the Intel Mac does not have (below), and
+the build no longer stands in the way of finding that out.
+
+Measured on: an Intel Mac Pro (2 × 6-core Xeon X5675, 24 threads), 96 GB, Radeon RX 580 8 GB (Metal 2), macOS 11.7.11, Command
+Line Tools 13 (Apple clang 13.0.0, macOS 12.1 SDK). Built there from a git checkout: the engine (`build-metal/strata`), the
+DeepSeek engine (`build-metal/strata_ds4`) and the image encoder (`build-vision/bin/strata-vision`), with `-DSTRATA_GGML_DIR`
+pointing at a llama.cpp checkout. Running `strata --version` prints `strata 0.1.55-metal`.
+
+```sh
+./setup.sh --unsupported-mac --build --no-start      # or STRATA_METAL_UNSUPPORTED_MAC=1
+```
+
+`--unsupported-mac` turns the two refusals (an Intel CPU, a macOS older than 15) into warnings and builds the engine here instead of
+taking the released one, which is Apple Silicon's. Without the flag the setup stops as before, with the same two reasons.
+
+What the build needed, so that the Apple Silicon build stays as it is (every change is behind the host's architecture or the SDK it
+compiles against):
+
+- **The x86 CPU kernels.** `metal/CMakeLists.txt` compiles `src/kernels/cpu/iq_avx2.cpp`, `iq_avx512.cpp`, `tq_avx2.cpp` and
+  `tq_avx512.cpp` with the flags the PC build gives them, because on an Intel Mac `cpu_avx2_ok()` and `cpu_avx512_ok()` read a real
+  CPUID and the shared host code asks for them. The stub files' definitions are weak (`metal/tools/gen_stubs.py`), so a real
+  implementation linked beside a stub wins instead of colliding with it.
+- **`<immintrin.h>` and `<cpuid.h>`** in `metal/include/metal_compat` were arm64's; on x86 they are the compiler's own.
+- **The SDK's age.** `MTLGPUFamilyMetal4` (macOS 26), `MTLCompileOptions.mathMode` (macOS 15) and `MTLBuffer.gpuAddress` (macOS 13,
+  Metal 3) are left out when the SDK is older, and the older spelling is used where there is one.
+- **`std::atomic::wait`** is marked unavailable by an Apple libc++ header older than the one that ships it; `prefill.cpp` spins there.
+
+Why it does not run, in the order a run reaches them. Measured with `runtime_hello` from `build-metal` on the Mac above: the MSL
+compiles and the kernels dispatch, a 1000-dispatch window replays in 0.7 to 1.4 ms (encode and commit) and completes in 5.7 to
+7.2 ms, and every check that reads a result back is wrong.
+
+- **`MTLBuffer.gpuAddress`** is Metal 3's (macOS 13), and the engine hands its device pointers to kernels as that address. Before it
+  the runtime uses `contents()`, which is the CPU view: on Apple Silicon the two are the same memory, on a Mac with a discrete card
+  they are not, so a kernel dereferences the wrong address. The three checks that copy through a device pointer read back 65470,
+  65536 and 65470 wrong values of 65536.
+- **The residency set** (`MTLResidencySet`, macOS 15) is absent. The runtime then keeps its buffers alive itself and skips the set.
+- **`MTLCompileOptions.mathMode`** is macOS 15's too; the older `fastMathEnabled` flag stands in for it.
 
 ## History / older measurements
 

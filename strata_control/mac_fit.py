@@ -109,15 +109,18 @@ def macos_tuple(ver: str) -> tuple:
         return (0, 0)
 
 
-def mac_problems(info: dict, need_compiler: bool = True) -> list[str]:
+def mac_problems(info: dict, need_compiler: bool = True, unsupported_ok: bool = False) -> list[str]:
     """What stops the setup on this Mac (each with what to do). The app brings a ready-made engine and compiles nothing:
-    need_compiler=False leaves the Command Line Tools out."""
+    need_compiler=False leaves the Command Line Tools out.  unsupported_ok=True leaves out the two hardware refusals (an
+    Intel CPU, a macOS older than MIN_MACOS): the source build runs anyway, for a Mac whose engine is built but not run
+    (docs/MAC.md, "An Intel Mac")."""
     p = []
-    if not info["arm64"]:
-        p.append(f"this Mac has an Intel CPU ({info['chip']}): the Metal engine needs Apple Silicon (M1 or newer)")
-    if macos_tuple(info["macos"]) < MIN_MACOS:
-        p.append(f"macOS {info['macos'] or '?'}: the Metal engine needs macOS {MIN_MACOS[0]} or newer (System Settings "
-                 "> General > Software Update)")
+    if not unsupported_ok:
+        if not info["arm64"]:
+            p.append(f"this Mac has an Intel CPU ({info['chip']}): the Metal engine needs Apple Silicon (M1 or newer)")
+        if macos_tuple(info["macos"]) < MIN_MACOS:
+            p.append(f"macOS {info['macos'] or '?'}: the Metal engine needs macOS {MIN_MACOS[0]} or newer (System Settings "
+                     "> General > Software Update)")
     if need_compiler and not info["clt"]:
         p.append("the Command Line Tools are missing (the compiler the engine is built with): run "
                  "`xcode-select --install`, then this setup again")

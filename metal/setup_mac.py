@@ -353,6 +353,10 @@ def main(argv=None) -> int:
     ap.add_argument("--vision", choices=["yes", "no", "gpu", "cpu"],
                     help="let the model read images (the image encoder, built here; yes = gpu: it reads on the Mac's GPU, cpu is ~100x "
                          "slower; default: asked, yes)")
+    ap.add_argument("--unsupported-mac", action="store_true",
+                    help="build the engine on a Mac the engine does not support (an Intel one, or macOS older than 15): the "
+                         "build runs and the engine will not run there (docs/MAC.md, 'An Intel Mac'). STRATA_METAL_UNSUPPORTED_MAC=1 "
+                         "says the same")
     a, rest = ap.parse_known_args(argv)
     if rest:
         S.warn("not used on a Mac: " + " ".join(rest))
@@ -375,6 +379,14 @@ def main(argv=None) -> int:
     info = mac_info()
     S.ok(f"{info['chip']}, {info['ram_gb']:.0f} GB unified memory, macOS {info['macos'] or '?'}")
     problems = mac_problems(info)
+    # A Mac the engine does not support (an Intel one, or a macOS older than 15) can still BUILD it, with --unsupported-mac
+    # (or STRATA_METAL_UNSUPPORTED_MAC=1): the two hardware refusals become warnings and the work goes on.  Nothing else
+    # changes, and the engine is built here rather than taken as a component - the released Metal engine is arm64's.
+    unsupported = a.unsupported_mac or os.environ.get("STRATA_METAL_UNSUPPORTED_MAC") == "1"
+    if unsupported:
+        for p in mac_problems(info, need_compiler=False):
+            S.warn(p + " - building anyway (the engine builds on this Mac, it does not run on it)")
+        problems = mac_problems(info, unsupported_ok=True)
     for p in problems:
         S.warn(p)
     free = S.free_gb(data if data.exists() else ROOT)
