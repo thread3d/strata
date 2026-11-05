@@ -6,5 +6,11 @@
 # torch==2.9.1" there (#3474); from Python 3.14 on, 2.14.1 (+cpu wheels cp310-cp315 on Linux and Windows). Older Pythons keep 2.9.1.
 torch==2.9.1; python_version < "3.14"
 torch==2.14.1; python_version >= "3.14"
-transformers==4.57.6
+# 5.10.1 is the smallest release that clears every transformers advisory Dependabot reports against 4.57.6 (all four
+# high: GHSA-29pf-2h5f-8g72 fixed in 5.3.0, GHSA-fgcw-684q-jj6r in 5.5.0, GHSA-xrqw-3rrv-vx5w in 5.10.0, and
+# GHSA-69w3-r845-3855 in 5.0.0rc3).  5.10.0 itself is yanked on PyPI ("pushed from a week old main branch"), so the pin
+# is 5.10.1.  One advisory (GHSA-x9r9-c232-4q39) has no fixed version yet and stays open.  The converter only needs
+# `from transformers import AutoConfig` (tools/nvfp4_local_pack.py), so the API surface is small - but this crosses a
+# major version and the conversion was NOT run against it; revert this line if `prepare` regresses.
+transformers==5.10.1
 safetensors==0.7.0
