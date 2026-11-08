@@ -80,6 +80,7 @@ public:
     ~Context();
     std::string device_name() const;
     int simd_width() const;                      // threads_per_simdgroup: 32 on an Apple GPU, 64 on an AMD card
+    bool has_mpp() const;                        // this Metal has MetalPerformancePrimitives (a kernel includes it and builds)
     bool has_family_apple(int n) const;          // MTLGPUFamilyApple<n>
     bool supports_metal4() const;
     uint64_t recommended_working_set() const;

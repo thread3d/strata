@@ -2,11 +2,16 @@
 //   mpp_mm<T, TM, TN, SG>   Metal 4 MetalPerformancePrimitives matmul2d (the M5's neural accelerators), a TM x TN
 //                           tile of C per threadgroup, K dynamic, A and B straight from device memory
 //   sg_mm<T>                simdgroup_matrix 8x8, a 32 x 32 tile per simdgroup (4 x 4 accumulators), 4 simdgroups
+// mpp_mm is MetalPerformancePrimitives (Metal 4); the sg_mm and coop_layout kernels beside it are not, and are what a Metal
+// without it keeps (mtl_rt.mm, probe_mpp, which also answers the engine's coop_k4 layout question).
+#if STRATA_HAVE_MPP
 #include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
 using namespace mpp::tensor_ops;
+#endif
 
 struct MmArgs { int M, N, K; };
 
+#if STRATA_HAVE_MPP
 template <typename T, int TM, int TN, int SG>
 kernel void mpp_mm(device T* A [[buffer(0)]], device T* B [[buffer(1)]], device float* C [[buffer(2)]],
                    constant MmArgs& a [[buffer(3)]], uint3 tg [[threadgroup_position_in_grid]]) {
@@ -21,7 +26,10 @@ kernel void mpp_mm(device T* A [[buffer(0)]], device T* B [[buffer(1)]], device 
     auto mC = tC.slice(int(tg.x) * TN, int(tg.y) * TM);
     op.run(mA, mB, mC);
 }
+#endif
 
+
+#if STRATA_HAVE_MPP
 #define MPP(T, M, N, S) template [[host_name("mpp_mm_" #T "_" #M "_" #N "_" #S)]] kernel decltype(mpp_mm<T, M, N, S>) mpp_mm<T, M, N, S>;
 MPP(half, 64, 32, 4) MPP(half, 64, 64, 4) MPP(half, 128, 64, 4) MPP(half, 32, 64, 4) MPP(half, 64, 128, 4)
 MPP(half, 16, 64, 2) MPP(half, 128, 128, 4)
@@ -29,6 +37,7 @@ MPP(half, 64, 16, 2) MPP(half, 64, 16, 4) MPP(half, 128, 16, 4) MPP(half, 128, 3
 MPP(half, 32, 32, 2) MPP(half, 16, 32, 1) MPP(half, 16, 16, 1) MPP(half, 128, 48, 4) MPP(half, 64, 48, 4)
 MPP(float, 64, 32, 4) MPP(float, 64, 64, 4) MPP(float, 128, 64, 4)
 MPP(bfloat, 64, 64, 4) MPP(bfloat, 128, 64, 4)
+#endif
 
 // simdgroup_matrix: threadgroup tile 64 x 64 (4 simdgroups x 32 x 32), K in steps of 8, operands from device memory
 template <typename T>
@@ -56,6 +65,7 @@ template [[host_name("sg_mm_half")]] kernel decltype(sg_mm<half>) sg_mm<half>;
 template [[host_name("sg_mm_float")]] kernel decltype(sg_mm<float>) sg_mm<float>;
 
 
+#if STRATA_HAVE_MPP
 // the element layout of single-simdgroup matmul2d cooperative tensors (right input, left input, destination) for a
 // TM x TN x TK descriptor: out[((which * 32 + lane) * 128 + i) * 4 + (0, 1)] = the two indices, [2] = capacity
 template <int TM, int TN, int TK>
@@ -85,7 +95,8 @@ kernel void coop_layout(device int* out [[buffer(0)]], ushort lane_ [[thread_ind
         o[0] = ix[0]; o[1] = ix[1]; o[2] = l.get_capacity();
     }
 }
-template [[host_name("coop_layout_16_32_16")]] kernel decltype(coop_layout<16, 32, 16>) coop_layout<16, 32, 16>;
-template [[host_name("coop_layout_32_32_16")]] kernel decltype(coop_layout<32, 32, 16>) coop_layout<32, 32, 16>;
-template [[host_name("coop_layout_16_64_32")]] kernel decltype(coop_layout<16, 64, 32>) coop_layout<16, 64, 32>;
+#endif
+
+#if STRATA_HAVE_MPP
 template [[host_name("coop_layout_16_32_32")]] kernel decltype(coop_layout<16, 32, 32>) coop_layout<16, 32, 32>;
+#endif

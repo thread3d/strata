@@ -9,6 +9,9 @@
 
 inline bool coop_k4(mtl::Context& cx) {
     if (const char* e = std::getenv("COOP_K4")) return std::atoi(e) != 0;
+    // a Metal without MetalPerformancePrimitives has no matmul2d cooperative tensor to probe: the kernels are not compiled
+    // there (mm_bench.metal) and the answer is "not the M5's layout", which is the M4 path
+    if (!cx.has_mpp()) return false;
     const int lib = cx.compile({"mm_bench.metal"}, "#define NO_GGML_COMMON 1\n");
     for (const char* tile : {"coop_layout_16_64_32", "coop_layout_16_32_32"}) {
     mtl::Pipeline p = cx.pipeline(lib, tile);

@@ -1,6 +1,9 @@
 // metal/kernels/gdn_tprobe.metal - go / no-go probe for a tensor-op (MPP matmul2d) chunk-state kernel: the five products of one GDN
 // chunk step (W S, Q S, M delta, K^T delta' accumulated into S) on fp16 operands, S kept in fp32 threadgroup memory, 64 chunk steps
 // a threadgroup, grid h_v * 4 (the shape of gdn_cstate2).  No numerics: timing only.
+// A probe of MetalPerformancePrimitives' tensor API: nothing to run on a Metal that has none (mtl_rt.mm, probe_mpp), so the
+// whole file is left out there.
+#if STRATA_HAVE_MPP
 #include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
 using namespace metal;
 using namespace mpp::tensor_ops;
@@ -73,3 +76,4 @@ kernel void gdn_tprobe(device float* out [[buffer(0)]], device half* Wh [[buffer
             out[ulong(tg.x) * 4096 + ids[1] * 32 + ids[0]] = cS[i];
         }
 }
+#endif  // STRATA_HAVE_MPP

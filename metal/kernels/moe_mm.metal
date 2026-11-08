@@ -16,8 +16,15 @@
 //
 // The idea of feeding matmul2d tiles of dequantized weights from threadgroup memory follows yibie/strata-mlx's
 // tile_matmul (MIT); the code is our own.
+// Every expert GEMM in this file is written on MetalPerformancePrimitives (Metal 4's matmul2d).  A Metal without it - an Intel
+// Mac's macOS 11 - is told so by the runtime (mtl_rt.mm, probe_mpp) and takes the plain forms at mm_gu2 / mm_down2 below, which
+// keep the same buffers, argument and host_name specializations; the v1 and v3 kernels (mm_gu, mm_down, mm_gu3..gu5) are left
+// out there, and window.cpp asks for the v2 pair, which is what it already does unless the device has the M5's cooperative
+// tensor layout (coop_k4).
+#if STRATA_HAVE_MPP
 #include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
 using namespace mpp::tensor_ops;
+#endif
 
 struct MmPlanArgs {
     uint n_ent;      // T * topk
@@ -147,6 +154,7 @@ static inline void stage_w(device const uchar* w0, uint row_bytes, int k0, threa
     }
 }
 
+#if STRATA_HAVE_MPP
 template <int F, int TM, int TN, int TK, int SG>
 kernel void mm_gu(device const uchar* W [[buffer(0)]], device const float* x [[buffer(1)]],
                   device float* H [[buffer(2)]], device const int* srt_tok [[buffer(3)]],
@@ -238,6 +246,8 @@ kernel void mm_down(device const uchar* W [[buffer(0)]], device const float* H [
 }
 
 // grid (T * n_embd / 256), 256 threads
+#endif  // (the v1 kernels are matmul2d-only)
+
 kernel void mm_combine(device const float* YE [[buffer(0)]], device const int* pos [[buffer(1)]],
                        device const float* srt_w [[buffer(2)]], device float* y [[buffer(3)]],
                        constant uint4& a [[buffer(4)]],   // (T, n_embd, topk, -)
@@ -252,6 +262,7 @@ kernel void mm_combine(device const float* YE [[buffer(0)]], device const int* p
     y[gid] = s;
 }
 
+#if STRATA_HAVE_MPP   // (the v1 kernels' specializations)
 #define MMGU_(F, M, N, K, S) template [[host_name("mm_gu_" #F "_" #M "_" #N "_" #K "_" #S)]] kernel decltype(mm_gu<F, M, N, K, S>) mm_gu<F, M, N, K, S>;
 #define MMDN_(F, M, N, K, S) template [[host_name("mm_down_" #F "_" #M "_" #N "_" #K "_" #S)]] kernel decltype(mm_down<F, M, N, K, S>) mm_down<F, M, N, K, S>;
 #define MMGU(F, M, N, K, S) MMGU_(F, M, N, K, S)
@@ -260,6 +271,7 @@ kernel void mm_combine(device const float* YE [[buffer(0)]], device const int* p
 #define MM_DN_SET(F) MMDN(F, 32, 64, 64, 4) MMDN(F, 64, 64, 64, 4) MMDN(F, 16, 64, 64, 2) MMDN(F, 32, 32, 64, 2)
 MM_GU_SET(T_Q2_0) MM_GU_SET(T_IQ3_XXS) MM_GU_SET(T_IQ2_XXS) MM_GU_SET(T_IQ2_XS) MM_GU_SET(T_IQ2_S) MM_GU_SET(T_IQ3_S)
 MM_DN_SET(T_Q2_0) MM_DN_SET(T_IQ4_NL)
+#endif
 
 // ---- v2: activations gathered once per layer as fp16 rows, read by matmul2d from device memory ---------------------
 // mm_gather: XS[row][k] = half(x[srt_tok[row]][k]) (0 on padding rows).  grid (rows), 256 threads.
@@ -289,6 +301,7 @@ static inline device const uchar* arena_slot(uint v, device const uchar* W, devi
 constant int MM_PROBE [[function_constant(5)]];
 constant int mm_probe = is_function_constant_defined(MM_PROBE) ? MM_PROBE : 0;
 
+#if STRATA_HAVE_MPP
 template <int F, int TM, int TN, int TK, int SG>
 kernel void mm_gu2(device const uchar* W [[buffer(0)]], device const half* XS [[buffer(1)]],
                    device half* HS [[buffer(2)]], device const int2* tiles [[buffer(3)]], constant MmArgs& a [[buffer(4)]], device const uint* smap [[buffer(5)]],
@@ -345,6 +358,57 @@ kernel void mm_gu2(device const uchar* W [[buffer(0)]], device const half* XS [[
     }
 }
 
+#else
+// The v2 gate/up without MetalPerformancePrimitives: the arithmetic of the matmul2d above - a TM x TN tile accg[m][f] and
+// accu[m][f] accumulated over the K chunks - written as plain loops over the same staged tiles.  XS holds the gathered fp16
+// activations, a row of n_embd per token; the result goes to HS[f][m], a row of n_ff per token, as silu(gate) * up.
+template <int F, int TM, int TN, int TK, int SG>
+kernel void mm_gu2(device const uchar* W [[buffer(0)]], device const half* XS [[buffer(1)]],
+                   device half* HS [[buffer(2)]], device const int2* tiles [[buffer(3)]], constant MmArgs& a [[buffer(4)]],
+                   device const uint* smap [[buffer(5)]], device const uchar* W1 [[buffer(6)]], device const uchar* W2 [[buffer(7)]],
+                   device const uchar* W3 [[buffer(8)]], uint3 tg [[threadgroup_position_in_grid]],
+                   ushort tid [[thread_index_in_threadgroup]]) {
+    constexpr int NTH = SG * 32;
+    constexpr int NOUT = (TM * TN + NTH - 1) / NTH;
+    threadgroup half wg[TN * TK];
+    threadgroup half wu[TN * TK];
+    threadgroup uint tab[fmt<F>::TAB];
+    load_tab<F>(tab, tid, NTH);
+    const int2 tl = tiles[tg.y];
+    const int e = tl.x, row0 = tl.y, f0 = int(tg.x) * TN;
+    device const uchar* E = kArena ? arena_slot(smap[e], W, W1, W2, W3) : W + ulong(e) * a.gu_stride;
+    device const uchar* g0 = E + a.gate_off + ulong(f0) * a.gu_row;
+    device const uchar* u0 = E + a.up_off + ulong(f0) * a.gu_row;
+    float ag[NOUT], au[NOUT];
+    int mi[NOUT], fi[NOUT];
+    for (int q = 0; q < NOUT; ++q) {
+        const int it = int(tid) + q * NTH;
+        mi[q] = it / TN;
+        fi[q] = it % TN;
+        ag[q] = au[q] = 0.0f;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (int k0 = 0; k0 < int(a.n_embd); k0 += TK) {
+        stage_w<F, TN, TK>(g0, a.gu_row, k0, wg, tab, tid, NTH);
+        stage_w<F, TN, TK>(u0, a.gu_row, k0, wu, tab, tid, NTH);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        const int kc = min(TK, int(a.n_embd) - k0);
+        for (int k = 0; k < kc; ++k)
+            for (int q = 0; q < NOUT; ++q) {
+                const half xv = XS[ulong(row0 + mi[q]) * ulong(a.n_embd) + ulong(k0 + k)];
+                ag[q] += float(xv) * float(wg[fi[q] * TK + k]);
+                au[q] += float(xv) * float(wu[fi[q] * TK + k]);
+            }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    for (int q = 0; q < NOUT; ++q) {
+        const float g = ag[q];
+        HS[ulong(row0 + mi[q]) * ulong(a.n_ff) + ulong(f0 + fi[q])] = half(g / (1.0f + exp(-g)) * au[q]);
+    }
+}
+#endif
+
+#if STRATA_HAVE_MPP
 template <int F, int TM, int TN, int TK, int SG>
 kernel void mm_down2(device const uchar* W [[buffer(0)]], device const half* HS [[buffer(1)]],
                      device float* YE [[buffer(2)]], device const int2* tiles [[buffer(3)]],
@@ -378,6 +442,48 @@ kernel void mm_down2(device const uchar* W [[buffer(0)]], device const half* HS 
     acc.store(tY.slice(d0, row0));
 }
 
+#else
+// The v2 down projection without MetalPerformancePrimitives: the same TM x TN tile of acc[m][d] over the K chunks with the
+// staged TN rows of the down matrix, written to YE[d][m] - a row of n_embd per token, fp32.
+template <int F, int TM, int TN, int TK, int SG>
+kernel void mm_down2(device const uchar* W [[buffer(0)]], device const half* HS [[buffer(1)]],
+                     device float* YE [[buffer(2)]], device const int2* tiles [[buffer(3)]],
+                     constant MmArgs& a [[buffer(4)]], device const uint* smap [[buffer(5)]],
+                     device const uchar* W1 [[buffer(6)]], device const uchar* W2 [[buffer(7)]], device const uchar* W3 [[buffer(8)]],
+                     uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]]) {
+    constexpr int NTH = SG * 32;
+    constexpr int NOUT = (TM * TN + NTH - 1) / NTH;
+    threadgroup half wd[TN * TK];
+    threadgroup uint tab[fmt<F>::TAB];
+    load_tab<F>(tab, tid, NTH);
+    const int2 tl = tiles[tg.y];
+    const int e = tl.x, row0 = tl.y, d0 = int(tg.x) * TN;
+    device const uchar* w0 =
+        (kArena ? arena_slot(smap[e], W, W1, W2, W3) : W + ulong(e) * a.d_stride) + a.down_off + ulong(d0) * a.d_row;
+    float acc[NOUT];
+    int mi[NOUT], fi[NOUT];
+    for (int q = 0; q < NOUT; ++q) {
+        const int it = int(tid) + q * NTH;
+        mi[q] = it / TN;
+        fi[q] = it % TN;
+        acc[q] = 0.0f;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (int k0 = 0; k0 < int(a.n_ff); k0 += TK) {
+        stage_w<F, TN, TK>(w0, a.d_row, k0, wd, tab, tid, NTH);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        const int kc = min(TK, int(a.n_ff) - k0);
+        for (int k = 0; k < kc; ++k)
+            for (int q = 0; q < NOUT; ++q) {
+                const half hv = HS[ulong(row0 + mi[q]) * ulong(a.n_ff) + ulong(k0 + k)];
+                acc[q] += float(hv) * float(wd[fi[q] * TK + k]);
+            }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    for (int q = 0; q < NOUT; ++q) YE[ulong(row0 + mi[q]) * ulong(a.n_embd) + ulong(d0 + fi[q])] = acc[q];
+}
+#endif
+
 #define MMGU2_(F, M, N, K, S) template [[host_name("mm_gu2_" #F "_" #M "_" #N "_" #K "_" #S)]] kernel decltype(mm_gu2<F, M, N, K, S>) mm_gu2<F, M, N, K, S>;
 #define MMDN2_(F, M, N, K, S) template [[host_name("mm_down2_" #F "_" #M "_" #N "_" #K "_" #S)]] kernel decltype(mm_down2<F, M, N, K, S>) mm_down2<F, M, N, K, S>;
 #define MMGU2(F, M, N, K, S) MMGU2_(F, M, N, K, S)
@@ -400,6 +506,8 @@ MM_DN2_SET(T_Q2_0)
 MM_DN2_SET(T_TQK7) MM_DN2_SET(T_TQ2T)
 MMDN2(T_IQ4_NL, 16, 64, 32, 2) MMDN2(T_IQ4_NL, 16, 64, 64, 2) MMDN2(T_IQ4_NL, 16, 32, 32, 2) MMDN2(T_IQ4_NL, 32, 32, 32, 2) MMDN2(T_IQ4_NL, 16, 128, 32, 4)
 
+
+#if STRATA_HAVE_MPP
 // ---- v3: the weights decoded straight into matmul2d's right-input cooperative tensor (single-simdgroup scope),
 // no threadgroup staging and no barriers in the K loop.  Each simdgroup owns TN output rows; a threadgroup SG * TN.
 // The right input's element layout (tests/coop_layout): runs of 4 consecutive k at one n, so a lane decodes 4 values
@@ -1165,3 +1273,4 @@ kernel void mm_gu5(device const uchar* W [[buffer(0)]], device const half* XS [[
 #define MMGU5(F, N, S) MMGU5_(F, N, S)
 MMGU5(T_IQ3_S, 32, 2) MMGU5(T_IQ3_S, 32, 1) MMGU5(T_IQ3_S, 16, 4) MMGU5(T_IQ3_XXS, 32, 2) MMGU5(T_IQ3_XXS, 32, 1)
 MMGU5(T_IQ3_XXS, 16, 4) MMGU5(T_IQ2_S, 32, 2) MMGU5(T_IQ2_S, 32, 1) MMGU5(T_IQ2_S, 16, 4)
+#endif  // (the v3 expert GEMMs are matmul2d-only)
