@@ -126,10 +126,26 @@ struct Runtime {
     metal::Stats stats;
 };
 
+// The GPU to use.  MTLCreateSystemDefaultDevice() is nil in a session with no window server of its own - an ssh login on an
+// Intel Mac, where the display's card is the default device only in a console session - and the GPUs are still there: take
+// what MTLCopyAllDevices() reports, preferring a discrete card over a low-power one.  Wherever the default device exists this
+// is the same device it returns, so nothing changes on a Mac at its own screen.
+MTL::Device* create_device() {
+    MTL::Device* d = MTL::CreateSystemDefaultDevice();
+    NS::Array* all = d ? nullptr : MTL::CopyAllDevices();
+    if (!all) return d;
+    for (NS::UInteger i = 0; i < all->count(); ++i) {
+        auto* cand = (MTL::Device*) all->object(i);
+        if (!cand) continue;
+        if (!d || (d->isLowPower() && !cand->isLowPower())) d = cand;
+    }
+    return d;   // (the array is left to the process: it owns the device, and the Runtime outlives it)
+}
+
 Runtime& rt() {
     static Runtime* r = [] {
         auto* x = new Runtime;
-        x->dev = MTL::CreateSystemDefaultDevice();
+        x->dev = create_device();
         NS::Error* e = nullptr;
         if (residency_available()) {
             MTL::ResidencySetDescriptor* d = MTL::ResidencySetDescriptor::alloc()->init();

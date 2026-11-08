@@ -36,6 +36,19 @@
 
 namespace mtl {
 
+// The GPU to use.  MTLCreateSystemDefaultDevice() is nil in a session with no window server of its own - an ssh login on an
+// Intel Mac, where the display's card is the default device only in a console session - and the GPUs are still there: take
+// what MTLCopyAllDevices() reports, preferring a discrete card over a low-power one.  Wherever a default device exists this is
+// the same device it returns, so nothing changes on a Mac at its own screen.
+static id<MTLDevice> pick_device() {
+    id<MTLDevice> d = MTLCreateSystemDefaultDevice();
+    NSArray<id<MTLDevice>>* all = d ? nil : MTLCopyAllDevices();
+    for (id<MTLDevice> cand in all) {
+        if (!d || ([d isLowPower] && ![cand isLowPower])) d = cand;
+    }
+    return d;
+}
+
 double now_s() {
     return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -249,7 +262,7 @@ extern "C" void ds4_busy_begin() {
     @autoreleasepool {
         if (!g_busy.init) {
             g_busy.init = true;
-            id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
+            id<MTLDevice> dev = mtl::pick_device();
             static const char* kSrc = R"MSL(
 #include <metal_stdlib>
 using namespace metal;
@@ -301,7 +314,7 @@ extern "C" void ds4_busy_end() {
 
 #endif
 Context::Context() : impl_(new Impl) {
-    impl_->dev = MTLCreateSystemDefaultDevice();
+    impl_->dev = pick_device();
 #if defined(STRATA_DS4_RUNTIME)
     if (std::getenv("DS4_TIMELINE") && !g_tl.reg) {
         g_tl.on = true;
