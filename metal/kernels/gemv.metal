@@ -24,8 +24,8 @@ constant int gemv_probe = is_function_constant_defined(GEMV_PROBE) ? GEMV_PROBE 
 template <int F, int LPR, int NR, int SG, int KS>
 kernel void gemv(device const uchar* W [[buffer(0)]], device const float* xp [[buffer(1)]],
                  device const float* s16 [[buffer(2)]], device float* y [[buffer(3)]], constant GemvArgs& a [[buffer(4)]],
-                 uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                 ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                 uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (quant.metal)
     constexpr int UNIT = fmt<F>::UNIT, RS = SG / KS, RG = 32 / LPR;
     threadgroup uint tab[fmt<F>::TAB];
     threadgroup float red[KS > 1 ? KS * RS * RG * NR * 8 : 1];
@@ -108,8 +108,8 @@ kernel void gemv_pair(device const uchar* Wg [[buffer(0)]], device const float* 
                       device const uchar* Wu [[buffer(2)]], device const float* xu [[buffer(3)]],
                       device const float* s16 [[buffer(4)]], device float* h [[buffer(5)]],
                       constant GemvArgs& a [[buffer(6)]], constant uint& rb_up [[buffer(7)]],
-                      uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                      ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                      uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (quant.metal)
     constexpr int U1 = fmt<F1>::UNIT, U2 = fmt<F2>::UNIT, RG = 32 / LPR;
     constexpr int TB = fmt<F1>::TAB > fmt<F2>::TAB ? fmt<F1>::TAB : fmt<F2>::TAB;
     threadgroup uint tab1[fmt<F1>::TAB];
@@ -167,8 +167,8 @@ template <int F, int LPR, int NR, int SG>
 kernel void gemv_cat(device const uchar* W [[buffer(0)]], device const float* xp [[buffer(1)]],
                      device const float* s16 [[buffer(2)]], device float* y [[buffer(3)]], constant GemvArgs& a [[buffer(4)]],
                      device const uchar* W2 [[buffer(5)]], device float* y2 [[buffer(6)]], constant uint& n_split [[buffer(7)]],
-                     uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                     ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                     uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (quant.metal)
     constexpr int UNIT = fmt<F>::UNIT, RG = 32 / LPR;
     threadgroup uint tab[fmt<F>::TAB];
     load_tab<F>(tab, tid, SG * 32);
@@ -219,8 +219,8 @@ template <int F, int LPR, int NR, int SG>
 kernel void gemv_x(device const uchar* W [[buffer(0)]], device const float* xp [[buffer(1)]],
                    device const float* s16 [[buffer(2)]], device float* y [[buffer(3)]], constant GemvArgs& a [[buffer(4)]],
                    threadgroup float* xt [[threadgroup(0)]],
-                   uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                   ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                   uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (quant.metal)
     constexpr int UNIT = fmt<F>::UNIT, RG = 32 / LPR;
     threadgroup uint tab[fmt<F>::TAB];
     load_tab<F>(tab, tid, SG * 32);

@@ -629,10 +629,39 @@ template <> inline float deq<T_TQ2T>(device const uchar* b, int ui, thread float
 template <> inline float deq<T_TQK6>(device const uchar* b, int ui, thread float* q, threadgroup const uint* tab) { return deq_tq<6>(b, ui, q, tab); }
 template <> inline float deq<T_TQK7>(device const uchar* b, int ui, thread float* q, threadgroup const uint* tab) { return deq_tq<7>(b, ui, q, tab); }
 
+// ---- the 32-lane group -------------------------------------------------------------------------------------------
+//
+// Every tile here is written for a group of 32 lanes: 32/LPR rows side by side, one row per LPR consecutive lanes, and a
+// reduction over those LPR lanes.  An Apple GPU's simdgroup IS those 32 lanes, so the built-ins below say it directly; an AMD
+// card's simdgroup is 64 lanes wide (measured: threads_per_simdgroup = 64 on a Radeon RX 580, Metal 2, macOS 11.7), where
+// thread_index_in_simdgroup runs 0..63 and simdgroup_index_in_threadgroup counts the wider group - so the tile's own group
+// and lane come from thread_index_in_threadgroup, and a sum over 32 lanes is a tree over the low lane bits.  The runtime
+// passes the device's width as STRATA_SIMD_WIDTH (mtl_rt.mm, measure_simd_width); on a 32-lane GPU every helper below folds
+// back to exactly the built-in it stands for, so the kernels compile to what they compiled to before.
+#ifndef STRATA_SIMD_WIDTH
+#define STRATA_SIMD_WIDTH 32
+#endif
+
+static inline ushort lane32(ushort tid, ushort lane) {   // this thread's lane inside its 32-lane group
+    return STRATA_SIMD_WIDTH == 32 ? lane : ushort(tid & 31u);
+}
+static inline ushort sg32(ushort tid, ushort sg) {       // this thread's 32-lane group, inside the threadgroup
+    return STRATA_SIMD_WIDTH == 32 ? sg : ushort(tid >> 5);
+}
+static inline float sum32(float v) {                     // the sum over the thread's 32-lane group
+    if (STRATA_SIMD_WIDTH == 32) return simd_sum(v);
+    for (ushort o = 16; o > 0; o >>= 1) v += simd_shuffle_xor(v, o);
+    return v;
+}
+static inline float max32(float v) {
+    if (STRATA_SIMD_WIDTH == 32) return simd_max(v);
+    for (ushort o = 16; o > 0; o >>= 1) v = max(v, simd_shuffle_xor(v, o));
+    return v;
+}
 // sum over groups of LPR consecutive lanes (LPR = 1, 2, 4, 8, 16 or 32); the result is valid in every lane
 template <int LPR>
 static inline float lane_sum(float v) {
-    if (LPR == 32) return simd_sum(v);
+    if (LPR == 32) return sum32(v);
     for (ushort o = LPR / 2; o > 0; o >>= 1) v += simd_shuffle_xor(v, o);
     return v;
 }

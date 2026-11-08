@@ -64,10 +64,43 @@ std::string read_file(const std::string& path) {
     return ss.str();
 }
 
+// threads_per_simdgroup is 32 on an Apple GPU and 64 on an AMD card (measured: 64 on a Radeon RX 580, Metal 2, macOS
+// 11.7).  The kernels' tiles are written for 32 lanes, so the width is measured once, per device, with one threadgroup of
+// 64 threads, and every kernel library is then compiled with STRATA_SIMD_WIDTH set to it.
+static int measure_simd_width(id<MTLDevice> dev) {
+    static const char* kSrc = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+kernel void simd_width(device uint* out [[buffer(0)]], uint w [[threads_per_simdgroup]]) {
+    if (out[0] == 0u) out[0] = w;
+}
+)MSL";
+    NSError* err = nil;
+    id<MTLLibrary> lib = [dev newLibraryWithSource:[NSString stringWithUTF8String:kSrc] options:nil error:&err];
+    if (!lib) return 32;
+    id<MTLFunction> fn = [lib newFunctionWithName:@"simd_width"];
+    id<MTLComputePipelineState> ps = fn ? [dev newComputePipelineStateWithFunction:fn error:&err] : nil;
+    if (!ps) return 32;
+    id<MTLBuffer> out = [dev newBufferWithLength:64 options:MTLResourceStorageModeShared];
+    *(uint32_t*) [out contents] = 0;
+    id<MTLCommandQueue> q = [dev newCommandQueue];
+    id<MTLCommandBuffer> cb = [q commandBuffer];
+    id<MTLComputeCommandEncoder> enc = [cb computeCommandEncoder];
+    [enc setComputePipelineState:ps];
+    [enc setBuffer:out offset:0 atIndex:0];
+    [enc dispatchThreads:MTLSizeMake(64, 1, 1) threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+    [enc endEncoding];
+    [cb commit];
+    [cb waitUntilCompleted];
+    const int w = (int) *(uint32_t*) [out contents];
+    return w > 0 ? w : 32;
+}
+
 #if defined(STRATA_DS4_RUNTIME)
 extern "C" void* ds4_gpu_residency_set() __attribute__((weak_import));
 #endif
 struct Context::Impl {
+    int simd = 32;   // the device's threads_per_simdgroup (see measure_simd_width)
 #if defined(STRATA_DS4_RUNTIME)
     id<MTLCommandBuffer> cb_def = nil;   // the open command buffer single dispatches accumulate in
     id<MTLComputeCommandEncoder> enc_def = nil;
@@ -327,6 +360,7 @@ Context::Context() : impl_(new Impl) {
         std::fprintf(stderr, "mtl: no Metal device\n");
         std::exit(2);
     }
+    impl_->simd = measure_simd_width(impl_->dev);
     impl_->q = [impl_->dev newCommandQueue];
 #if defined(STRATA_DS4_RUNTIME)
 #if STRATA_SDK_VERSION >= 150000
@@ -344,6 +378,7 @@ Context::Context() : impl_(new Impl) {
 Context::~Context() { delete impl_; }
 
 std::string Context::device_name() const { return [[impl_->dev name] UTF8String]; }
+int Context::simd_width() const { return impl_->simd; }
 bool Context::has_family_apple(int n) const {
     return [impl_->dev supportsFamily:(MTLGPUFamily)(MTLGPUFamilyApple1 + (n - 1))];
 }
@@ -358,6 +393,8 @@ uint64_t Context::max_buffer_length() const { return [impl_->dev maxBufferLength
 
 int Context::compile(const std::vector<std::string>& files, const std::string& prelude, bool fast_math) {
     std::string src = prelude + "\n#include <metal_stdlib>\nusing namespace metal;\n";
+    // the device's lane width, for the kernels whose tiles are written for 32-lane groups (quant.metal: sg32 / lane32 / sum32)
+    src += "#define STRATA_SIMD_WIDTH " + std::to_string(impl_->simd) + "\n";
     if (!ggml_common_path.empty() && prelude.find("NO_GGML_COMMON") == std::string::npos) {
         src += "#define GGML_COMMON_DECL_METAL\n#define GGML_COMMON_IMPL_METAL\n";
         src += read_file(ggml_common_path);

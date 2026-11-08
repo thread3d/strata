@@ -179,8 +179,8 @@ int main(int argc, char** argv) {
                 std::vector<float> wf((size_t)n_in * n_out);
                 ref::dequant(t, W.ptr, wf.data(), wf.size());
                 for (int nt : {1, 3, 8}) {
-                    double worst = 0;
-                    int not_exact = 0;
+                    double worst = 0, best = 1e9;
+                    int tiles = 0, ok_tiles = 0, not_exact = 0;
                     std::string worst_cfg;
                     for (Cfg c : kCfgs) {
                         if (!cfg_ok(c, t, n_in)) continue;
@@ -205,6 +205,9 @@ int main(int argc, char** argv) {
                                 sr += ref * ref;
                             }
                         const double rel = std::sqrt(se / sr);
+                        ++tiles;
+                        if (rel < 1e-5) ++ok_tiles;
+                        if (rel < best) best = rel;
                         if (rel > worst) { worst = rel; worst_cfg = kname(t, c); }
                         if (nt > 1) {
                             // every token of a window must be bitwise what a one-token call gives
@@ -225,9 +228,9 @@ int main(int argc, char** argv) {
                     }
                     const bool ok = worst < 1e-5 && not_exact == 0;
                     fails += !ok;
-                    std::printf("parity %-7s n_in %5d ntok %d: worst rel L2 over %zu tiles %.2e (%s), window == one "
-                                "token: %s  %s\n",
-                                ref::type_name(t), n_in, nt, kCfgs.size(), worst, worst_cfg.c_str(),
+                    std::printf("parity %-7s n_in %5d ntok %d: %2d/%2d tiles ok, best rel L2 %.2e, worst %.2e (%s), "
+                                "window == one token: %s  %s\n",
+                                ref::type_name(t), n_in, nt, ok_tiles, tiles, best, worst, worst_cfg.c_str(),
                                 nt == 1 ? "-" : not_exact ? "NO" : "bitwise", ok ? "PASS" : "FAIL");
                 }
                 cx.free(W);
