@@ -38,11 +38,21 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < ksc.bytes / 2; ++i) { ksc.as<uint16_t>()[i] = ref::f32_to_f16(0.004f + 0.004f * r.uni()); vsc.as<uint16_t>()[i] = ref::f32_to_f16(0.004f + 0.004f * r.uni()); }
     for (size_t i = 0; i < (size_t)T * QH * QD; ++i) qcur.as<float>()[i] = r.sym() * 3.0f;
     for (size_t i = 0; i < (size_t)T * QH * 2 * QD; ++i) qfull.as<float>()[i] = r.sym();
-    mtl::Pipeline pa = cx.pipeline(lib, "qsa_attn"), pm = cx.pipeline(lib, "qsa_merge"), pmm = cx.pipeline(lib, "qsa_attn_mm", mtl::Constants().b(7, coop_k4(cx)).i(8, std::getenv("QSA_STOP") ? std::atoi(std::getenv("QSA_STOP")) : 0)),
-                  pq = cx.pipeline(lib, "qsa_q_f16"), pf = cx.pipeline(lib, "qsa_flash", mtl::Constants().b(7, coop_k4(cx)));
+    // qsa_attn_mm and qsa_flash are MetalPerformancePrimitives kernels and exist only where this Metal has it (the engine takes
+    // the qsa_attn + qsa_merge path there anyway: p.flash is coop_k4, which is false without MPP), so they are neither built nor
+    // compared on a Metal without it - an Intel Mac's macOS 11.
+    const bool mpp = cx.has_mpp();
+    mtl::Pipeline pa = cx.pipeline(lib, "qsa_attn"), pm = cx.pipeline(lib, "qsa_merge"), pq = cx.pipeline(lib, "qsa_q_f16");
+    mtl::Pipeline pmm, pf;
+    if (mpp) {
+        pmm = cx.pipeline(lib, "qsa_attn_mm",
+                          mtl::Constants().b(7, coop_k4(cx)).i(8, std::getenv("QSA_STOP") ? std::atoi(std::getenv("QSA_STOP")) : 0));
+        pf = cx.pipeline(lib, "qsa_flash", mtl::Constants().b(7, coop_k4(cx)));
+    }
     mtl::Buffer xf = cx.alloc(2 * (size_t)T * QH * QD);
-    std::printf("pipelines: qsa_attn_mm max threads %d, tg mem %d; qsa_flash max threads %d, tg mem %d\n", pmm.max_threads,
-                pmm.static_tg_mem, pf.max_threads, pf.static_tg_mem);
+    if (mpp)
+        std::printf("pipelines: qsa_attn_mm max threads %d, tg mem %d; qsa_flash max threads %d, tg mem %d\n", pmm.max_threads,
+                    pmm.static_tg_mem, pf.max_threads, pf.static_tg_mem);
     int fails = 0;
     for (uint32_t pos0 : {0u, 30000u}) {
         // ids: within the budget the identity; past it 2051 distinct ascending cells < n_kv
@@ -69,6 +79,14 @@ int main(int argc, char** argv) {
             D(pm, {mtl::Arg::B(part), mtl::Arg::B(qfull), mtl::Arg::B(xb), mtl::Arg::V(a)}, QH, T, 1, 256)};
         const mtl::Dispatch fl = D(pf, {mtl::Arg::B(qh), mtl::Arg::B(kq), mtl::Arg::B(vq), mtl::Arg::B(ksc), mtl::Arg::B(vsc),
                                         mtl::Arg::B(ids), mtl::Arg::B(qfull), mtl::Arg::B(xf), mtl::Arg::V(a)}, QKV, T, 1, 128);
+        if (bench && !mpp) {
+            cx.warm(ref_ds, 0.3);
+            std::vector<double> t;
+            for (int i = 0; i < 5; ++i) t.push_back(cx.run(ref_ds));
+            std::printf("pos0 %5u, T %d: qsa_attn %.2f ms, merge %.2f ms (no MetalPerformancePrimitives here)\n", pos0, T,
+                        t[0] * 1e3, median(t) * 1e3);
+            continue;
+        }
         if (bench) {
             auto timeit = [&](const std::vector<mtl::Dispatch>& ds) {
                 cx.warm(ds, 0.3);
@@ -81,6 +99,7 @@ int main(int argc, char** argv) {
             continue;
         }
         cx.run(ref_ds);
+        if (!mpp) continue;   // qsa_attn_mm does not exist here: the qsa_attn + merge path above is what the engine runs
         std::fill(part.as<float>(), part.as<float>() + part.bytes / 4, std::nanf(""));   // a kernel that writes nothing shows
         cx.run(mm_ds);
         if (std::getenv("QSA_DEBUG")) {
@@ -105,7 +124,7 @@ int main(int argc, char** argv) {
         const bool ok = rel < 3e-3;
         fails += !ok;
         std::printf("pos0 %5u, T %d: qsa_attn_mm vs qsa_attn (after merge) rel L2 %.2e  %s\n", pos0, T, rel, ok ? "PASS" : "FAIL");
-        if (noflash) continue;
+        if (noflash || !mpp) continue;
         cx.run({fl});
         double sf = 0;
         for (size_t i = 0; i < (size_t)T * QH * QD; ++i) {

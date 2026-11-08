@@ -6,8 +6,13 @@
 //   per head: m = max, p = exp(s - m), l = sum p (fp32, through threadgroup memory), P -> fp16
 //   acc[12 x 256] = P[12 x 64] . V[64 x 256]  four 64-dim matmuls, V decoded into the right input
 // The operands are fp16 (q rounded from fp32; k, v = int8 * scale rounded): to rounding of qsa_attn's fp32.
+// qsa_attn_mm and qsa_flash are single-simdgroup matmul2d kernels (Metal 4's MetalPerformancePrimitives), used only where the
+// device has the M5's cooperative-tensor layout (window.cpp: p.flash = coop_k4, and coop_k4 is false without MPP).  qsa_score_mm
+// is needed on any Metal - a long prompt's selection - so it has a plain form below, like the other ported GEMMs.
+#if STRATA_HAVE_MPP
 #include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
 using namespace mpp::tensor_ops;
+#endif
 #ifndef STRATA_COOP_K4
 #define STRATA_COOP_K4
 // function constant 7: the right-input cooperative tensor holds runs of 4 consecutive k at one n per lane (the M5's
@@ -21,6 +26,7 @@ constant bool coop_k4 = is_function_constant_defined(COOP_K4) ? COOP_K4 : true;
 constant int QSA_STOP [[function_constant(8)]];
 constant int qsa_stop = is_function_constant_defined(QSA_STOP) ? QSA_STOP : 0;
 
+#if STRATA_HAVE_MPP
 // grid (chunks, QKV, n_tok), 32 threads.  qh: the q heads as fp16 [t][QH][QD] (qcur rounded).
 kernel void qsa_attn_mm(device const half* qh [[buffer(0)]], device const char* kq [[buffer(1)]],
                         device const char* vq [[buffer(2)]], device const half* ksc [[buffer(3)]],
@@ -150,6 +156,8 @@ kernel void qsa_attn_mm(device const half* qh [[buffer(0)]], device const char* 
     if (lane < HPG) { pp[lane * (QD + 2) + QD] = mh; pp[lane * (QD + 2) + QD + 1] = lh; }
 }
 
+#endif
+
 // qcur (fp32) -> fp16 for qsa_attn_mm
 kernel void qsa_q_f16(device const float* q [[buffer(0)]], device half* qh [[buffer(1)]], constant uint& n [[buffer(2)]],
                       uint gid [[thread_position_in_grid]]) {
@@ -171,6 +179,7 @@ kernel void qsa_score_mm(device const float* qidx [[buffer(0)]], device const fl
     threadgroup float ot[64 * 64];
     const int b0 = int(tg.x) * 64, t0 = int(tg.y) * 16;
     const uint nb_all = (a.pos0 + a.n_tok) / 4 + 1;   // blocks any token of the chunk can score
+#if STRATA_HAVE_MPP
     tensor<device float, dextents<int32_t, 2>, tensor_inline> tQ((device float*)qidx, dextents<int32_t, 2>(ID, int(a.n_tok) * IH));
     tensor<device float, dextents<int32_t, 2>, tensor_inline> tK((device float*)pooled, dextents<int32_t, 2>(ID, int(nb_all)));
     tensor<threadgroup float, dextents<int32_t, 2>, tensor_inline> tO(ot, dextents<int32_t, 2>(64, 64));
@@ -179,6 +188,45 @@ kernel void qsa_score_mm(device const float* qidx [[buffer(0)]], device const fl
     auto mA = tQ.slice(0, t0 * IH);
     auto mB = tK.slice(0, b0);
     op.run(mA, mB, tO);
+#else
+    // The same 64 x 64 tile of S without MetalPerformancePrimitives: 128 threads, K = ID in steps of KC, the qidx rows and the
+    // pooled blocks staged in threadgroup memory (fp32, as the matmul2d above reads them), ot[m * 64 + b] where the epilogue
+    // below reads it.
+    constexpr int NT = 128;
+    constexpr int KC = 16;
+    constexpr int TR = 8, TC = 16;      // threads across the rows and the columns
+    constexpr int AR = 64 / TR, AC = 64 / TC;
+    threadgroup float sQ[64 * KC];
+    threadgroup float sK[64 * KC];
+    const int r = int(tid) % TR, c = int(tid) / TR;
+    const int m0 = t0 * IH, kk0 = b0;
+    float acc[AR][AC];
+    for (int i = 0; i < AR; ++i)
+        for (int j = 0; j < AC; ++j) acc[i][j] = 0.0f;
+    for (int k0 = 0; k0 < ID; k0 += KC) {
+        for (int it = int(tid); it < 64 * KC; it += NT) {
+            const int rr = it / KC, cc = it % KC, row = m0 + rr, k = k0 + cc;
+            sQ[it] = (row < int(a.n_tok) * IH) ? qidx[ulong(row) * ulong(ID) + ulong(k)] : 0.0f;
+        }
+        for (int it = int(tid); it < 64 * KC; it += NT) {
+            const int rr = it / KC, cc = it % KC, b = kk0 + rr, k = k0 + cc;
+            sK[it] = (uint(b) < nb_all) ? pooled[ulong(b) * ulong(ID) + ulong(k)] : 0.0f;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        const int kc = min(KC, ID - k0);
+        for (int k = 0; k < kc; ++k) {
+            float av[AR];
+            for (int i = 0; i < AR; ++i) av[i] = sQ[(r + i * TR) * KC + k];
+            for (int j = 0; j < AC; ++j) {
+                const float bv = sK[(c + j * TC) * KC + k];
+                for (int i = 0; i < AR; ++i) acc[i][j] += av[i] * bv;
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    for (int i = 0; i < AR; ++i)
+        for (int j = 0; j < AC; ++j) ot[(r + i * TR) * 64 + (c + j * TC)] = acc[i][j];
+#endif
     threadgroup_barrier(mem_flags::mem_threadgroup);
     const uint stride = a.max_cells / 4 + 2;
     for (int idx = tid; idx < 16 * 64; idx += 128) {
@@ -210,6 +258,7 @@ kernel void qsa_score_mm(device const float* qidx [[buffer(0)]], device const fl
         }
 }
 
+#if STRATA_HAVE_MPP
 // qsa_flash: the whole attention of a (kv head g, token t) in one threadgroup (no split-K partials, no merge): the
 // width selected cells in chunks of 64 with an online softmax; 4 simdgroups, simdgroup s owns dims 64 s .. 64 s + 63
 // (its slice of S's K sum and its 64 output dims).  Out: xq = (acc / l) * sigmoid(gate) as fp16 (attn_output's GEMM
@@ -353,3 +402,4 @@ kernel void qsa_flash(device const half* qh [[buffer(0)]], device const char* kq
             }
         }
 }
+#endif  // (qsa_flash is matmul2d-only)
