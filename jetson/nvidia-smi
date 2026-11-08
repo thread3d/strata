@@ -1,0 +1,38 @@
+#!/bin/sh
+# nvidia-smi - a stand-in for the NVIDIA tool on a Jetson AGX Xavier, where JetPack 5's NVIDIA packages here do not
+# ship it (there is no nvidia-smi binary and no NVML library on this board, while CUDA works normally).
+#
+# Strata's setup reads the card through nvidia-smi, so this answers the four queries it makes with the board's real
+# figures and refuses everything else, rather than inventing output:
+#
+#   --query-gpu=index,name,memory.total,compute_cap,driver_version   the card, unified memory (setup's arm64 path),
+#                                                                    compute capability 7.2, the L4T R35.5.0 driver
+#   -i N --query-gpu=display_active                                   "Disabled" - a headless board
+#   -i N --query-gpu=compute_mode                                    "Default"
+#   anything else                                                    exit 1, so the caller sees no answer rather than
+#                                                                    a made-up one (setup treats that as "unavailable")
+#
+# It is a workaround for this one board, not part of Strata: see docs/JETSON.md.
+DRIVER=515.65.01          # L4T R35.5.0 (JetPack 5.1.3) ships the 515.65.01 driver
+NAME="Jetson AGX Xavier"
+CAP=7.2
+
+# every argument, comma-joined, so both "--query-gpu=..." and "-i 0 --query-gpu=..." are easy to match
+args=" $* "
+
+case "$args" in
+  *--query-gpu=index,name,memory.total,compute_cap,driver_version*)
+      # "[N/A]" for memory.total: the GPU shares the board's memory, which is what setup's arm64 path expects
+      echo "0, $NAME, [N/A], $CAP, $DRIVER"
+      ;;
+  *--query-gpu=display_active*)
+      echo "Disabled"
+      ;;
+  *--query-gpu=compute_mode*)
+      echo "Default"
+      ;;
+  *)
+      echo "nvidia-smi (Jetson shim): this query is not answered on this board: $*" >&2
+      exit 1
+      ;;
+esac

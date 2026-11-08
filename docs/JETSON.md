@@ -16,6 +16,9 @@ on older ARM hardware: the engine compiles, and it says plainly what was not mea
 - **Not built for ARM:** the desktop app (the packages are x86-64 and arm64 macOS only); use the Terminal.
 - **Starts, and reports the card:** `strata --version` prints the engine version, and `strata-device --selftest`
   reports the Xavier (compute capability 7.2, 30.276 GiB), computes the memory plan and passes its arena check.
+- **Installs:** `./setup.sh` runs to "All set" with the engine built here (see
+  [Install it](#install-it-setupsh)): `.venv`, the engine, a 22.85 GB pack hash-checked, the tokenizer, a run config and
+  the server. Whether the model *runs* is a memory question, answered below.
 - **Not measured here:** a model answering prompts end to end. The engine's kernels are written and measured for
   Ampere and newer, and sm_72 is below the 7.5 floor the engine supports - the build takes the community Pascal/Volta
   path (`-DSTRATA_EXPERIMENTAL_SM60=ON`, #236) to build and to run at all. Treat a first run as a test, not as a
@@ -77,6 +80,72 @@ The flags that matter, and why this board needs them:
 | `-DCMAKE_CUDA_ARCHITECTURES=72-real` | Xavier's card, and no PTX: the board compiles and runs on the same machine |
 | no `-DSTRATA_PORTABLE` | that builds ggml-cpu for an ARMv8.2+dotprod+fp16+i8mm baseline (Grace, Graviton). Carmel has fp16 but **no dotprod and no i8mm**, so those instructions would fault; the build stays `-mcpu=native` |
 | `-DSTRATA_BUILD_TESTS=OFF` | the parity tools use further entry points from newer toolkits; they are not part of an engine build |
+
+## Install it (setup.sh)
+
+The engine building is only half of an install. `./setup.sh` is the source installer: it makes the project's `.venv`,
+takes an engine, downloads the model and writes a run config and a start script. On this board it needs two things it
+does not find by itself.
+
+**1. An `nvidia-smi` that answers.** JetPack 5 here ships no `nvidia-smi` and no NVML library at all (CUDA works
+normally - the board's driver is in the kernel), and setup reads the card through it. `jetson/nvidia-smi` is a stand-in
+that answers the four queries setup makes with the board's real figures and refuses everything else:
+
+```sh
+install -m 755 jetson/nvidia-smi ~/toolchains/bin/nvidia-smi   # anywhere on PATH ahead of the real one
+```
+
+It reports `Jetson AGX Xavier, [N/A], 7.2, 515.65.01`. The `[N/A]` is honest: the GPU shares the board's memory, and
+setup's arm64 path reads that as unified memory rather than as a card with no VRAM.
+
+**2. The engine, before setup looks for it.** There is no ready-made engine for this platform, so setup would compile
+one - with a CUDA 12 toolkit this board does not have. Build it with `jetson/build_engine.sh` and put it where the
+experimental (CUDA 12) engine lives, with the library folder it loads from named in `BUILD.json`:
+
+```sh
+mkdir -p engine-cuda12 && cp out-jetson/engine/{strata,libstrata_kq.so} engine-cuda12/
+cat > engine-cuda12/BUILD.json <<'EOF'
+{"version": "0.1.55", "source": "jetson/build_engine.sh", "platform": "linux-aarch64", "archs": "72",
+ "ptx": false, "cuda": "11.4", "backend": "cuda",
+ "cuda_dirs": ["/usr/local/cuda-11.4/targets/aarch64-linux/lib"]}
+EOF
+```
+
+Then, with the board's Python 3.12 first on `PATH` (the system one is 3.8, and setup needs 3.10 or newer):
+
+```sh
+export PATH=$HOME/toolchains/bin:$HOME/miniconda3/bin:$PATH CUDA_HOME=/usr/local/cuda-11.4
+export STRATA_EXPERIMENTAL_SM60=1
+./setup.sh --setup --family qwen36 --model UD-Q4_K_XL --gpu 0 --context 8192 --vision no \
+           --yes --no-start --data-dir ~/Strata-data
+```
+
+`setup.py` needed three small relaxations for this board, each of them a CUDA-13-package assumption that does not hold
+where the engine is compiled here: it now admits compute capability 7.2 (the same experimental path that admits sm_70),
+warns instead of stopping on a driver older than the CUDA 12 package's floor when a toolkit is present to build with,
+and skips NVIDIA's pip CUDA libraries for an engine that names its own `cuda_dirs`.
+
+### What an install does, and what it cannot do here
+
+It completes: `.venv` (Python 3.12), the engine registered, `Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf` (22.85 GB, SHA-256
+checked against the pinned value), the tokenizer prepared, `strata-qwen36-ud-q4_k_xl.json` and
+`run-qwen36-ud-q4_k_xl.sh`, and the server on http://127.0.0.1:8080. `setup.py --check` ends with "This PC can run
+Strata".
+
+**The model still does not start on 30 GB.** The engine loads it - 753 tensors, layout checked, 4.40 GiB on the GPU, the
+K-quant prompt kernels from the `libstrata_kq.so` this branch builds, the MTP block, 19.55 GiB of VRAM free at an 8192
+context - and then the kernel's OOM killer ends it while it fits every routed expert into the memory the GPU shares with
+the CPU:
+
+```
+Out of memory: Killed process (strata) total-vm:55634476kB, anon-rss:416184kB, file-rss:4055824kB
+```
+
+That happened at 32,768 context, again at 8,192, and again with `--low-ram on` and a VRAM reserve (which the Qwen3.6
+engine ignores: "not an option of this engine"). The installer said so before it started: **UD-Q4_K_XL plans for 32 GB
+of RAM and this board has 30**. It is the smallest pack for this model, so the way to run Strata on an Xavier is more
+memory, not a different pin - a 64 GB board in this family would fit it. The install itself is complete and is the right
+groundwork for that.
 
 ## What the build gives up
 
