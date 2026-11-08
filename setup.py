@@ -1658,7 +1658,10 @@ def experimental_sm60() -> bool:
 
 
 def sm60_card(arch) -> bool:
-    return 60 <= int(arch) <= 70
+    # 72 is the Jetson AGX Xavier: the same Volta generation as sm_70, and CUDA 13 has no code for it either, so it is
+    # admitted by the same experimental path (docs/JETSON.md).  The engine's own runtime check already admits compute
+    # capability 6.0 and newer for a -DSTRATA_EXPERIMENTAL_SM60=ON build; this keeps setup in step with it.
+    return 60 <= int(arch) <= 72
 
 
 def maxwell_card(arch) -> bool:
@@ -7608,7 +7611,12 @@ def get_cuda12_engine(url_base, gpu, vision, yes, build=False) -> Path:
     CUDA 12 libraries, or compiled here with a CUDA 12.x toolkit (Linux, --build, or no ready-made one)."""
     eng = None if build else get_prebuilt(url_base, gpu, vision, toolkit=12)
     if eng is not None and json.loads((eng / "BUILD.json").read_text(encoding="utf-8")).get("source") != "local":
-        pip_cuda_libs(12)
+        # an engine that names its own library folders was compiled on this machine and already has its toolkit's
+        # libraries; only a downloaded package needs NVIDIA's CUDA libraries from pip (docs/JETSON.md: a Jetson builds
+        # its engine here, with the toolkit the board has)
+        _meta = json.loads((eng / "BUILD.json").read_text(encoding="utf-8"))
+        if not (_meta.get("cuda_dirs") or _meta.get("lib_dirs")):
+            pip_cuda_libs(12)
         if vision != "none" and not (eng / VEXE).exists():
             eng = None
     return eng if eng is not None else build_engine(gpu, vision, yes, get_llama_cpp(), toolkit=12)
@@ -7788,7 +7796,11 @@ def engine_step(a, gpu, hip, amd, cuda_tk, vision):
         eng = None if a.build or hip else get_prebuilt(a.prebuilt, gpu, vision, **({"toolkit": 12} if cuda_tk == 12
                                                                                     else {}))
     if eng is not None and not hip and json.loads((eng / "BUILD.json").read_text(encoding="utf-8")).get("source") != "local":
-        pip_cuda_libs(cuda_tk)
+        # an engine compiled on this machine names its own library folders (cuda_dirs); only a downloaded package needs
+        # NVIDIA's libraries from pip (docs/JETSON.md: a Jetson builds its engine here)
+        _meta = json.loads((eng / "BUILD.json").read_text(encoding="utf-8"))
+        if not (_meta.get("cuda_dirs") or _meta.get("lib_dirs")):
+            pip_cuda_libs(cuda_tk)
         if vision != "none" and not (eng / VEXE).exists():
             warn("the ready-made engine has no image encoder: compiling it")
             eng = None
@@ -9476,7 +9488,16 @@ def main() -> int:
         if why:
             (warn if cuda_tk == 13 or str(a.cuda) == "12" else ok)(f"CUDA {cuda_tk}: {why}")
         min_driver = CUDA12_COMPAT_DRIVER if cuda_tk == 12 else MIN_DRIVER
-        if driver_major(gpu) < min_driver:
+        # On arm64 Linux there is no ready-made engine to install (get_prebuilt compiles one here), so the floor of the
+        # CUDA 12 *package* does not apply: the engine is compiled with the toolkit this machine has, and that toolkit is
+        # what the driver must satisfy.  A Jetson AGX Xavier is the case: L4T R35.5 ships driver 515.65.01 and a CUDA 11.4
+        # toolkit, and the engine built from it runs (docs/JETSON.md).  Every other platform keeps the stop.
+        compiled_here = is_arm64() and sys.platform.startswith("linux") and find_nvcc()[0] is not None
+        if driver_major(gpu) < min_driver and compiled_here:
+            warn(f"the NVIDIA driver {gpu['driver']} is older than the CUDA 12 engine package needs ({min_driver}): this "
+                 f"platform has no ready-made engine, so setup compiles one with the toolkit installed here, which runs "
+                 f"on this driver")
+        elif driver_major(gpu) < min_driver:
             fail(f"the NVIDIA driver is too old ({gpu['driver']}; {min_driver} or newer is needed)"
                  + ("" if cuda_tk == 12 else f" (the CUDA 12 engine package needs {cuda12_min_driver()[1]} or newer, {cuda12_min_driver()[2]})"),
                  "update it with the NVIDIA App or from https://www.nvidia.com/drivers, restart, and run this again")
