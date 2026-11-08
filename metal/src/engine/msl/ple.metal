@@ -21,7 +21,7 @@ struct PleArgs {
 };
 
 static inline float tg_sum(float v, threadgroup float* part, ushort sg, ushort lane) {
-    v = simd_sum(v);
+    v = sum32(v);
     if (lane == 0) part[sg] = v;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float t = 0.0f;
@@ -33,8 +33,9 @@ static inline float tg_sum(float v, threadgroup float* part, ushort sg, ushort l
 // grid (hc, T), 256 threads: y[t][c] = grouped_norm(x[t][c]) with w[c]
 kernel void ple_gnorm(device const float* x [[buffer(0)]], device const float* w [[buffer(1)]], device float* y [[buffer(2)]],
                       constant PleArgs& a [[buffer(3)]], uint3 tg [[threadgroup_position_in_grid]],
-                      ushort tid [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
-                      ushort lane [[thread_index_in_simdgroup]]) {
+                      ushort tid [[thread_index_in_threadgroup]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                      ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float part[8];
     const uint c = tg.x, t = tg.y, n = a.n_embd;
     device const float* xc = x + (t * a.hc + c) * n;
@@ -51,8 +52,9 @@ kernel void ple_gate_norm(device const float* key [[buffer(0)]], device const fl
                           device const float* value [[buffer(2)]], device const float* w_conv [[buffer(3)]],
                           device float* gated [[buffer(4)]], device float* norm_w [[buffer(5)]],
                           constant PleArgs& a [[buffer(6)]], uint3 tg [[threadgroup_position_in_grid]],
-                          ushort tid [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
-                          ushort lane [[thread_index_in_simdgroup]]) {
+                          ushort tid [[thread_index_in_threadgroup]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                          ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float part[8];
     const uint c = tg.x, t = tg.y, n = a.n_embd, row = (t * a.hc + c) * n;
     float acc = 0.0f;

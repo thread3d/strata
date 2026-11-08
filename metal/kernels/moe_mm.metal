@@ -507,11 +507,12 @@ MM_DN2_SET(T_TQK7) MM_DN2_SET(T_TQ2T)
 MMDN2(T_IQ4_NL, 16, 64, 32, 2) MMDN2(T_IQ4_NL, 16, 64, 64, 2) MMDN2(T_IQ4_NL, 16, 32, 32, 2) MMDN2(T_IQ4_NL, 32, 32, 32, 2) MMDN2(T_IQ4_NL, 16, 128, 32, 4)
 
 
-#if STRATA_HAVE_MPP
 // ---- v3: the weights decoded straight into matmul2d's right-input cooperative tensor (single-simdgroup scope),
 // no threadgroup staging and no barriers in the K loop.  Each simdgroup owns TN output rows; a threadgroup SG * TN.
 // The right input's element layout (tests/coop_layout): runs of 4 consecutive k at one n, so a lane decodes 4 values
-// at a time (W4<F>).  Activations: the gathered fp16 rows from device memory.
+// at a time (W4<F>, and W8<F> for the two halves a lane fills).  Those decode helpers are plain MSL and are compiled on every
+// Metal - the portable expert GEMMs elsewhere in this file, and the DeepSeek engine's, decode through them as well; what the
+// #if below leaves out is the matmul2d kernels themselves.  Activations: the gathered fp16 rows from device memory.
 #ifndef STRATA_COOP_K4
 #define STRATA_COOP_K4
 // function constant 7: the right-input cooperative tensor holds runs of 4 consecutive k at one n per lane (the M5's
@@ -958,6 +959,7 @@ template <> struct W8<T_Q6_K> {
     }
 };
 
+#if STRATA_HAVE_MPP   // (from here down: matmul2d's cooperative tensors and the kernels that fill them)
 template <int F, int TM, int TN, int TK, int SG>
 kernel void mm_gu3(device const uchar* W [[buffer(0)]], device const half* XS [[buffer(1)]],
                    device half* HS [[buffer(2)]], device const int2* tiles [[buffer(3)]], constant MmArgs& a [[buffer(4)]], device const uint* smap [[buffer(5)]],

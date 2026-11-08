@@ -25,6 +25,9 @@ kernel void ds4_mm_gather(device const float* x [[buffer(0)]], constant ulong& l
     xs[(ulong) tgp.y * n_embd + c] = half(x[(ulong) idx[tgp.y] * ldx + c]);
 }
 
+// The two expert GEMMs are MetalPerformancePrimitives' matmul2d where this Metal has it; below is the plain form of the same
+// tiles for a Metal that does not (an Intel Mac's macOS 11).
+#if STRATA_HAVE_MPP
 template <int F, int TM, int TN, int TK, int SG>
 kernel void ds4_mm_gu(device const uchar* W [[buffer(0)]], device const half* XS [[buffer(1)]], device half* HS [[buffer(2)]],
                       device const int4* tiles [[buffer(3)]], constant DsMmArgs& a [[buffer(4)]], constant uint& n_tiles [[buffer(5)]],
@@ -129,6 +132,135 @@ kernel void ds4_mm_dn(device const uchar* W [[buffer(0)]], device half* YEH [[bu
         if (m < valid) ((device float*) YEH)[ulong(row0 + m) * a.n_embd + n0 + f] = ot[sg][it];
     }
 }
+
+
+#else
+// ds4_mm_gu without MetalPerformancePrimitives: the same tiles - each simdgroup owns TN weight columns (n0) and the tile's TM
+// rows - decoded into threadgroup memory a TK chunk at a time (stage_w, the same helper moe_mm.metal's kernels use) and
+// accumulated as plain loops over the simdgroup's 32 lanes: accg[m][f] = sum_k XS[row0 + m][k] * Wg[n0 + f][k].  The epilogue,
+// the clamped swiglu and the store to HS[f][m] are the tensor version's.
+template <int F, int TM, int TN, int TK, int SG>
+kernel void ds4_mm_gu(device const uchar* W [[buffer(0)]], device const half* XS [[buffer(1)]], device half* HS [[buffer(2)]],
+                      device const int4* tiles [[buffer(3)]], constant DsMmArgs& a [[buffer(4)]], constant uint& n_tiles [[buffer(5)]],
+                      uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                      ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    if (tg.y >= n_tiles) return;
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    constexpr int NTH = SG * 32;
+    constexpr int NOUT = TM * TN / 32;                  // outputs per thread inside its simdgroup
+    threadgroup half wg[SG][TN * TK];
+    threadgroup half wu[SG][TN * TK];
+    threadgroup uint tab[fmt<F>::TAB];
+    load_tab<F>(tab, tid, NTH);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    const int4 tl = tiles[tg.y];
+    const int e = tl.x, row0 = tl.y, valid = tl.z, n0 = (int(tg.x) * SG + sg) * TN;
+    device const uchar* E = W + ulong(e) * a.stride;
+    device const uchar* g0 = E + a.gate_off + ulong(n0) * a.gu_row;
+    device const uchar* u0 = E + a.up_off + ulong(n0) * a.gu_row;
+    float ag[NOUT], au[NOUT];
+    int mi[NOUT], fi[NOUT];
+    for (int q = 0; q < NOUT; ++q) {
+        const int it = int(lane) + q * 32;
+        mi[q] = it / TN;
+        fi[q] = it % TN;
+        ag[q] = au[q] = 0.0f;
+    }
+    for (int k0 = 0; k0 < int(a.n_embd); k0 += TK) {
+        // W8<F> gives 8 values of one row: 4 at k .. k + 3 and 4 at k + 16 .. k + 19 (its cooperative tensor's layout), so a
+        // step of 16 covers the whole TK chunk; the tile is stored in k order for the loops below.
+        for (int kk = 0; kk < TK; kk += 16) {
+            for (int f = lane; f < TN; f += 32) {
+                half4 g1, g2, u1, u2;
+                W8<F>::run(g0 + ulong(f) * a.gu_row, k0 + kk, tab, g1, g2);
+                W8<F>::run(u0 + ulong(f) * a.gu_row, k0 + kk, tab, u1, u2);
+                wg[sg][f * TK + kk + 0] = g1.x; wg[sg][f * TK + kk + 1] = g1.y;
+                wg[sg][f * TK + kk + 2] = g1.z; wg[sg][f * TK + kk + 3] = g1.w;
+                wu[sg][f * TK + kk + 0] = u1.x; wu[sg][f * TK + kk + 1] = u1.y;
+                wu[sg][f * TK + kk + 2] = u1.z; wu[sg][f * TK + kk + 3] = u1.w;
+                if (kk + 16 < TK) {
+                    wg[sg][f * TK + kk + 16] = g2.x; wg[sg][f * TK + kk + 17] = g2.y;
+                    wg[sg][f * TK + kk + 18] = g2.z; wg[sg][f * TK + kk + 19] = g2.w;
+                    wu[sg][f * TK + kk + 16] = u2.x; wu[sg][f * TK + kk + 17] = u2.y;
+                    wu[sg][f * TK + kk + 18] = u2.z; wu[sg][f * TK + kk + 19] = u2.w;
+                }
+            }
+        }
+        simdgroup_barrier(mem_flags::mem_threadgroup);
+        const int kc = min(TK, int(a.n_embd) - k0);
+        for (int k = 0; k < kc; ++k)
+            for (int q = 0; q < NOUT; ++q) {
+                const half xv = XS[ulong(row0 + mi[q]) * ulong(a.n_embd) + ulong(k0 + k)];
+                ag[q] += float(xv) * float(wg[sg][fi[q] * TK + k]);
+                au[q] += float(xv) * float(wu[sg][fi[q] * TK + k]);
+            }
+        simdgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    for (int q = 0; q < NOUT; ++q) {
+        if (mi[q] >= valid) continue;
+        const float g = fmin(ag[q], a.limit), u = fmin(fmax(au[q], -a.limit), a.limit);
+        HS[ulong(row0 + mi[q]) * ulong(a.n_ff) + ulong(n0 + fi[q])] = half(g / (1.0f + exp(-g)) * u);
+    }
+}
+
+// ds4_mm_dn the same way: each simdgroup owns TN down-projection columns at n0, K = n_ff over HS, and the result goes to YEH
+// as fp32 (a row of n_embd per token).
+template <int F, int TM, int TN, int TK, int SG>
+kernel void ds4_mm_dn(device const uchar* W [[buffer(0)]], device half* YEH [[buffer(1)]], device const half* HS [[buffer(2)]],
+                      device const int4* tiles [[buffer(3)]], constant DsMmArgs& a [[buffer(4)]], constant uint& n_tiles [[buffer(5)]],
+                      uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                      ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    if (tg.y >= n_tiles || a.pad0 == 3u) return;
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    constexpr int NTH = SG * 32;
+    constexpr int NOUT = TM * TN / 32;
+    threadgroup half wd[SG][TN * TK];
+    threadgroup uint tab[fmt<F>::TAB];
+    load_tab<F>(tab, tid, NTH);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    const int4 tl = tiles[tg.y];
+    const int e = tl.x, row0 = tl.y, valid = tl.z, n0 = (int(tg.x) * SG + sg) * TN;
+    device const uchar* w0 = W + ulong(e) * a.stride + a.down_off + ulong(n0) * a.d_row;
+    float acc[NOUT];
+    int mi[NOUT], fi[NOUT];
+    for (int q = 0; q < NOUT; ++q) {
+        const int it = int(lane) + q * 32;
+        mi[q] = it / TN;
+        fi[q] = it % TN;
+        acc[q] = 0.0f;
+    }
+    for (int k0 = 0; k0 < int(a.n_ff); k0 += TK) {
+        if (a.pad0 == 1u || a.pad0 == 2u) {   // the bench probes: a tile of zeros, or of ones
+            const half v = a.pad0 == 2u ? half(1.0h) : half(0.0h);
+            for (int it = int(lane); it < TN * TK; it += 32) wd[sg][it] = v;
+        } else {
+            for (int kk = 0; kk < TK; kk += 16) {
+                for (int f = lane; f < TN; f += 32) {
+                    half4 w1, w2;
+                    W8<F>::run(w0 + ulong(f) * a.d_row, k0 + kk, tab, w1, w2);
+                    wd[sg][f * TK + kk + 0] = w1.x; wd[sg][f * TK + kk + 1] = w1.y;
+                    wd[sg][f * TK + kk + 2] = w1.z; wd[sg][f * TK + kk + 3] = w1.w;
+                    if (kk + 16 < TK) {
+                        wd[sg][f * TK + kk + 16] = w2.x; wd[sg][f * TK + kk + 17] = w2.y;
+                        wd[sg][f * TK + kk + 18] = w2.z; wd[sg][f * TK + kk + 19] = w2.w;
+                    }
+                }
+            }
+        }
+        simdgroup_barrier(mem_flags::mem_threadgroup);
+        const int kc = min(TK, int(a.n_ff) - k0);
+        for (int k = 0; k < kc; ++k)
+            for (int q = 0; q < NOUT; ++q) {
+                const half hv = HS[ulong(row0 + mi[q]) * ulong(a.n_ff) + ulong(k0 + k)];
+                acc[q] += float(hv) * float(wd[sg][fi[q] * TK + k]);
+            }
+        simdgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    for (int q = 0; q < NOUT; ++q)
+        if (mi[q] < valid) ((device float*) YEH)[ulong(row0 + mi[q]) * ulong(a.n_embd) + ulong(n0 + fi[q])] = acc[q];
+}
+
+#endif   // (STRATA_HAVE_MPP: the tensor pair, or the plain pair above)
 
 #define DS4_MM_INST(F, T)                                                                                                          template [[host_name("ds4_mm_gu_" #T)]] kernel decltype(ds4_mm_gu<F, 32, 32, 32, 4>) ds4_mm_gu<F, 32, 32, 32, 4>;               template [[host_name("ds4_mm_dn_" #T)]] kernel decltype(ds4_mm_dn<F, 32, 32, 32, 4>) ds4_mm_dn<F, 32, 32, 32, 4>;
 DS4_MM_INST(T_IQ1_M, 29)

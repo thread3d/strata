@@ -18,7 +18,8 @@ struct Ds4MvJob {
 };
 
 kernel void ds4_iq_mv(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                      uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -142,7 +143,8 @@ static inline void ds4_k_scale(const device uchar* q, int j, thread int& d, thre
 }
 
 kernel void ds4_iq_mv_k(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                        uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                        uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -418,7 +420,8 @@ static inline bool ds4_iq_group(constant Ds4IqJob& j, uint g, thread ulong& blob
 
 // gate_up_kernel<T, NE> (kGuRW = 1: a warp a row, a lane a sub-block): h = the clamped swiglu of the gate and the up
 kernel void ds4_iq_gu(constant Ds4IqJob& j [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                      uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     ulong blob;
     int m0, m1;
     if (!ds4_iq_group(j, tgp.y, blob, m0, m1)) return;
@@ -464,7 +467,8 @@ kernel void ds4_iq_gu(constant Ds4IqJob& j [[buffer(0)]], uint2 tgp [[threadgrou
 
 // down_kernel<T, NE> (kDnRW = 2: a warp two rows, 16 lanes a row): part = the down against the int8 h
 kernel void ds4_iq_dn(constant Ds4IqJob& j [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                      uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     ulong blob;
     int m0, m1;
     if (!ds4_iq_group(j, tgp.y, blob, m0, m1)) return;
@@ -580,7 +584,8 @@ static inline bool ds4_mx_group(constant Ds4MxJob& j, uint g, thread ulong& blob
 
 // mx_gate_up_kernel<NE> (a warp a row of the gate and of the up, a lane a block a step): h = the clamped swiglu
 kernel void ds4_mx_gu(constant Ds4MxJob& j [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                      uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     ulong blob;
     int m0, m1;
     if (!ds4_mx_group(j, tgp.y, blob, m0, m1)) return;
@@ -633,7 +638,8 @@ kernel void ds4_mx_gu(constant Ds4MxJob& j [[buffer(0)]], uint2 tgp [[threadgrou
 
 // mx_down_kernel<NE> (a warp a row of the down, a lane a block a step): part = the down against the int8 h
 kernel void ds4_mx_dn(constant Ds4MxJob& j [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                      uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     ulong blob;
     int m0, m1;
     if (!ds4_mx_group(j, tgp.y, blob, m0, m1)) return;
@@ -677,7 +683,8 @@ kernel void ds4_mx_dn(constant Ds4MxJob& j [[buffer(0)]], uint2 tgp [[threadgrou
 // lanes of 32) and read it a byte at a time.  Same results up to the order of the float sums.
 
 kernel void ds4_q5k_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                        uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                        uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -717,12 +724,13 @@ kernel void ds4_q5k_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[thre
         acc = fma(b.xd[blk * 8u + 2u * j], d * float(sc0) * float(sq0) - dmin * float(mm0) * float(sx0), acc);
         acc = fma(b.xd[blk * 8u + 2u * j + 1u], d * float(sc1) * float(sq1) - dmin * float(mm1) * float(sx1), acc);
     }
-    const float v = simd_sum(acc);
+    const float v = sum32(acc);
     if (lane == 0u) b.y[row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
 }
 
 kernel void ds4_iq2xxs_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                           uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                           uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -757,14 +765,15 @@ kernel void ds4_iq2xxs_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[t
         }
         acc = fma(b.xd[blk * 8u + ib] * db, float(sum), acc);
     }
-    const float v = simd_sum(acc);
+    const float v = sum32(acc);
     if (lane == 0u) b.y[row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
 }
 
 // The other low-bit expert types, one activation (see ds4_iq2xxs_mv1): a lane a 32-value sub-block, four blocks a pass.
 
 kernel void ds4_iq2xs_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                          uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                          uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -801,12 +810,13 @@ kernel void ds4_iq2xs_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[th
         }
         acc = fma(b.xd[blk * 8u + ib], db0 * float(s0) + db1 * float(s1), acc);
     }
-    const float v = simd_sum(acc);
+    const float v = sum32(acc);
     if (lane == 0u) b.y[row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
 }
 
 kernel void ds4_iq2s_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                         uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                         uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -845,12 +855,13 @@ kernel void ds4_iq2s_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[thr
         }
         acc = fma(b.xd[blk * 8u + ib], db0 * float(s0) + db1 * float(s1), acc);
     }
-    const float v = simd_sum(acc);
+    const float v = sum32(acc);
     if (lane == 0u) b.y[row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
 }
 
 kernel void ds4_iq3xxs_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                           uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                           uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -885,7 +896,7 @@ kernel void ds4_iq3xxs_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[t
         }
         acc = fma(b.xd[blk * 8u + ib] * db, float(sum), acc);
     }
-    const float v = simd_sum(acc);
+    const float v = sum32(acc);
     if (lane == 0u) b.y[row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
 }
 
@@ -897,14 +908,15 @@ kernel void ds4_iq3xxs_mv1(device const uchar* jobs [[buffer(0)]], uint2 tgp [[t
 template <uint NC>
 static inline void ds4_mvn_store(const device Ds4MvJob& b, uint row, ushort lane, thread float (&acc)[NC]) {
     for (uint c = 0; c < NC; ++c) {
-        const float v = simd_sum(acc[c]);
+        const float v = sum32(acc[c]);
         if (lane == 0u && int(c) < b.ncol) b.y[(size_t) c * b.ycs + row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
     }
 }
 
 template <uint NC>
 kernel void ds4_q5k_mvn(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                        uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                        uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -959,7 +971,8 @@ kernel void ds4_q5k_mvn(device const uchar* jobs [[buffer(0)]], uint2 tgp [[thre
 // packed_uchar4: a block starts only 2-byte aligned.  ggml's dequantize_row_q6_K arithmetic: d * scale * (q - 32).
 template <uint NC>
 kernel void ds4_q6k_mvn(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                        uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                        uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -1132,7 +1145,8 @@ static inline void ds4_w32_iq1m(const device uchar* p, uint ib, thread int (&w)[
 // ... and dot them with each column (the sub-block's four 8-value groups: l < 2 use db0, l >= 2 db1)
 template <uint NC, uint TYPE>
 kernel void ds4_iqg_mvn(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
-                        uint tid [[thread_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                        uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;

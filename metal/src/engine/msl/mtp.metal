@@ -15,13 +15,14 @@ struct RmsArgs { uint n; float eps; };
 // grid (rows), 256 threads
 kernel void mtp_rms(device const float* x [[buffer(0)]], device const float* w [[buffer(1)]], device float* y [[buffer(2)]],
                     constant RmsArgs& a [[buffer(3)]], uint3 tg [[threadgroup_position_in_grid]],
-                    ushort tid [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
-                    ushort lane [[thread_index_in_simdgroup]]) {
+                    ushort tid [[thread_index_in_threadgroup]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                    ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float part[8];
     device const float* xr = x + tg.x * a.n;
     float ss = 0.0f;
     for (uint d = tid; d < a.n; d += 256) ss = fma(xr[d], xr[d], ss);
-    ss = simd_sum(ss);
+    ss = sum32(ss);
     if (lane == 0) part[sg] = ss;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float tot = 0.0f;

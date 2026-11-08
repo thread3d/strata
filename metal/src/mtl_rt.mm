@@ -141,6 +141,26 @@ kernel void mpp_probe(device half* a [[buffer(0)]]) {
     return ps ? 1 : 0;
 }
 
+// bf16 (MSL 3's bfloat and simdgroup_bfloat8x8) arrived with Metal 3: a Metal without it cannot compile the DeepSeek
+// attention kernels that are written on it, so they are compiled only where this probe succeeds (macOS 13 and newer).
+static int probe_bf16(id<MTLDevice> dev) {
+    static const char* kSrc = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+kernel void bf16_probe(device float* o [[buffer(0)]]) {
+    bfloat x = bfloat(1.5f);
+    o[0] = float(x);
+}
+)MSL";
+    NSError* err = nil;
+    id<MTLLibrary> lib = [dev newLibraryWithSource:[NSString stringWithUTF8String:kSrc] options:nil error:&err];
+    if (!lib) return 0;
+    id<MTLFunction> fn = [lib newFunctionWithName:@"bf16_probe"];
+    if (!fn) return 0;
+    id<MTLComputePipelineState> ps = [dev newComputePipelineStateWithFunction:fn error:&err];
+    return ps ? 1 : 0;
+}
+
 #if defined(STRATA_DS4_RUNTIME)
 extern "C" void* ds4_gpu_residency_set() __attribute__((weak_import));
 #endif
@@ -148,6 +168,7 @@ struct Context::Impl {
     int simd = 32;         // the device's threads_per_simdgroup (see measure_simd_width)
     int grid_fence = 0;   // 1: this Metal has the Metal 3 device-scope fence (see probe_grid_fence)
     int mpp = 0;          // 1: this Metal has MetalPerformancePrimitives (see probe_mpp)
+    int bf16 = 0;         // 1: this Metal has bf16 (bfloat, simdgroup_bfloat8x8; see probe_bf16)
 #if defined(STRATA_DS4_RUNTIME)
     id<MTLCommandBuffer> cb_def = nil;   // the open command buffer single dispatches accumulate in
     id<MTLComputeCommandEncoder> enc_def = nil;
@@ -410,6 +431,7 @@ Context::Context() : impl_(new Impl) {
     impl_->simd = measure_simd_width(impl_->dev);
     impl_->grid_fence = probe_grid_fence(impl_->dev);
     impl_->mpp = probe_mpp(impl_->dev);
+    impl_->bf16 = probe_bf16(impl_->dev);
     impl_->q = [impl_->dev newCommandQueue];
 #if defined(STRATA_DS4_RUNTIME)
 #if STRATA_SDK_VERSION >= 150000
@@ -486,6 +508,7 @@ static inline T prefix_excl32(T v, ushort lane) {
     // strongest thing it does have is used - a threadgroup barrier over device memory.
     src += "#define STRATA_MSL_GRID_FENCE " + std::to_string(impl_->grid_fence) + "\n";
     src += "#define STRATA_HAVE_MPP " + std::to_string(impl_->mpp) + "\n";
+    src += "#define STRATA_HAVE_BF16 " + std::to_string(impl_->bf16) + "\n";
     src += R"MSL(
 #if STRATA_MSL_GRID_FENCE
 #define STRATA_DEVICE_FENCE() atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device)
