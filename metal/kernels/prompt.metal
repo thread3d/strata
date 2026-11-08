@@ -173,18 +173,18 @@ kernel void gemm_hc_up(device half* A [[buffer(0)]], device half* B [[buffer(1)]
     constexpr int AR = TM / TR, AC = TN / TC;
     threadgroup half sA[TM * KC];
     threadgroup half sB[TN * KC];
-    const int t0 = int(tg.y) * TM, n0 = int(tg.x) * TN;
+    const int gt0 = int(tg.y) * TM, gn0 = int(tg.x) * TN;
     const int r = int(tid) % TR, c = int(tid) / TR;
     float acc[AR][AC];
     for (int i = 0; i < AR; ++i)
         for (int j = 0; j < AC; ++j) acc[i][j] = 0.0f;
     for (int k0 = 0; k0 < g.K; k0 += KC) {
         for (int i = int(tid); i < TM * KC; i += NT) {
-            const int rr = i / KC, cc = i % KC, t = t0 + rr, k = k0 + cc;
+            const int rr = i / KC, cc = i % KC, t = gt0 + rr, k = k0 + cc;
             sA[i] = (t < g.M && k < g.K) ? A[ulong(t) * ulong(g.K) + ulong(k)] : half(0.0h);
         }
         for (int i = int(tid); i < TN * KC; i += NT) {
-            const int rr = i / KC, cc = i % KC, n = n0 + rr, k = k0 + cc;
+            const int rr = i / KC, cc = i % KC, n = gn0 + rr, k = k0 + cc;
             sB[i] = (n < g.N && k < g.K) ? B[ulong(n) * ulong(g.K) + ulong(k)] : half(0.0h);
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
