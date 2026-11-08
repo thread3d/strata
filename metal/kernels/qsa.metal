@@ -272,7 +272,7 @@ kernel void qsa_topk(device const float* scores [[buffer(0)]], device int* ids [
             else if (k == T) weq = cells;
         }
         // equal-key cells: the lowest first, `need` of them in total
-        const uint eq_before = simd_prefix_exclusive_sum(weq);
+        const uint eq_before = prefix_excl32(weq, lane);
         if (lane == 31) pref[sg] = eq_before + weq;
         threadgroup_barrier(mem_flags::mem_threadgroup);
         uint eq_sg = 0;
@@ -284,7 +284,7 @@ kernel void qsa_topk(device const float* scores [[buffer(0)]], device int* ids [
         uint take_eq = 0;
         if (weq && eq0 < need) take_eq = min(weq, need - eq0);
         const uint mine = w + take_eq;
-        const uint before = simd_prefix_exclusive_sum(mine);
+        const uint before = prefix_excl32(mine, lane);
         if (lane == 31) pref[sg] = before + mine;
         threadgroup_barrier(mem_flags::mem_threadgroup);
         uint off = base;

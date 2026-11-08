@@ -441,6 +441,19 @@ static inline float max32(float v) {
     for (ushort o = 16; o > 0; o >>= 1) v = max(v, simd_shuffle_xor(v, o));
     return v;
 }
+// The exclusive prefix sum over the thread's 32-lane group (lane: lane32(tid, lane_)).  simd_prefix_exclusive_sum scans the
+// whole hardware group, so on a 64-lane GPU the second logical group would start from the first one's total; a
+// Hillis-Steele scan over the low lane bits gives each group its own.
+template <typename T>
+static inline T prefix_excl32(T v, ushort lane) {
+    if (STRATA_SIMD_WIDTH == 32) return simd_prefix_exclusive_sum(v);
+    T inc = v;
+    for (ushort o = 1; o < 32; o <<= 1) {
+        const T n = simd_shuffle_up(inc, o);
+        inc += ((lane & 31u) >= o) ? n : T(0);
+    }
+    return inc - v;
+}
 )MSL";
     // The fence a kernel puts around a grid-wide handshake (a device atomic counter that says "the last threadgroup does
     // the rest").  Where the Metal has the device-scope fence that is the one the kernels were written with; an older Metal

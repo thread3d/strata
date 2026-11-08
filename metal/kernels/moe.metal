@@ -67,7 +67,7 @@ static inline void plan_body(device const int* ids, device const float* w, devic
     if (e < int(a.n_expert))
         for (int i = 0; i < ne; ++i) cnt += ids[i] == e;
     const int has = cnt > 0;
-    const int pg = simd_prefix_exclusive_sum(has), pe = simd_prefix_exclusive_sum(cnt);
+    const int pg = prefix_excl32(has, lane), pe = prefix_excl32(cnt, lane);
     if (lane == 31) { s_grp[sg] = pg + has; s_ent[sg] = pe + cnt; }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     if (tid == 0) {

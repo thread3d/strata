@@ -64,7 +64,7 @@ kernel void mm_scan(device const uint* bcnt [[buffer(0)]], device uint* boff [[b
             tot += bcnt[b * a.n_expert + e];
         }
     const uint nt = (tot + a.tm - 1) / a.tm, rows = nt * a.tm;
-    const uint pr = simd_prefix_exclusive_sum(rows), pt = simd_prefix_exclusive_sum(nt);
+    const uint pr = prefix_excl32(rows, lane), pt = prefix_excl32(nt, lane);
     if (lane == 31) { s_rows[sg] = pr + rows; s_tiles[sg] = pt + nt; }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     uint orow = 0, otile = 0, all_rows = 0, all_tiles = 0;

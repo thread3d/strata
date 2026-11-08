@@ -155,7 +155,7 @@ kernel void qsa_topk2(device const float* scores [[buffer(0)]], device int* ids 
         uint cnt = 0, ex = 0;
         if (tid < 256) {
             cnt = atomic_load_explicit(&hist[255 - tid], memory_order_relaxed);
-            ex = simd_prefix_exclusive_sum(cnt);
+            ex = prefix_excl32(cnt, lane);
             if (lane == 31) sgs[sg] = ex + cnt;
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -179,14 +179,14 @@ kernel void qsa_topk2(device const float* scores [[buffer(0)]], device int* ids 
         if (k > T) gt += cells;
         else if (k == T) eq += cells;
     }
-    const uint eqb = simd_prefix_exclusive_sum(eq);
+    const uint eqb = prefix_excl32(eq, lane);
     if (lane == 31) sgs2[sg] = eqb + eq;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     uint eq_before = eqb;
     for (int i = 0; i < int(sg); ++i) eq_before += sgs2[i];
     const uint eq_take = eq_before >= need ? 0u : min(eq, need - eq_before);
     const uint mine = gt + eq_take;
-    const uint mb = simd_prefix_exclusive_sum(mine);
+    const uint mb = prefix_excl32(mine, lane);
     if (lane == 31) sgs[sg] = mb + mine;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     uint off = mb;
