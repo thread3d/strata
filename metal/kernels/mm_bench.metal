@@ -34,7 +34,10 @@ MPP(bfloat, 64, 64, 4) MPP(bfloat, 128, 64, 4)
 template <typename T>
 kernel void sg_mm(device const T* A [[buffer(0)]], device const T* B [[buffer(1)]], device float* C [[buffer(2)]],
                   constant MmArgs& a [[buffer(3)]], uint3 tg [[threadgroup_position_in_grid]],
-                  ushort sg [[simdgroup_index_in_threadgroup]]) {
+                  ushort sg_ [[simdgroup_index_in_threadgroup]],
+                 ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_);   // the tile's own 32-lane group (the runtime's prologue)
+
     const int m0 = int(tg.y) * 64 + (sg >> 1) * 32, n0 = int(tg.x) * 64 + (sg & 1) * 32;
     simdgroup_matrix<float, 8, 8> acc[4][4];
     for (int i = 0; i < 4; ++i)
@@ -56,7 +59,10 @@ template [[host_name("sg_mm_float")]] kernel decltype(sg_mm<float>) sg_mm<float>
 // the element layout of single-simdgroup matmul2d cooperative tensors (right input, left input, destination) for a
 // TM x TN x TK descriptor: out[((which * 32 + lane) * 128 + i) * 4 + (0, 1)] = the two indices, [2] = capacity
 template <int TM, int TN, int TK>
-kernel void coop_layout(device int* out [[buffer(0)]], ushort lane [[thread_index_in_simdgroup]]) {
+kernel void coop_layout(device int* out [[buffer(0)]], ushort lane_ [[thread_index_in_simdgroup]],
+                 ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr auto desc = matmul2d_descriptor(TM, TN, TK, false, true, false, matmul2d_descriptor::mode::multiply_accumulate);
     matmul2d<desc, execution_simdgroup> op;
     auto r = op.template get_right_input_cooperative_tensor<half, half, float>();

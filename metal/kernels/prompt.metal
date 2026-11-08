@@ -11,8 +11,11 @@
 
 kernel void route_topk(device const float* logits [[buffer(0)]], device int* ids [[buffer(1)]],
                        device float* w [[buffer(2)]], constant uint& n_tok [[buffer(3)]],
-                       uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                       ushort lane [[thread_index_in_simdgroup]]) {
+                       uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                       ushort lane_ [[thread_index_in_simdgroup]],
+                 ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     const uint t = tg.x * 8 + sg;
     if (t >= n_tok) return;
     device const float* l = logits + ulong(t) * 512;
@@ -116,7 +119,9 @@ kernel void gr_norm_h(device float* R [[buffer(0)]], device const float* bo [[bu
                       device const float* inj [[buffer(2)]], device const float* w_norm [[buffer(3)]],
                       device half* xnh [[buffer(4)]], constant GrArgs& a [[buffer(5)]],
                       uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                      ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float part[8];
     const uint c = tg.x, t = tg.y, n = a.n_embd;
     device float* r = R + (t * a.hc + c) * n;
@@ -130,7 +135,7 @@ kernel void gr_norm_h(device float* R [[buffer(0)]], device const float* bo [[bu
         }
         ss = fma(v, v, ss);
     }
-    ss = simd_sum(ss);
+    ss = sum32(ss);
     if (lane == 0) part[sg] = ss;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float tot = 0.0f;

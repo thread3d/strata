@@ -26,7 +26,10 @@ kernel void qsa_attn_mm(device const half* qh [[buffer(0)]], device const char* 
                         device const char* vq [[buffer(2)]], device const half* ksc [[buffer(3)]],
                         device const half* vsc [[buffer(4)]], device const int* ids [[buffer(5)]],
                         device float* part [[buffer(6)]], constant QsaArgs& a [[buffer(7)]],
-                        uint3 tg [[threadgroup_position_in_grid]], ushort lane [[thread_index_in_simdgroup]]) {
+                        uint3 tg [[threadgroup_position_in_grid]], ushort lane_ [[thread_index_in_simdgroup]],
+                 ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int HPG = QH / QKV, NCH = (QBUDGET + QCH - 1) / QCH;
     threadgroup float s[16 * QCH];
     threadgroup half p[16 * QCH];
@@ -162,7 +165,9 @@ kernel void qsa_score_mm(device const float* qidx [[buffer(0)]], device const fl
                          device const float* dead [[buffer(2)]], device float* scores [[buffer(3)]],
                          constant QsaArgs& a [[buffer(4)]],
                          uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                         ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                         ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float ot[64 * 64];
     const int b0 = int(tg.x) * 64, t0 = int(tg.y) * 16;
     const uint nb_all = (a.pos0 + a.n_tok) / 4 + 1;   // blocks any token of the chunk can score
@@ -197,7 +202,7 @@ kernel void qsa_score_mm(device const float* qidx [[buffer(0)]], device const fl
             for (int h = 0; h < IH; ++h) {
                 float d = 0.0f;
                 for (int i = 0; i < 4; ++i) d = fma(qidx[(t * IH + h) * ID + lane + 32 * i], k[i], d);
-                d = simd_sum(d);
+                d = sum32(d);
                 s += max(d, 0.0f);
             }
             if ((n_kv & 3) != 0) s += 1e9f;
@@ -214,7 +219,9 @@ kernel void qsa_flash(device const half* qh [[buffer(0)]], device const char* kq
                       device const half* vsc [[buffer(4)]], device const int* ids [[buffer(5)]],
                       device const float* qfull [[buffer(6)]], device half* xqh [[buffer(7)]], constant QsaArgs& a [[buffer(8)]],
                       uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                      ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int HPG = QH / QKV;
     threadgroup float sp[4][16 * QCH];
     threadgroup half p[16 * QCH];

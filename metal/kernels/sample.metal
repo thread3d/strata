@@ -28,7 +28,9 @@ static inline void tg_argmax(thread float& bv, thread int& bi, threadgroup float
 kernel void argmax_part(device const float* logits [[buffer(0)]], device float* pv [[buffer(1)]],
                         device int* pi [[buffer(2)]], constant ArgArgs& a [[buffer(3)]],
                         uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                        ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                        ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float sv[8];
     threadgroup int si[8];
     const uint t = tg.y, per = (a.n_vocab + a.parts - 1) / a.parts;
@@ -47,7 +49,9 @@ kernel void argmax_part(device const float* logits [[buffer(0)]], device float* 
 kernel void argmax_final(device const float* pv [[buffer(0)]], device const int* pi [[buffer(1)]],
                          device int* out [[buffer(2)]], constant ArgArgs& a [[buffer(3)]],
                          uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                         ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                         ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float sv[8];
     threadgroup int si[8];
     const uint t = tg.x;

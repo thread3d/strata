@@ -26,7 +26,9 @@ kernel void gr_norm(device float* R [[buffer(0)]], device const float* bo [[buff
                     device const float* inj [[buffer(2)]], device const float* w_norm [[buffer(3)]],
                     device float* xn [[buffer(4)]], constant GrArgs& a [[buffer(5)]],
                     uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                    ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                    ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float part[8];
     const uint c = tg.x, t = tg.y, n = a.n_embd;
     device float* r = R + (t * a.hc + c) * n;
@@ -40,7 +42,7 @@ kernel void gr_norm(device float* R [[buffer(0)]], device const float* bo [[buff
         }
         ss = fma(v, v, ss);
     }
-    ss = simd_sum(ss);
+    ss = sum32(ss);
     if (lane == 0) part[sg] = ss;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float tot = 0.0f;
@@ -76,8 +78,11 @@ template <int SG, int KS, int F, int FI>
 kernel void gr_down_f(device const uchar* w_down [[buffer(0)]], device const uchar* w_inject [[buffer(1)]],
                     device const float* xn [[buffer(2)]], device float* lo [[buffer(3)]],
                     device float* inject [[buffer(4)]], constant GrArgs& a [[buffer(5)]],
-                    uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                    ushort lane [[thread_index_in_simdgroup]]) {
+                    uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                    ushort lane_ [[thread_index_in_simdgroup]],
+                 ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int RS = SG / KS;
     threadgroup float red[KS * RS * 8];
     threadgroup uint notab[1];
@@ -92,7 +97,7 @@ kernel void gr_down_f(device const uchar* w_down [[buffer(0)]], device const uch
     if (rr < int(a.hc_lr)) grd_acc<F>(w_down + ulong(rr) * rb, nin, ks, KS, lane, xn, acc, notab);
     else grd_acc<FI>(w_inject + ulong(rr - int(a.hc_lr)) * rbi, nin, ks, KS, lane, xn, acc, notab);
     for (int t = 0; t < GR_NTOK; ++t) {
-        const float v = simd_sum(acc[t]);
+        const float v = sum32(acc[t]);
         if (lane == 0) red[(ks * RS + rs) * 8 + t] = v;
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -116,8 +121,10 @@ template <int F>
 kernel void gr_up_f(device const uchar* w_up [[buffer(0)]], device const float* lo [[buffer(1)]],
                   device const float* xn [[buffer(2)]], device float* xp [[buffer(3)]],
                   constant GrArgs& a [[buffer(4)]],
-                  uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                  ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                  uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                  ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float gate[8][4][16];
     threadgroup float msum[8][16];
     threadgroup uint notab[1];

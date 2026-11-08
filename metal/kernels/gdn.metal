@@ -48,7 +48,9 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
                      device float* hist_out [[buffer(12)]],
                      device const uint* rinfo [[buffer(13), function_constant(gdn_rows)]],
                      uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                     ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int S = 128;
     threadgroup float qs[S], ks[S], vs[S];
     constexpr int RPT = S / IB;   // state rows per thread
@@ -98,7 +100,7 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
             hst[2] = in;
         }
         // L2 norms of q (threads 0..127 = simdgroups 0..3) and k (128..255 = 4..7)
-        const float ssq = simd_sum(cv * cv);
+        const float ssq = sum32(cv * cv);
         if (lane == 0) part[sg] = ssq;
         if (tid == 0) {
             const float v = alpha[tr * hv + h] + dt[h];
@@ -141,7 +143,7 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
         o = 0.0f;
         for (int k = 0; k < IB; ++k) o += red[k][j];
         o = o * scale;
-        const float osq = ib == 0 ? simd_sum(o * o) : 0.0f;
+        const float osq = ib == 0 ? sum32(o * o) : 0.0f;
         if (ib == 0 && lane == 0) part[cb] = osq;
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (ib == 0) {

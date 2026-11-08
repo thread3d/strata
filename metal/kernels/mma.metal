@@ -170,8 +170,10 @@ constant int MMA_NTOK [[function_constant(4)]];
 template <int F, int SG>
 kernel void gemv_mma(device const uchar* W [[buffer(0)]], device const float* x [[buffer(1)]],
                      device float* y [[buffer(2)]], constant MmaArgs& a [[buffer(3)]],
-                     uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                     ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                     uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                     ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int UNIT = fmt<F>::UNIT, UPC = 128 / UNIT, H = UNIT / 2;
     threadgroup float wt[SG][8 * 128];
     threadgroup float ct[SG][64];

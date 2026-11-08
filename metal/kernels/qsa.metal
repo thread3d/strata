@@ -56,7 +56,7 @@ struct QsaArgs {
 //   tail [4][128] f32 (slot = cell % 4), dead [128], pooled [max_cells / 4 + 1][128]
 
 static inline float tg_sum256(float v, threadgroup float* part, ushort sg, ushort lane, ushort nsg) {
-    v = simd_sum(v);
+    v = sum32(v);
     if (lane == 0) part[sg] = v;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float t = 0.0f;
@@ -101,7 +101,9 @@ kernel void qsa_prep(device const float* qfull [[buffer(0)]], device const float
                      device const int* mtab [[buffer(20)]],
                      device const uint* rinfo [[buffer(21), function_constant(qsa_rows)]],
                      uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                     ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float part[8];
     threadgroup float row[256];
     threadgroup float amax[8];
@@ -152,7 +154,7 @@ kernel void qsa_prep(device const float* qfull [[buffer(0)]], device const float
         float x = (isv ? vcur : kcur)[(t * QKV + h) * QD + tid];
         if (!isv) x = norm_rope(x, 0.0f, kn, row, part, tid, sg, lane, QD, a.eps, cs, absp, true, mtab);
         // int8 with an fp16 scale per 64 values: groups = simdgroup pairs (64 threads)
-        float m = simd_max(fabs(x));
+        float m = max32(fabs(x));
         if (lane == 0) amax[sg] = m;
         threadgroup_barrier(mem_flags::mem_threadgroup);
         const int g = tid >> 6;
@@ -177,8 +179,11 @@ kernel void qsa_score(device const float* qidx [[buffer(0)]], device const float
                       device const float* dead [[buffer(2)]], device float* scores [[buffer(3)]],
                       constant QsaArgs& a [[buffer(4)]],
                       device const uint* rinfo [[buffer(5), function_constant(qsa_rows)]],
-                      uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                      ushort lane [[thread_index_in_simdgroup]]) {
+                      uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                      ushort lane_ [[thread_index_in_simdgroup]],
+                 ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     const int t = int(tg.y);
     const uint n_kv = (qsa_rows ? rinfo[8 + 4 * t + 1] : a.pos0 + uint(t)) + 1, n_bid = n_kv >> 2;
     const uint b = tg.x * 8 + sg;
@@ -192,7 +197,7 @@ kernel void qsa_score(device const float* qidx [[buffer(0)]], device const float
     for (int h = 0; h < IH; ++h) {
         float d = 0.0f;
         for (int i = 0; i < 4; ++i) d = fma(qidx[(t * IH + h) * ID + lane + 32 * i], k[i], d);
-        d = simd_sum(d);
+        d = sum32(d);
         s += max(d, 0.0f);
     }
     if (b == n_bid && (n_kv & 3) != 0) s += 1e9f;
@@ -209,7 +214,9 @@ static inline uint okey(float f) {
 kernel void qsa_topk(device const float* scores [[buffer(0)]], device int* ids [[buffer(1)]],
                      constant QsaArgs& a [[buffer(2)]],
                      uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                     ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup atomic_uint hist[256];
     threadgroup uint sel[4];
     threadgroup uint pref[32];
@@ -299,7 +306,9 @@ kernel void qsa_attn(device const float* qcur [[buffer(0)]], device const char* 
                      device float* part [[buffer(6)]], constant QsaArgs& a [[buffer(7)]],
                      device const uint* rinfo [[buffer(8), function_constant(qsa_rows)]],
                      uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                     ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int HPG = QH / QKV;   // 12 query heads per kv head
     threadgroup float qs[HPG][QD];
     threadgroup float s[HPG][QCH];
@@ -330,7 +339,7 @@ kernel void qsa_attn(device const float* qcur [[buffer(0)]], device const char* 
         for (int h = 0; h < HPG; ++h) {
             float d = 0.0f;
             for (int i = 0; i < 8; ++i) d = fma(qs[h][lane * 8 + i], kv[i], d);
-            d = simd_sum(d);
+            d = sum32(d);
             if (lane == 0) s[h][c] = d * 0.0625f;
         }
     }
@@ -340,14 +349,14 @@ kernel void qsa_attn(device const float* qcur [[buffer(0)]], device const char* 
     for (int h = sg; h < HPG; h += 8) {
         float m = -INFINITY;
         for (int c = lane; c < nc; c += 32) m = max(m, s[h][c]);
-        m = simd_max(m);
+        m = max32(m);
         float l = 0.0f;
         for (int c = lane; c < nc; c += 32) {
             const float p = exp(s[h][c] - m);
             s[h][c] = p;
             l += p;
         }
-        l = simd_sum(l);
+        l = sum32(l);
         if (lane == 0) { mh[h] = m; lh[h] = l; }
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);

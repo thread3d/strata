@@ -48,8 +48,10 @@ kernel void mm_hist(device const int* ids [[buffer(0)]], device uint* bcnt [[buf
 kernel void mm_scan(device const uint* bcnt [[buffer(0)]], device uint* boff [[buffer(1)]],
                     device uint* eoff [[buffer(2)]], device int2* tiles [[buffer(3)]], device uint* meta [[buffer(4)]],
                     constant MmPlanArgs& a [[buffer(5)]],
-                    ushort tid [[thread_index_in_threadgroup]], ushort sg [[simdgroup_index_in_threadgroup]],
-                    ushort lane [[thread_index_in_simdgroup]]) {
+                    ushort tid [[thread_index_in_threadgroup]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                    ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup uint s_rows[32], s_tiles[32];
     // simdgroups past the launched ones must count 0 (512 threads fill only 16 of the 32 slots)
     if (tid < 32) { s_rows[tid] = 0; s_tiles[tid] = 0; }
@@ -852,8 +854,10 @@ template <int F, int TM, int TN, int TK, int SG>
 kernel void mm_gu3(device const uchar* W [[buffer(0)]], device const half* XS [[buffer(1)]],
                    device half* HS [[buffer(2)]], device const int2* tiles [[buffer(3)]], constant MmArgs& a [[buffer(4)]], device const uint* smap [[buffer(5)]],
                      device const uchar* W1 [[buffer(6)]], device const uchar* W2 [[buffer(7)]], device const uchar* W3 [[buffer(8)]],
-                   uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                   ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                   uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                   ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float ot[SG][TM * TN];
     threadgroup uint tab[fmt<F>::TAB];
     load_tab<F>(tab, tid, SG * 32);
@@ -933,8 +937,10 @@ template <int F, int TM, int TN, int TK, int SG>
 kernel void mm_down3(device const uchar* W [[buffer(0)]], device const half* HS [[buffer(1)]],
                      device float* YE [[buffer(2)]], device const int2* tiles [[buffer(3)]], constant MmArgs& a [[buffer(4)]], device const uint* smap [[buffer(5)]],
                      device const uchar* W1 [[buffer(6)]], device const uchar* W2 [[buffer(7)]], device const uchar* W3 [[buffer(8)]],
-                     uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
+                     uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
                      ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup uint tab[fmt<F>::TAB];
     load_tab<F>(tab, tid, SG * 32);
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -1001,8 +1007,10 @@ MM3_DN(T_Q2_0) MM3_DN(T_IQ4_NL) MM3_DN(T_Q5_1) MM3_DN(T_Q8_0)
 template <int F, int MS, int TN, int TK, int SG>
 kernel void mm_gu4(device const uchar* W [[buffer(0)]], device const half* XS [[buffer(1)]],
                    device half* HS [[buffer(2)]], device const int2* tiles [[buffer(3)]], constant MmArgs& a [[buffer(4)]],
-                   uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                   ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                   uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                   ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int TM = 16;
     threadgroup float ot[SG][TM * TN];
     threadgroup uint tab[fmt<F>::TAB];
@@ -1084,8 +1092,10 @@ MM4_GU(T_Q2_0) MM4_GU(T_IQ3_XXS) MM4_GU(T_IQ2_XXS) MM4_GU(T_IQ2_XS) MM4_GU(T_IQ2
 template <int F, int TN, int SG>
 kernel void mm_gu5(device const uchar* W [[buffer(0)]], device const half* XS [[buffer(1)]],
                    device half* HS [[buffer(2)]], device const int2* tiles [[buffer(3)]], constant MmArgs& a [[buffer(4)]],
-                   uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                   ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                   uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                   ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int TM = 16, TK = 32, BB = fmt<F>::BB, ROWS = SG * TN, RU = BB / 2;
     threadgroup float ot[SG][TM * TN];
     threadgroup uint tab[fmt<F>::TAB];

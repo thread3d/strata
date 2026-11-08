@@ -104,7 +104,8 @@ static inline void plan_body(device const int* ids, device const float* w, devic
 kernel void moe_plan(device const int* ids [[buffer(0)]], device const float* w [[buffer(1)]],
                      device int* plan [[buffer(2)]], constant MoeArgs& a [[buffer(3)]],
                      ushort tid [[thread_position_in_threadgroup]], ushort nth [[threads_per_threadgroup]],
-                     ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup int s_grp[32], s_ent[32];
     plan_body(ids, w, plan, a, tid, nth, sg, lane, s_grp, s_ent);
 }
@@ -116,7 +117,8 @@ kernel void moe_plan(device const int* ids [[buffer(0)]], device const float* w 
 kernel void moe_route(device const float* logits [[buffer(0)]], device int* ids [[buffer(1)]],
                       device float* w [[buffer(2)]], device int* plan [[buffer(3)]], constant MoeArgs& a [[buffer(4)]],
                       ushort tid [[thread_position_in_threadgroup]], ushort nth [[threads_per_threadgroup]],
-                      ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup int s_grp[32], s_ent[32];
     if (sg < a.n_tok) {
         device const float* l = logits + sg * 512;
@@ -209,8 +211,9 @@ kernel void moe_gu(device const uchar* W [[buffer(0)]], device const float* x [[
                    constant MoeArgs& a [[buffer(4)]], device const float* xs16 [[buffer(5)]],
                    device const uint* smap [[buffer(6)]], device const uchar* W1 [[buffer(7)]],
                    device const uchar* W2 [[buffer(8)]], device const uchar* W3 [[buffer(9)]],
-                   uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                   ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                   uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                   ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     constexpr int RG = 32 / LPR;
     threadgroup uint tab[fmt<F>::TAB];
     if (moe_probe != 1) {
@@ -276,8 +279,9 @@ kernel void moe_down(device const uchar* W [[buffer(0)]], device const float* h 
                      constant MoeArgs& a [[buffer(4)]], device const float* hs16 [[buffer(5)]],
                      device const uint* smap [[buffer(6)]], device const uchar* W1 [[buffer(7)]],
                      device const uchar* W2 [[buffer(8)]], device const uchar* W3 [[buffer(9)]],
-                     uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                     ushort lane [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+                     uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                     ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     constexpr int RG = 32 / LPR;
     threadgroup uint tab[fmt<F>::TAB];
     load_tab<F>(tab, tid, SG * 32);

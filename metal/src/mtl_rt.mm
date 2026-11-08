@@ -96,11 +96,35 @@ kernel void simd_width(device uint* out [[buffer(0)]], uint w [[threads_per_simd
     return w > 0 ? w : 32;
 }
 
+// The Metal 3 device-scope fence (atomic_thread_fence(mem_flags, memory_order, thread_scope_device)) is not in an older
+// Metal: macOS 11's <metal_types> declares a memory_order enum holding memory_order_relaxed alone, and its only barriers are
+// threadgroup_barrier / simdgroup_barrier.  So the kernels ask for it through one macro, and this decides which form they
+// get: a kernel using the three-argument fence is compiled once here, and its success is the answer.  A compiler that takes
+// it (macOS 13 and newer) keeps exactly the call the kernels used to make.
+static int probe_grid_fence(id<MTLDevice> dev) {
+    static const char* kSrc = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+kernel void grid_fence(device atomic_uint* c [[buffer(0)]], uint t [[thread_position_in_grid]]) {
+    atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device);
+    if (t == 0u) atomic_store_explicit(c, 1u, memory_order_relaxed);
+}
+)MSL";
+    NSError* err = nil;
+    id<MTLLibrary> lib = [dev newLibraryWithSource:[NSString stringWithUTF8String:kSrc] options:nil error:&err];
+    if (!lib) return 0;
+    id<MTLFunction> fn = [lib newFunctionWithName:@"grid_fence"];
+    if (!fn) return 0;
+    id<MTLComputePipelineState> ps = [dev newComputePipelineStateWithFunction:fn error:&err];
+    return ps ? 1 : 0;
+}
+
 #if defined(STRATA_DS4_RUNTIME)
 extern "C" void* ds4_gpu_residency_set() __attribute__((weak_import));
 #endif
 struct Context::Impl {
-    int simd = 32;   // the device's threads_per_simdgroup (see measure_simd_width)
+    int simd = 32;         // the device's threads_per_simdgroup (see measure_simd_width)
+    int grid_fence = 0;   // 1: this Metal has the Metal 3 device-scope fence (see probe_grid_fence)
 #if defined(STRATA_DS4_RUNTIME)
     id<MTLCommandBuffer> cb_def = nil;   // the open command buffer single dispatches accumulate in
     id<MTLComputeCommandEncoder> enc_def = nil;
@@ -361,6 +385,7 @@ Context::Context() : impl_(new Impl) {
         std::exit(2);
     }
     impl_->simd = measure_simd_width(impl_->dev);
+    impl_->grid_fence = probe_grid_fence(impl_->dev);
     impl_->q = [impl_->dev newCommandQueue];
 #if defined(STRATA_DS4_RUNTIME)
 #if STRATA_SDK_VERSION >= 150000
@@ -393,8 +418,42 @@ uint64_t Context::max_buffer_length() const { return [impl_->dev maxBufferLength
 
 int Context::compile(const std::vector<std::string>& files, const std::string& prelude, bool fast_math) {
     std::string src = prelude + "\n#include <metal_stdlib>\nusing namespace metal;\n";
-    // the device's lane width, for the kernels whose tiles are written for 32-lane groups (quant.metal: sg32 / lane32 / sum32)
+    // The device's lane width and the helpers that go with it.  Every tile in these kernels is written for a group of 32
+    // lanes (32/LPR rows side by side, one row per LPR consecutive lanes, a reduction over those LPR lanes).  An Apple GPU's
+    // simdgroup IS those 32 lanes, so the built-ins say it directly; an AMD card's simdgroup is 64 lanes wide (measured:
+    // threads_per_simdgroup = 64 on a Radeon RX 580, Metal 2, macOS 11.7), where thread_index_in_simdgroup runs 0..63 and
+    // simdgroup_index_in_threadgroup counts the wider group.  So a kernel takes its group and lane from
+    // thread_index_in_threadgroup (sg32 / lane32) and reduces over 32 lanes with a tree over the low lane bits (sum32 /
+    // max32).  On a 32-lane GPU every one of them folds back to exactly the built-in it stands for, so the Apple Silicon
+    // build compiles to what it compiled to before.  This text is in front of every library, including the ones that are
+    // not compiled with quant.metal (gdn, qsa, sample).
     src += "#define STRATA_SIMD_WIDTH " + std::to_string(impl_->simd) + "\n";
+    src += R"MSL(
+static inline ushort lane32(ushort tid, ushort lane) { return STRATA_SIMD_WIDTH == 32 ? lane : ushort(tid & 31u); }
+static inline ushort sg32(ushort tid, ushort sg) { return STRATA_SIMD_WIDTH == 32 ? sg : ushort(tid >> 5); }
+static inline float sum32(float v) {
+    if (STRATA_SIMD_WIDTH == 32) return simd_sum(v);
+    for (ushort o = 16; o > 0; o >>= 1) v += simd_shuffle_xor(v, o);
+    return v;
+}
+static inline float max32(float v) {
+    if (STRATA_SIMD_WIDTH == 32) return simd_max(v);
+    for (ushort o = 16; o > 0; o >>= 1) v = max(v, simd_shuffle_xor(v, o));
+    return v;
+}
+)MSL";
+    // The fence a kernel puts around a grid-wide handshake (a device atomic counter that says "the last threadgroup does
+    // the rest").  Where the Metal has the device-scope fence that is the one the kernels were written with; an older Metal
+    // (macOS 11: memory_order holds relaxed alone, no atomic_thread_fence) has no cross-threadgroup fence at all, so the
+    // strongest thing it does have is used - a threadgroup barrier over device memory.
+    src += "#define STRATA_MSL_GRID_FENCE " + std::to_string(impl_->grid_fence) + "\n";
+    src += R"MSL(
+#if STRATA_MSL_GRID_FENCE
+#define STRATA_DEVICE_FENCE() atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device)
+#else
+#define STRATA_DEVICE_FENCE() threadgroup_barrier(mem_flags::mem_device)
+#endif
+)MSL";
     if (!ggml_common_path.empty() && prelude.find("NO_GGML_COMMON") == std::string::npos) {
         src += "#define GGML_COMMON_DECL_METAL\n#define GGML_COMMON_IMPL_METAL\n";
         src += read_file(ggml_common_path);

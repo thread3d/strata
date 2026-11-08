@@ -50,7 +50,9 @@ kernel void gdn_pre(device const float* qkv [[buffer(0)]], device const float* h
                     device float* vc [[buffer(9)]], device float2* gb [[buffer(10)]], device float* kq [[buffer(11)]],
                     device float* hist_out [[buffer(12)]], constant GdnPArgs& a [[buffer(13)]],
                     uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                    ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                    ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int S = 128;
     threadgroup float part[8];
     threadgroup float prod[S];
@@ -66,7 +68,7 @@ kernel void gdn_pre(device const float* qkv [[buffer(0)]], device const float* h
             hist_out[ch * 3 + k] = src >= 0 ? qkv[src * QL + ch] : hist[ch * 3 + (src + 3)];
         }
     if (x < hk_n) {
-        const float ssq = simd_sum(cv * cv);
+        const float ssq = sum32(cv * cv);
         if (lane == 0) part[sg] = ssq;
         threadgroup_barrier(mem_flags::mem_threadgroup);
         const int base = tid < 128 ? 0 : 4;
@@ -80,7 +82,7 @@ kernel void gdn_pre(device const float* qkv [[buffer(0)]], device const float* h
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid >= 128) {
             kn[(t * hk_n + x) * S + tid - 128] = nv;
-            const float p = simd_sum(nv * prod[tid - 128]);
+            const float p = sum32(nv * prod[tid - 128]);
             if (lane == 0) part[sg] = p;   // simdgroups 4..7 (q's slots 0..3 are read already)
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -105,7 +107,9 @@ kernel void gdn_scan_t(device float* state [[buffer(0)]], device const float4* q
                        device const float2* gb [[buffer(4)]], device const float* kq [[buffer(5)]],
                        device float* o [[buffer(6)]], constant GdnPArgs& a [[buffer(7)]],
                        uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                       ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                       ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int S = 128, NB = 4 / CB;
     threadgroup float4 qs[TB][32], ks[TB][32];
     const int h = int(tg.x) / NB, hk = h % int(a.h_k), hv = int(a.h_v), hkn = int(a.h_k);
@@ -172,7 +176,9 @@ kernel void gdn_scan_r(device float* state [[buffer(0)]], device const float4* q
                        device const float2* gb [[buffer(4)]], device const float* kq [[buffer(5)]],
                        device float* o [[buffer(6)]], constant GdnPArgs& a [[buffer(7)]],
                        uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                       ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                       ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int S = 128, R = S / IB, R4 = R / 4;
     threadgroup float4 qs[TB][32], ks[TB][32];
     threadgroup float2 red[2][IB][32];
@@ -245,7 +251,9 @@ kernel void gdn_scan_v(device float* state [[buffer(0)]], device const float4* q
                        device const float2* gb [[buffer(4)]], device const float* kq [[buffer(5)]],
                        device float* o [[buffer(6)]], constant GdnPArgs& a [[buffer(7)]],
                        uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                       ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                       ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int S = 128, IB = 8, TB = 16;
     threadgroup float4 qs[TB][32], ks[TB][32];
     threadgroup float2 red[2][IB][32];
@@ -307,12 +315,14 @@ kernel void gdn_post(device const float* o [[buffer(0)]], device const float* z 
                      device const float* gamma [[buffer(2)]], device half* yh [[buffer(3)]], device float* y [[buffer(4)]],
                      constant GdnPArgs& a [[buffer(5)]],
                      uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                     ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     threadgroup float part[4];
     const int h = int(tg.x), t = int(tg.y), hv = int(a.h_v);
     const uint i = uint(t * hv + h) * 128 + tid;
     const float ov = o[i];
-    const float ss = simd_sum(ov * ov);
+    const float ss = sum32(ov * ov);
     if (lane == 0) part[sg] = ss;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     const float tot = (part[0] + part[1]) + (part[2] + part[3]);
@@ -350,7 +360,9 @@ kernel void gdn_scan_f(device float* state [[buffer(0)]], device const float4* q
                        device const float* z [[buffer(6)]], device const float* gamma [[buffer(7)]],
                        device half* yh [[buffer(8)]], device float* y32 [[buffer(9)]], constant GdnPArgs& a [[buffer(10)]],
                        uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                       ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                       ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int S = 128, IB = 4, R = S / IB, R4 = R / 4;
     threadgroup float4 qs[TB][32], ks[TB][32];
     threadgroup float2 red[2][16][32];
@@ -406,7 +418,7 @@ kernel void gdn_scan_f(device float* state [[buffer(0)]], device const float4* q
             if (ib == 0) {
                 const float ov = fma(g, s.y, delta * g_b.z) * scale;
                 ot[tt][j] = ov;
-                const float ss = simd_sum(ov * ov);
+                const float ss = sum32(ov * ov);
                 if (lane == 0) osq[tt][cb] = ss;
             }
 #pragma clang loop unroll(full)
@@ -502,8 +514,11 @@ kernel void gdn_cstate(device float* state [[buffer(0)]], device const float* qn
                        device const float* kn [[buffer(2)]], device const float* U [[buffer(3)]],
                        device const float* W [[buffer(4)]], device const float* lgo [[buffer(5)]],
                        device float* delta [[buffer(6)]], device float* o [[buffer(7)]], constant GdnPArgs& a [[buffer(8)]],
-                       uint3 tg [[threadgroup_position_in_grid]], ushort sg [[simdgroup_index_in_threadgroup]],
-                       ushort lane [[thread_index_in_simdgroup]]) {
+                       uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
+                       ushort lane_ [[thread_index_in_simdgroup]],
+                 ushort tid [[thread_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int S = 128, RB = 16;
     threadgroup float red[8][16][32];
     threadgroup float dl[GC][32];
@@ -688,7 +703,9 @@ kernel void gdn_cstate2(device float* state [[buffer(0)]], device const float* q
                         device const float* W [[buffer(4)]], device const float* lgo [[buffer(5)]],
                         device const float* Mo [[buffer(6)]], device float* o [[buffer(7)]], constant GdnPArgs& a [[buffer(8)]],
                         uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                        ushort sg [[simdgroup_index_in_threadgroup]]) {
+                        ushort sg_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort sg = sg32(tid, sg_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int S = 128;
     threadgroup float Sm[S][32];
     threadgroup float Dl[GC][32];

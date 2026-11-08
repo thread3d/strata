@@ -61,7 +61,9 @@ kernel void router_route(device const uchar* W [[buffer(0)]], device const float
                          device atomic_uint* counter [[buffer(9)]],
                          uint tgx [[threadgroup_position_in_grid]], uint ngx [[threadgroups_per_grid]],
                          ushort tid [[thread_index_in_threadgroup]], ushort nth [[threads_per_threadgroup]],
-                         ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                         ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+
     constexpr int UNIT = fmt<F>::UNIT;
     threadgroup uint tab[fmt<F>::TAB];
     threadgroup int s_grp[32], s_ent[32];
@@ -90,12 +92,12 @@ kernel void router_route(device const uchar* W [[buffer(0)]], device const float
         if (lane == 0 && row < int(ga.n_out)) logits[t * int(ga.y_stride) + row] = v;
     }
     // the last threadgroup to finish routes
-    atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device);
+    STRATA_DEVICE_FENCE();   // the Metal 3 device-scope fence where the Metal has it (mtl_rt.mm)
     threadgroup_barrier(mem_flags::mem_device);
     if (tid == 0) last = atomic_fetch_add_explicit(counter, 1u, memory_order_relaxed) == ngx - 1 ? 1u : 0u;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     if (!last) return;
-    atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device);
+    STRATA_DEVICE_FENCE();   // the Metal 3 device-scope fence where the Metal has it (mtl_rt.mm)
     route_body(logits, ids, w, plan, a, tid, nth, sg, lane, s_grp, s_ent);
     if (tid == 0) atomic_store_explicit(counter, 0u, memory_order_relaxed);
 }
