@@ -1221,7 +1221,9 @@ bool sparse_attn(const float* q, const uint16_t* win, const void* ckv, const int
     while (G > 1 && (heads / G) * T < 64) G /= 2;   // keep enough threadgroups on the GPU (CUDA's 2 * SMs, in effect)
 
     static const int attn_mode = std::getenv("DS4_ATTN_MX") ? std::atoi(std::getenv("DS4_ATTN_MX")) : 1;   // 1 (default): matrix-unit kernel; 0: the scalar one; 2: both, compare
-    const bool use_mx = ckv_fmt == 2 && G == 8 && attn_mode != 0;
+    // ds4_sparse_attn_mx computes in bf16 (Metal 3's bfloat / simdgroup_bfloat8x8), which a Metal older than macOS 13 has
+    // not: that Metal takes ds4_sparse_attn_g8, the same format's other kernel.
+    const bool use_mx = ckv_fmt == 2 && G == 8 && attn_mode != 0 && g_cx->has_bf16();
     // DS4_ATTN2Q: two queries a threadgroup, sharing the staged keys (the staging is ~20 % of a 32K prompt and is per
     // key, so sharing halves it).  Verified bit-exact in tools/ds4/attn_harness, including the causal shape where the
     // two rows have different window lengths.
@@ -2695,6 +2697,10 @@ extern "C" bool ds4_ctx_fill(void* dst, int value, size_t n) {
     const size_t page = 16384;
     const size_t base = (size_t) ((uintptr_t) hd) & ~(size_t) (page - 1);
     const size_t end = (size_t) ((uintptr_t) hd) + n;
+    // The wrap covers whole pages from the base, and a page-aligned base can sit before the allocation; a range that leaves
+    // its allocation cannot be bound as one buffer (and the wrap ends the process when the driver refuses it), so a fill that
+    // is not all inside one allocation is left to the caller's own path.
+    if (ds4_gpu_alloc_remaining && ds4_gpu_alloc_remaining((const void*) base) < end - base) return false;
     mtl::Buffer bd = g_cx->wrap((void*) base, wrap_len(base, end - base));
     if (!bd.handle) return false;
     mtl::Pipeline pl;

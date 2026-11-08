@@ -453,6 +453,7 @@ Context::~Context() { delete impl_; }
 std::string Context::device_name() const { return [[impl_->dev name] UTF8String]; }
 int Context::simd_width() const { return impl_->simd; }
 bool Context::has_mpp() const { return impl_->mpp != 0; }
+bool Context::has_bf16() const { return impl_->bf16 != 0; }
 bool Context::has_family_apple(int n) const {
     return [impl_->dev supportsFamily:(MTLGPUFamily)(MTLGPUFamilyApple1 + (n - 1))];
 }
