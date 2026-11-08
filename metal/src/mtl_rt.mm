@@ -119,12 +119,35 @@ kernel void grid_fence(device atomic_uint* c [[buffer(0)]], uint t [[thread_posi
     return ps ? 1 : 0;
 }
 
+// MetalPerformancePrimitives (matmul2d, tensor, the M5's neural accelerators) is a header from a much newer Xcode than the
+// macOS 12.1 SDK on an Intel Mac: there, the densem_mm / prompt / moe_mm kernels that are written on top of it cannot even be
+// compiled.  One compile of a kernel that includes it answers for this Metal, and the kernels then take their portable form
+// (dense_mm.metal: gemm_f16 without the tensor API).  A Mac whose Metal has it keeps exactly the code it has today.
+static int probe_mpp(id<MTLDevice> dev) {
+    static const char* kSrc = R"MSL(
+#include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
+using namespace mpp::tensor_ops;
+kernel void mpp_probe(device half* a [[buffer(0)]]) {
+    tensor<device half, dextents<int32_t, 2>, tensor_inline> t(a, dextents<int32_t, 2>(8, 8));
+    (void) t;
+}
+)MSL";
+    NSError* err = nil;
+    id<MTLLibrary> lib = [dev newLibraryWithSource:[NSString stringWithUTF8String:kSrc] options:nil error:&err];
+    if (!lib) return 0;
+    id<MTLFunction> fn = [lib newFunctionWithName:@"mpp_probe"];
+    if (!fn) return 0;
+    id<MTLComputePipelineState> ps = [dev newComputePipelineStateWithFunction:fn error:&err];
+    return ps ? 1 : 0;
+}
+
 #if defined(STRATA_DS4_RUNTIME)
 extern "C" void* ds4_gpu_residency_set() __attribute__((weak_import));
 #endif
 struct Context::Impl {
     int simd = 32;         // the device's threads_per_simdgroup (see measure_simd_width)
     int grid_fence = 0;   // 1: this Metal has the Metal 3 device-scope fence (see probe_grid_fence)
+    int mpp = 0;          // 1: this Metal has MetalPerformancePrimitives (see probe_mpp)
 #if defined(STRATA_DS4_RUNTIME)
     id<MTLCommandBuffer> cb_def = nil;   // the open command buffer single dispatches accumulate in
     id<MTLComputeCommandEncoder> enc_def = nil;
@@ -386,6 +409,7 @@ Context::Context() : impl_(new Impl) {
     }
     impl_->simd = measure_simd_width(impl_->dev);
     impl_->grid_fence = probe_grid_fence(impl_->dev);
+    impl_->mpp = probe_mpp(impl_->dev);
     impl_->q = [impl_->dev newCommandQueue];
 #if defined(STRATA_DS4_RUNTIME)
 #if STRATA_SDK_VERSION >= 150000
@@ -460,6 +484,7 @@ static inline T prefix_excl32(T v, ushort lane) {
     // (macOS 11: memory_order holds relaxed alone, no atomic_thread_fence) has no cross-threadgroup fence at all, so the
     // strongest thing it does have is used - a threadgroup barrier over device memory.
     src += "#define STRATA_MSL_GRID_FENCE " + std::to_string(impl_->grid_fence) + "\n";
+    src += "#define STRATA_HAVE_MPP " + std::to_string(impl_->mpp) + "\n";
     src += R"MSL(
 #if STRATA_MSL_GRID_FENCE
 #define STRATA_DEVICE_FENCE() atomic_thread_fence(mem_flags::mem_device, memory_order_seq_cst, thread_scope_device)

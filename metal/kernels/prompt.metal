@@ -155,6 +155,7 @@ kernel void gemm_hc_up(device half* A [[buffer(0)]], device half* B [[buffer(1)]
                        constant EpiArgs& e [[buffer(6)]], uint3 tg [[threadgroup_position_in_grid]],
                        ushort tid [[thread_index_in_threadgroup]]) {
     threadgroup float ot[TM * TN];
+#if STRATA_HAVE_MPP
     tensor<device half, dextents<int32_t, 2>, tensor_inline> tA(A, dextents<int32_t, 2>(g.K, g.M));
     tensor<device half, dextents<int32_t, 2>, tensor_inline> tB(B, dextents<int32_t, 2>(g.K, g.N));
     tensor<threadgroup float, dextents<int32_t, 2>, tensor_inline> tO(ot, dextents<int32_t, 2>(TN, TM));
@@ -163,6 +164,44 @@ kernel void gemm_hc_up(device half* A [[buffer(0)]], device half* B [[buffer(1)]
     auto mA = tA.slice(0, int(tg.y) * TM);
     auto mB = tB.slice(0, int(tg.x) * TN);
     op.run(mA, mB, tO);
+#else
+    // The same TM x TN tile of G into threadgroup memory without MetalPerformancePrimitives: dense_mm.metal's portable GEMM
+    // (K in steps of KC, both operand tiles staged), writing ot[m][col] the way the epilogue below reads it.
+    constexpr int NT = 32 * SG;      // threads the host launches
+    constexpr int KC = 16;
+    constexpr int TR = NT / 16, TC = 16;
+    constexpr int AR = TM / TR, AC = TN / TC;
+    threadgroup half sA[TM * KC];
+    threadgroup half sB[TN * KC];
+    const int t0 = int(tg.y) * TM, n0 = int(tg.x) * TN;
+    const int r = int(tid) % TR, c = int(tid) / TR;
+    float acc[AR][AC];
+    for (int i = 0; i < AR; ++i)
+        for (int j = 0; j < AC; ++j) acc[i][j] = 0.0f;
+    for (int k0 = 0; k0 < g.K; k0 += KC) {
+        for (int i = int(tid); i < TM * KC; i += NT) {
+            const int rr = i / KC, cc = i % KC, t = t0 + rr, k = k0 + cc;
+            sA[i] = (t < g.M && k < g.K) ? A[ulong(t) * ulong(g.K) + ulong(k)] : half(0.0h);
+        }
+        for (int i = int(tid); i < TN * KC; i += NT) {
+            const int rr = i / KC, cc = i % KC, n = n0 + rr, k = k0 + cc;
+            sB[i] = (n < g.N && k < g.K) ? B[ulong(n) * ulong(g.K) + ulong(k)] : half(0.0h);
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        const int kc = min(KC, g.K - k0);
+        for (int k = 0; k < kc; ++k) {
+            half av[AR];
+            for (int i = 0; i < AR; ++i) av[i] = sA[(r + i * TR) * KC + k];
+            for (int j = 0; j < AC; ++j) {
+                const half bv = sB[(c + j * TC) * KC + k];
+                for (int i = 0; i < AR; ++i) acc[i][j] += float(av[i]) * float(bv);
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    for (int i = 0; i < AR; ++i)
+        for (int j = 0; j < AC; ++j) ot[(r + i * TR) * TN + (c + j * TC)] = acc[i][j];
+#endif
     threadgroup_barrier(mem_flags::mem_threadgroup);
     const int hc = int(e.hc), n = int(e.n_embd), DPT = TN / hc;
     const int t0 = int(tg.y) * TM, d0 = int(tg.x) * DPT;
