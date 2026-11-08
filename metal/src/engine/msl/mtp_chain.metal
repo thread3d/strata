@@ -23,13 +23,14 @@ struct PickArgs {
 kernel void mtp_pick(device const float* lg [[buffer(0)]], device const int* pick [[buffer(1)]],
                      device const int* vmap [[buffer(2)]], device int* dout [[buffer(3)]], device float* dprob [[buffer(4)]],
                      constant PickArgs& a [[buffer(5)]], ushort tid [[thread_index_in_threadgroup]],
-                     ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float part[32];
     const int di = pick[0];
     const float mx = lg[di];
     float s = 0.0f;
     for (uint i = tid; i < a.nv; i += 1024) s += exp(lg[i] - mx);
-    s = simd_sum(s);
+    s = sum32(s);
     if (lane == 0) part[sg] = s;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     if (tid == 0) {

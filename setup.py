@@ -8872,6 +8872,12 @@ def mac_control_setup(a) -> int:
         say("  (the Python that runs this is an Intel build running through Rosetta: Strata works, and the Apple Silicon Python "
             "from python.org or Homebrew in /opt/homebrew is a little faster to start)")
     problems = MF.mac_problems(info, need_compiler=False)       # the app compiles nothing: no Command Line Tools needed
+    # STRATA_METAL_UNSUPPORTED_MAC=1 (metal/setup_mac.py's --unsupported-mac) lifts the two hardware refusals here too: the
+    # model files of a Mac the engine does not support can still be installed and prepared (docs/MAC.md, "An Intel Mac")
+    if os.environ.get("STRATA_METAL_UNSUPPORTED_MAC") == "1":
+        for p in MF.mac_problems(info, need_compiler=False):
+            warn(p + " - installing anyway (the engine will not run on this Mac)")
+        problems = []
     for p in problems:
         warn(p)
     data, elsewhere = data_folder_for(a)
@@ -9045,6 +9051,10 @@ def mac_dsv41_setup(a) -> int:
     ram = float(info["ram_gb"] or ram_gb())
     ok(f"{info['chip']}, {ram:.0f} GB unified memory, macOS {info['macos'] or '?'}")
     problems = MF.mac_problems(info, need_compiler=False)       # the app compiles nothing: no Command Line Tools needed
+    if os.environ.get("STRATA_METAL_UNSUPPORTED_MAC") == "1":    # (as in install_mac: the files can be installed here)
+        for p in MF.mac_problems(info, need_compiler=False):
+            warn(p + " - installing anyway (the engine will not run on this Mac)")
+        problems = []
     for p in problems:
         warn(p)
     data, _elsewhere = data_folder_for(a)
