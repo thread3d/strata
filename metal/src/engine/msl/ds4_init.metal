@@ -115,8 +115,9 @@ static inline float ds4_e2m1_rt(float v) {   // E2M1 magnitudes 0 .5 1 1.5 2 3 4
 
 kernel void ds4_finish(device float* x [[buffer(0)]], constant long& stride [[buffer(1)]],
                        constant uint& len [[buffer(2)]], constant Ds4Finish& f [[buffer(3)]],
-                       uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                       ushort w [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
+                       uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                       ushort w_ [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
+    const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[8];
     device float* v = x + (long) b * stride;
@@ -213,8 +214,9 @@ kernel void ds4_hc_post(device const float* y [[buffer(0)]], device float* h [[b
 kernel void ds4_hc_mix_scale(device const float* h [[buffer(0)]], device float* mixes [[buffer(1)]],
                              constant uint& hcdim [[buffer(2)]], constant uint& n_mix [[buffer(3)]],
                              constant float& eps [[buffer(4)]], uint b [[threadgroup_position_in_grid]],
-                             uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                             ushort w [[simdgroup_index_in_threadgroup]]) {
+                             uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                             ushort w_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[8];
     const device float* x = h + (size_t) b * hcdim;
@@ -232,8 +234,9 @@ kernel void ds4_hc_mix_scale(device const float* h [[buffer(0)]], device float* 
 kernel void ds4_hc_mix(device const float* h [[buffer(0)]], device const float* fn [[buffer(1)]],
                        device float* mixes [[buffer(2)]], constant uint& hcdim [[buffer(3)]],
                        constant float& eps [[buffer(4)]], uint2 tgp [[threadgroup_position_in_grid]],
-                       uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                       ushort w [[simdgroup_index_in_threadgroup]]) {
+                       uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                       ushort w_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[8];
     const uint m = tgp.x, t = tgp.y;
@@ -257,8 +260,9 @@ kernel void ds4_hc_mix_all(device const float* h [[buffer(0)]], device const flo
                            device float* mixes [[buffer(2)]], constant uint& hcdim [[buffer(3)]],
                            constant float& eps [[buffer(4)]], constant uint& n_mix [[buffer(5)]],
                            uint t [[threadgroup_position_in_grid]],
-                           uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                           ushort w [[simdgroup_index_in_threadgroup]]) {
+                           uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                           ushort w_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[8];
     const device float* x = h + (size_t) t * hcdim;
@@ -311,7 +315,8 @@ kernel void ds4_hc_mix_split(device const float* h [[buffer(0)]], device const f
                              device float* comb [[buffer(10)]], constant uint& hc [[buffer(11)]],
                              constant uint& iters [[buffer(12)]], constant float& hc_eps [[buffer(13)]],
                              uint t [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
-                             ushort lane_ [[thread_index_in_simdgroup]], ushort wid [[simdgroup_index_in_threadgroup]]) {
+                             ushort lane__ [[thread_index_in_simdgroup]], ushort wid_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort wid = sg32(tid, wid_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[8];
     const device float* x = h + (size_t) t * hcdim;
@@ -552,7 +557,8 @@ kernel void ds4_hc_pre_norm(device const float* h [[buffer(0)]], device const fl
                             constant uint& hc [[buffer(4)]], constant float& eps [[buffer(5)]],
                             device float* x [[buffer(6)]], constant uint& has_w [[buffer(7)]],
                             uint b [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
-                            ushort lane_ [[thread_index_in_simdgroup]], ushort wg [[simdgroup_index_in_threadgroup]]) {
+                            ushort lane__ [[thread_index_in_simdgroup]], ushort wg_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort wg = sg32(tid, wg_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[32];
     const device float* hh = h + (size_t) b * hc * dim;
@@ -1054,7 +1060,8 @@ kernel void ds4_engram_gate(device float* h [[buffer(0)]], device const float* k
                             device const float* w [[buffer(2)]], constant uint& hc [[buffer(3)]],
                             constant uint& dim [[buffer(4)]], constant float& eps [[buffer(5)]],
                             uint2 tgp [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
-                            ushort lane_ [[thread_index_in_simdgroup]], ushort wg [[simdgroup_index_in_threadgroup]]) {
+                            ushort lane__ [[thread_index_in_simdgroup]], ushort wg_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort wg = sg32(tid, wg_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[32];
     const uint k = tgp.x, t = tgp.y;
@@ -1146,8 +1153,9 @@ kernel void ds4_compress(device const float* kv [[buffer(0)]], device const floa
                          constant int& ratio [[buffer(4)]], constant int& p0 [[buffer(5)]], constant int& T [[buffer(6)]],
                          constant uint& d [[buffer(7)]], device const float* wn [[buffer(8)]],
                          constant float& eps [[buffer(9)]], device float* latent [[buffer(10)]],
-                         uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                         ushort wg [[simdgroup_index_in_threadgroup]]) {
+                         uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                         ushort wg_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort wg = sg32(tid, wg_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[32];
     const float kfmax = -3.4028234663852886e+38f;   // -FLT_MAX, as the CUDA writes it
@@ -1357,8 +1365,9 @@ static inline uint ds4_e2m1_code(float q) {   // (bit 3 the sign, -0 kept; the m
 
 kernel void ds4_finish_pack(device float* x [[buffer(0)]], constant long& stride [[buffer(1)]],
                             constant uint& len [[buffer(2)]], constant Ds4Finish& f [[buffer(3)]],
-                            uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                            ushort w [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
+                            uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                            ushort w_ [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
+    const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[8];
     device float* v = x + (long) b * stride;
@@ -1512,8 +1521,9 @@ kernel void ds4_topk(device const float* vals [[buffer(0)]], constant long& stri
                      constant int& cand_stride [[buffer(4)]], constant int& blk [[buffer(5)]],
                      device int* out [[buffer(6)]], constant int& out_stride [[buffer(7)]],
                      constant int& has_cand [[buffer(8)]], uint tgp [[threadgroup_position_in_grid]],
-                     uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                     ushort wid [[simdgroup_index_in_threadgroup]]) {
+                     uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                     ushort wid_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort wid = sg32(tid, wid_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup uint hist[256];
     threadgroup uint prefix_s, mask_s;
@@ -1664,8 +1674,9 @@ kernel void ds4_sampler_greedy(device const float* logits [[buffer(0)]], constan
                                constant float& pen_freq [[buffer(6)]], constant float& pen_present [[buffer(7)]],
                                device const float* logit_bias [[buffer(8)]], constant int& has_bias [[buffer(9)]],
                                device int* out [[buffer(10)]], uint tg [[threadgroup_position_in_grid]],
-                               uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                               ushort wid [[simdgroup_index_in_threadgroup]]) {
+                               uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                               ushort wid_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort wid = sg32(tid, wid_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup uint penal_bits[4096];   // (n_vocab + 31) / 32 words (the host checks it fits)
     threadgroup float sv[32];
@@ -2435,7 +2446,8 @@ kernel void ds4_sparse_attn_bf16(device const float* q [[buffer(0)]], device con
                                  device const float* sink [[buffer(6)]], constant uint& heads [[buffer(7)]],
                                  constant float& scale [[buffer(8)]], device float* out [[buffer(9)]],
                                  uint2 tgp [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
-                                 ushort lane_ [[thread_index_in_simdgroup]], ushort wp [[simdgroup_index_in_threadgroup]]) {
+                                 ushort lane__ [[thread_index_in_simdgroup]], ushort wp_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort wp = sg32(tid, wp_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float qs[512];
     threadgroup float sc[64];
@@ -2452,7 +2464,8 @@ kernel void ds4_route(device const float* logits [[buffer(0)]], device const flo
                       device int* idx [[buffer(5)]], device float* w [[buffer(6)]], device const float* bias_vl [[buffer(7)]],
                       constant uint& has_vl [[buffer(8)]], device const uint* vlw [[buffer(9)]],
                       uint tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
-                      ushort lane_ [[thread_index_in_simdgroup]], ushort wp [[simdgroup_index_in_threadgroup]]) {
+                      ushort lane__ [[thread_index_in_simdgroup]], ushort wp_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort wp = sg32(tid, wp_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float sc[1024], bs[1024];
     threadgroup float bv[32];
@@ -2593,8 +2606,9 @@ kernel void ds4_markov_add(constant Ds4MarkovJob& j [[buffer(0)]], uint tg [[thr
 
 // a threadgroup a token: the logistic of the head's sum over x and the token's E row
 kernel void ds4_confidence(constant Ds4ConfJob& j [[buffer(0)]], uint tg [[threadgroup_position_in_grid]],
-                           uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
-                           ushort w [[simdgroup_index_in_threadgroup]]) {
+                           uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
+                           ushort w_ [[simdgroup_index_in_threadgroup]]) {
+    const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup float red[32];
     const int t = int(tg);
