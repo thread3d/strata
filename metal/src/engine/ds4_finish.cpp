@@ -579,6 +579,22 @@ bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int 
             size_t o = 0;
             return ds4_gpu_buffer_for_cpu && ds4_gpu_buffer_for_cpu(p_, bytes, &o) != nullptr;
         };
+        {   // what x[0] should be, computed here: a = sum_s mix[s]*h[s][0]; x0 = a * rsqrt(mean(a^2) + eps) * w[0]
+            const float* fh = (const float*) hh;
+            const float* fm = (const float*) hm;
+            const float* fw = (const float*) hw;
+            const float* fx = (const float*) hx;
+            double ss = 0.0, a0 = 0.0;
+            for (int e = 0; e < dim; ++e) {
+                double a = 0.0;
+                for (int s = 0; s < hc && s < 8; ++s) a += (double) fm[s] * fh[(size_t) s * dim + e];
+                if (e == 0) a0 = a;
+                ss += a * a;
+            }
+            const double inv = 1.0 / std::sqrt(ss / dim + (double) eps);
+            std::fprintf(stderr, "DBG pnorm cpu: a0=%.6g ss=%.6g inv=%.6g  expected x0=%.6g  kernel x0=%.6g\n",
+                         a0, ss, inv, a0 * inv * (w ? (double) fw[0] : 1.0), (double) fx[0]);
+        }
         std::fprintf(stderr, "DBG pnorm T=%d dim=%d hc=%d: |h|=%g |mix|=%g |x|=%g |w|=%g  alloc(h)=%d alloc(mix)=%d alloc(x)=%d  x0=%g\n",
                      T, dim, hc, mx(hh, (size_t) T * hc * dim), mx(hm, (size_t) T * 8), mx(hx, (size_t) T * dim),
                      w ? mx(hw, (size_t) dim) : -1.0f,

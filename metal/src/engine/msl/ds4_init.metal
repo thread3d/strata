@@ -118,7 +118,7 @@ kernel void ds4_finish(device float* x [[buffer(0)]], constant long& stride [[bu
                        uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                        ushort w_ [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[8];
     device float* v = x + (long) b * stride;
     const uint nj = (len + 255u) / 256u;
@@ -217,7 +217,7 @@ kernel void ds4_hc_mix_scale(device const float* h [[buffer(0)]], device float* 
                              uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                              ushort w_ [[simdgroup_index_in_threadgroup]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[8];
     const device float* x = h + (size_t) b * hcdim;
     float ss = 0.0f;
@@ -237,7 +237,7 @@ kernel void ds4_hc_mix(device const float* h [[buffer(0)]], device const float* 
                        uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                        ushort w_ [[simdgroup_index_in_threadgroup]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[8];
     const uint m = tgp.x, t = tgp.y;
     const device float* x = h + (size_t) t * hcdim;
@@ -263,7 +263,7 @@ kernel void ds4_hc_mix_all(device const float* h [[buffer(0)]], device const flo
                            uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                            ushort w_ [[simdgroup_index_in_threadgroup]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[8];
     const device float* x = h + (size_t) t * hcdim;
     float ss = 0.0f;
@@ -317,7 +317,7 @@ kernel void ds4_hc_mix_split(device const float* h [[buffer(0)]], device const f
                              uint t [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
                              ushort lane__ [[thread_index_in_simdgroup]], ushort wid_ [[simdgroup_index_in_threadgroup]]) {
     const ushort wid = sg32(tid, wid_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[8];
     const device float* x = h + (size_t) t * hcdim;
     float ss = 0.0f;
@@ -559,7 +559,7 @@ kernel void ds4_hc_pre_norm(device const float* h [[buffer(0)]], device const fl
                             uint b [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
                             ushort lane__ [[thread_index_in_simdgroup]], ushort wg_ [[simdgroup_index_in_threadgroup]]) {
     const ushort wg = sg32(tid, wg_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[32];
     const device float* hh = h + (size_t) b * hc * dim;
     const device float* mm = mix + (size_t) b * 8u;
@@ -1062,7 +1062,7 @@ kernel void ds4_engram_gate(device float* h [[buffer(0)]], device const float* k
                             uint2 tgp [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
                             ushort lane__ [[thread_index_in_simdgroup]], ushort wg_ [[simdgroup_index_in_threadgroup]]) {
     const ushort wg = sg32(tid, wg_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[32];
     const uint k = tgp.x, t = tgp.y;
     device float* hk = h + ((size_t) t * hc + (size_t) k) * (size_t) dim;
@@ -1156,7 +1156,7 @@ kernel void ds4_compress(device const float* kv [[buffer(0)]], device const floa
                          uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                          ushort wg_ [[simdgroup_index_in_threadgroup]]) {
     const ushort wg = sg32(tid, wg_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[32];
     const float kfmax = -3.4028234663852886e+38f;   // -FLT_MAX, as the CUDA writes it
     int g = 0;
@@ -1368,7 +1368,7 @@ kernel void ds4_finish_pack(device float* x [[buffer(0)]], constant long& stride
                             uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                             ushort w_ [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[8];
     device float* v = x + (long) b * stride;
     const uint nj = (len + 255u) / 256u;
@@ -1524,7 +1524,7 @@ kernel void ds4_topk(device const float* vals [[buffer(0)]], constant long& stri
                      uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                      ushort wid_ [[simdgroup_index_in_threadgroup]]) {
     const ushort wid = sg32(tid, wid_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup uint hist[256];
     threadgroup uint prefix_s, mask_s;
     threadgroup int remaining_s, cnt_gt, cnt_eq;
@@ -1677,7 +1677,7 @@ kernel void ds4_sampler_greedy(device const float* logits [[buffer(0)]], constan
                                uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                                ushort wid_ [[simdgroup_index_in_threadgroup]]) {
     const ushort wid = sg32(tid, wid_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup uint penal_bits[4096];   // (n_vocab + 31) / 32 words (the host checks it fits)
     threadgroup float sv[32];
     threadgroup int si[32];
@@ -2448,7 +2448,7 @@ kernel void ds4_sparse_attn_bf16(device const float* q [[buffer(0)]], device con
                                  uint2 tgp [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
                                  ushort lane__ [[thread_index_in_simdgroup]], ushort wp_ [[simdgroup_index_in_threadgroup]]) {
     const ushort wp = sg32(tid, wp_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float qs[512];
     threadgroup float sc[64];
     threadgroup int rowix[64];
@@ -2466,7 +2466,7 @@ kernel void ds4_route(device const float* logits [[buffer(0)]], device const flo
                       uint tg [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
                       ushort lane__ [[thread_index_in_simdgroup]], ushort wp_ [[simdgroup_index_in_threadgroup]]) {
     const ushort wp = sg32(tid, wp_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float sc[1024], bs[1024];
     threadgroup float bv[32];
     threadgroup int bi[32];
@@ -2609,7 +2609,7 @@ kernel void ds4_confidence(constant Ds4ConfJob& j [[buffer(0)]], uint tg [[threa
                            uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                            ushort w_ [[simdgroup_index_in_threadgroup]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
-    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
     threadgroup float red[32];
     const int t = int(tg);
     const device float* xt = j.x + (size_t) t * (size_t) j.dim;
