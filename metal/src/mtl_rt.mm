@@ -1203,6 +1203,12 @@ double Context::run(const std::vector<Dispatch>& ds, int reps, bool concurrent, 
             g_last_act_ns.store(ka_now_ns(), std::memory_order_relaxed);
             g_recent.push_back(ds[0].p->name); if (g_recent.size() > 8) g_recent.pop_front();
             if (std::getenv("DS4_ERRINFO")) impl_->def_names += ds[0].p->name + " ";
+            // DS4_FLUSH_EVERY=1: commit and wait after every dispatch, the slowest ordering this runtime can offer.  For finding
+            // out whether a deferred command buffer that stays open across steps is losing or reordering work on a driver that
+            // is not the one this was written for (Metal 2, a discrete card): every step is then complete before the next
+            // begins.  It costs a GPU round trip per dispatch; a run that only has to finish can afford it.
+            static const bool flush_every = std::getenv("DS4_FLUSH_EVERY") != nullptr;
+            if (flush_every) flush_runs();
             g_enc_ns += (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - te0).count();
             static const bool trace = std::getenv("DS4_TRACE_DISP") != nullptr;
             if (trace) { std::lock_guard<std::mutex> lk(g_hist_mu); std::fprintf(stderr, "TRACE disp %s\n", ds[0].p->name.c_str()); }
