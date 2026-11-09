@@ -545,8 +545,9 @@ bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int 
     if (!bh.handle || !bm.handle || !bx.handle) return false;
     mtl::Buffer bw;
     size_t w_off = 0;
+    void* hw = nullptr;
     if (w) {
-        void* hw = cpu_for_wrap((void*) w);
+        hw = cpu_for_wrap((void*) w);
         if (!hw) { std::fprintf(stderr, "dsv41 metal: hc_pre_norm weight has no host view\n"); return false; }
         bw = wrap(hw, (size_t) dim * 4 );
         w_off = off(hw);
@@ -565,6 +566,25 @@ bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int 
     d.grid[1] = d.grid[2] = 1;
     d.tg[0] = 1024; d.tg[1] = d.tg[2] = 1;
     g_cx->run({d});
+    if (std::getenv("DS4_DBG_PNORM")) {   // the activations the matvecs consume are made here: are they, and from what?
+        g_cx->flush_runs();
+        auto mx = [](const void* v, size_t n) {
+            const float* f = (const float*) v;
+            float m = 0.0f;
+            for (size_t i = 0; i < n; ++i) { const float a = f[i] < 0 ? -f[i] : f[i]; if (a > m) m = a; }
+            return m;
+        };
+        // is each range inside ONE of the runtime's allocations?  (a wrap that misses makes a second mapping over the pages)
+        auto in_one = [](const void* p_, size_t bytes) {
+            size_t o = 0;
+            return ds4_gpu_buffer_for_cpu && ds4_gpu_buffer_for_cpu(p_, bytes, &o) != nullptr;
+        };
+        std::fprintf(stderr, "DBG pnorm T=%d dim=%d hc=%d: |h|=%g |mix|=%g |x|=%g |w|=%g  alloc(h)=%d alloc(mix)=%d alloc(x)=%d  x0=%g\n",
+                     T, dim, hc, mx(hh, (size_t) T * hc * dim), mx(hm, (size_t) T * 8), mx(hx, (size_t) T * dim),
+                     w ? mx(hw, (size_t) dim) : -1.0f,
+                     (int) in_one(hh, (size_t) T * hc * dim * 4), (int) in_one(hm, (size_t) T * 8 * 4),
+                     (int) in_one(hx, (size_t) T * dim * 4), ((const float*) hx)[0]);
+    }
     return true;
 }
 
