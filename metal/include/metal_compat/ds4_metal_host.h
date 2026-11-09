@@ -29,6 +29,10 @@ struct FinishIn {
 };
 
 bool embed(const uint16_t* rows, int T, float* h, int dim, int hc, void*);
+// Metal 3's gpuAddress (macOS 13) is the only device address a kernel can dereference as a raw 64-bit argument.  An earlier
+// macOS has none - the runtime hands out contents(), a CPU address a discrete GPU cannot read - so the ports that pass raw
+// pointers (embed_addr) decline and the buffer-binding path runs instead.
+bool device_addresses_real();
 bool engram_dequant_tok(const uint8_t* src, size_t per, int cols, int T, int hd, float* out, int fmt);
 bool ext_to_ring(const void* ext, void* ring, long long p0, int n, int T, int d, size_t row_bytes, void* backup);
 bool finish(float* x, int n_vec, int len, long long stride, const FinishIn& f);

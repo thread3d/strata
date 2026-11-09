@@ -1293,6 +1293,23 @@ int main(int argc, char** argv) {
         signal(SIGABRT, [](int) { void* fr[40]; const int n = backtrace(fr, 40); backtrace_symbols_fd(fr, n, 2); _exit(134); });
     }
 #endif
+#if defined(STRATA_METAL)
+    // This engine's Metal path is written for macOS 13 and newer: it hands kernels raw device addresses (Metal 3's gpuAddress),
+    // keeps its buffers in a residency set (macOS 15's MTLResidencySet), and orders a deferred command buffer against the
+    // runtime's own queue.  An earlier macOS has none of the three, and on the Mac Pro's Radeon RX 580 the result is not merely
+    // wrong numbers: the same configuration that produced finite values an hour earlier has reset the GPU nine times in three
+    // runs and taken the machine down.  So the engine stops here, before it loads 138 GB of weights, unless
+    // STRATA_DS4_ALLOW_UNSTABLE_METAL=1 says to try anyway (a developer's choice, on a machine they can power-cycle).
+    if (!strata::dsv41::metal_host::device_addresses_real() && std::getenv("STRATA_DS4_ALLOW_UNSTABLE_METAL") == nullptr) {
+        std::fprintf(stderr,
+                     "maya-ds4: this Mac's Metal has no device addresses (macOS 13's gpuAddress) and no residency set, which this\n"
+                     "engine's Metal path needs: its kernels take raw pointers, its copies and dispatches share two queues, and on\n"
+                     "this card that has reset the GPU and hung the machine. It is not run here.\n"
+                     "  STRATA_DS4_ALLOW_UNSTABLE_METAL=1 tries anyway (results are not to be trusted; expect GPU resets).\n"
+                     "  A Mac with macOS 13 or newer (Apple silicon, or an Intel Mac with a Metal 3 card) runs the engine as designed.\n");
+        return 1;
+    }
+#endif
     strata::ds4::Options o;
     std::string ids_s, dump, eos = "1";
     int n = 0, window = 0;   // (0: the model's feed unit - a whole prompt on the chunked path; 16 for the scoring runs)

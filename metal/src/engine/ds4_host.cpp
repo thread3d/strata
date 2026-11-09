@@ -100,6 +100,8 @@ bool init_pre(float* pre, int T, void*) {
 
 // ds4_kernels.cu:130 - the BF16 embedding gather, hc copies a token
 bool embed(const uint16_t* rows, int T, float* h, int dim, int hc, void*) {
+    if (std::getenv("DS4_DBG_EMBCALL"))
+        std::fprintf(stderr, "DBG embed called: rows %p h %p T %d dim %d hc %d\n", (void*) rows, (void*) h, T, dim, hc);
     strata::dsv41::metal_host::shared_cx();
     if (g_lib_init < 0) { std::fprintf(stderr, "dsv41 metal: embed: no library\n"); return false; }
     // host_view() returns a different address from the device pointer on this runtime, so wrapping it wrote into a mapping the
@@ -192,7 +194,12 @@ struct Ds4EmbedArgsHost {
     uint32_t hc;
 };
 
+bool device_addresses_real() { return __builtin_available(macOS 13.0, *); }
+
 bool embed_addr(const uint16_t* rows, int T, float* h, int dim, int hc) {
+    // ds4_embed_j takes the two pointers as raw device addresses: only Metal 3's gpuAddress is that.  An earlier macOS leaves
+    // this to embed(), which binds the memory as buffers.
+    if (!device_addresses_real()) return false;
     // the engine uploads emb_rows on ITS stream; this kernel runs on mtl::Context queue.  Order the two before reading.
     strata::gpu::stream_synchronize(nullptr);
     if (std::getenv("DS4_DBG_ROWS")) {   // what is the engine actually handing us as the embedding rows?
