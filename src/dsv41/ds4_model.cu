@@ -9815,8 +9815,17 @@ struct Model::Impl {
                 cur = l.dev;
             }
             if (!tap(devs[(size_t) l.dev], il, T, err)) return false;
-            if (il == 0 && ds4_dbg("DS4_DBG_EMB")) dbg_h("after tap", devs[(size_t) l.dev], T);
+            if ((il == 0 || ds4_dbg("DS4_DBG_HLAYERS")) && ds4_dbg("DS4_DBG_EMB")) {   // DS4_DBG_HLAYERS: every layer, to find where the state dies
+                char tag[32];
+                std::snprintf(tag, sizeof tag, "layer %d in", il);
+                dbg_h(tag, devs[(size_t) l.dev], T);
+            }
             if (!layer(l, 0, p0, T, wplan, err)) return false;
+            if (ds4_dbg("DS4_DBG_HLAYERS") && ds4_dbg("DS4_DBG_EMB")) {
+                char tag[32];
+                std::snprintf(tag, sizeof tag, "layer %d out", il);
+                dbg_h(tag, devs[(size_t) l.dev], T);
+            }
             if (dump_h != nullptr) {   // DS4_DUMP_H: every layer's residual stream, for tools/ds4/compare.py --layers
                 Dev& dd = devs[(size_t) l.dev];
                 std::vector<float> hv((size_t) T * H * D);

@@ -314,6 +314,36 @@ compiles and the kernels dispatch, a 1000-dispatch window replays in 0.7 to 1.4 
 - **The residency set** (`MTLResidencySet`, macOS 15) is absent. The runtime then keeps its buffers alive itself and skips the set.
 - **`MTLCompileOptions.mathMode`** is macOS 15's too; the older `fastMathEnabled` flag stands in for it.
 
+### The DeepSeek engine (`strata_ds4`)
+
+It builds here as well, and it was brought much further than the Qwen engine before stopping: on the Mac above it loads the
+2.00 bpw pack, keeps all 15 360 routed experts in place in the model's files, runs a real prompt (5 tokens, 1.3 tok/s) and
+decodes tokens at about 1.5 tok/s with the CPU lane doing its share.
+
+```sh
+tools/dsv41/pack_gguf.py --model <the GGUF folder> --shards ... --engram ... --dspark-gguf ... --out <folder>/maya-ds4
+./build-metal/strata_ds4 --pack <folder>/maya-ds4 --ids 671,6102,294 --n 16
+```
+
+The ports it needed, each behind a runtime probe or an SDK guard so that Apple silicon is unchanged: every DeepSeek kernel takes
+its 32-lane group from the thread index (Metal's simdgroup is 64 lanes on this card), the prompt expert GEMMs have a plain form
+beside the `matmul2d` one, the bf16 attention gives way to the same format's other kernel where Metal 3's `bfloat` is absent, the
+model's pages are mapped writable-private (this driver refuses a no-copy buffer over a read-only mapping), and the embedding
+declines its raw-address port where the Metal has no `gpuAddress`.
+
+**It does not compute correct logits here, and it is not safe to run on this card.** The same binary with the same arguments
+produced a finite hidden state (max 0.4277) at one point and exactly zeros an hour later; in three consecutive runs it reset the
+GPU nine times, and it hung this machine five times in total while being ported. Those are the three reasons in the section
+above, and for this engine they are not a matter of one more missing kernel: its kernels take raw pointers, its copies and its
+dispatches run on two queues that the engine orders itself, and both need Metal 3 and a residency set.
+
+So `strata_ds4` stops before it loads 138 GB of weights, with the reason, when the Metal under it has no device addresses:
+`STRATA_DS4_ALLOW_UNSTABLE_METAL=1` tries anyway, on a machine the user can power-cycle, and the numbers it prints are not to be
+trusted. `--pack-info` still reads a pack, because it touches no GPU. A Mac with macOS 13 or newer runs the engine as designed.
+
+`./setup.sh --unsupported-mac` still refuses to install DeepSeek's engine package here for the same reason, so the pack has to be
+fetched and built by hand as above.
+
 ## History / older measurements
 
 **Why `--spec 2`.** Measured on: Apple M5 Max, 128 GB, decode tok/s with MTP on the two prompts (prompt1 / story).
