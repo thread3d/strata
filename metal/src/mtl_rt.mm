@@ -16,6 +16,8 @@
 #define STRATA_SDK_VERSION 0
 #endif
 
+#include <mach/mach_vm.h>       // read_only_range: see Context::wrap
+#include <mach/vm_region.h>
 #include <chrono>
 #if defined(STRATA_DS4_RUNTIME)
 #include <execinfo.h>
@@ -451,6 +453,7 @@ Context::~Context() { delete impl_; }
 std::string Context::device_name() const { return [[impl_->dev name] UTF8String]; }
 int Context::simd_width() const { return impl_->simd; }
 bool Context::has_mpp() const { return impl_->mpp != 0; }
+bool Context::has_bf16() const { return impl_->bf16 != 0; }
 bool Context::has_family_apple(int n) const {
     return [impl_->dev supportsFamily:(MTLGPUFamily)(MTLGPUFamilyApple1 + (n - 1))];
 }
@@ -824,6 +827,24 @@ Buffer Context::wrap(void* p, size_t bytes, size_t max_span) {
 extern "C" void* ds4_gpu_buffer_for_cpu(const void* cpu, size_t bytes, size_t* off) __attribute__((weak_import));
 extern "C" size_t ds4_gpu_alloc_remaining(const void* cpu) __attribute__((weak_import));
 #endif
+// Is [p, p + bytes) inside a mapping that cannot be written?  (The model file's mmap: a copy of it is the same values.)
+static bool read_only_range(void* p, size_t bytes) {
+    mach_vm_address_t a = (mach_vm_address_t) (uintptr_t) p;
+    while (a < (mach_vm_address_t) (uintptr_t) p + bytes) {
+        mach_vm_size_t sz = 0;
+        vm_region_basic_info_data_64_t info;
+        mach_msg_type_number_t cnt = VM_REGION_BASIC_INFO_COUNT_64;
+        mach_port_t obj = MACH_PORT_NULL;
+        const mach_vm_address_t base = a;
+        if (mach_vm_region(mach_task_self(), &a, &sz, VM_REGION_BASIC_INFO_64, (vm_region_info_t) &info, &cnt, &obj) != KERN_SUCCESS)
+            return false;               // a hole: not something to copy blind
+        if (base != a) return false;     // the range leaves the mapping it starts in
+        if (info.protection & VM_PROT_WRITE) return false;   // writable anywhere: no copy
+        a = base + sz;
+    }
+    return true;
+}
+
 Buffer Context::wrap(void* p, size_t bytes) {
 #if defined(STRATA_DS4_RUNTIME)
     if (ds4_gpu_buffer_for_cpu && !std::getenv("DS4_WRAP_COPY")) {
@@ -846,7 +867,55 @@ Buffer Context::wrap(void* p, size_t bytes) {
     Buffer r;
     @autoreleasepool {   // (see alloc: the engine's host threads have no pool of their own)
         id<MTLBuffer> b = [impl_->dev newBufferWithBytesNoCopy:p length:bytes options:MTLResourceStorageModeShared deallocator:nil];
+        if (!b && read_only_range(p, bytes)) {
+            // No-copy refuses a range that is not all inside one mapping - the last tensor of a shard, whose length runs past the
+            // end of the file's mapping, is the usual one - and for a READ-ONLY range (the model file) a copy holds the same
+            // values, so the weights still reach the kernel.  A writable range is never copied: the writes would be lost.
+            b = [impl_->dev newBufferWithBytes:p length:bytes options:MTLResourceStorageModeShared];
+            if (b) {
+                static bool said = false;
+                if (!said) { said = true; std::fprintf(stderr, "mtl: wrapping read-only ranges that leave their mapping as copies\n"); }
+            }
+        }
         if (!b) {
+            // DS4_WRAP_DIAG=1: what the driver refused - the mapping behind the pointer and its end, so a range that leaves it
+            // (or a range whose pages are not all mapped) is told apart from a plain refusal
+            if (std::getenv("DS4_WRAP_DIAG")) {
+                struct dvinfo { int prot, maxp, shared, tag; const char* obj; };
+                auto region = [](uintptr_t a, uintptr_t* start, size_t* size) {
+                    vm_region_basic_info_data_64_t info;
+                    mach_msg_type_number_t cnt = VM_REGION_BASIC_INFO_COUNT_64;
+                    mach_vm_address_t ad = a;
+                    mach_vm_size_t sz = 0;
+                    mach_port_t obj = MACH_PORT_NULL;
+                    if (mach_vm_region(mach_task_self(), &ad, &sz, VM_REGION_BASIC_INFO_64,
+                                       (vm_region_info_t) &info, &cnt, &obj) != KERN_SUCCESS)
+                        return false;
+                    *start = (uintptr_t) ad; *size = (size_t) sz;
+                    std::fprintf(stderr, "mtl:  region 0x%llx +%.1f MB prot %d\n", (unsigned long long) ad, sz / 1e6, info.protection);
+                    return true;
+                };
+                std::fprintf(stderr, "mtl: wrap diag: p=0x%llx bytes=%zu aligned16k=%d aligned4k=%d\n", (unsigned long long) (uintptr_t) p,
+                             bytes, ((uintptr_t) p % 16384) == 0, ((uintptr_t) p % 4096) == 0);
+                if (ds4_gpu_alloc_remaining)
+                    std::fprintf(stderr, "mtl:  alloc_remaining=%zu (the range asks %zu) -> %s\n",
+                                 ds4_gpu_alloc_remaining(p), bytes,
+                                 ds4_gpu_alloc_remaining(p) >= bytes ? "inside the allocation" : "PAST the allocation's end");
+                void* bt[24];
+                const int nb = backtrace(bt, 24);
+                char** syms = backtrace_symbols(bt, nb);
+                std::fprintf(stderr, "mtl:  caller:");
+                for (int i = 0; i < nb && i < 7; ++i) std::fprintf(stderr, " %s;", syms ? syms[i] : "?");
+                std::fprintf(stderr, "\n");
+                uintptr_t st = 0; size_t sz = 0;
+                region((uintptr_t) p, &st, &sz);
+                uintptr_t st2 = 0; size_t sz2 = 0;
+                region((uintptr_t) p + bytes - 1, &st2, &sz2);
+                for (size_t cut = bytes / 2; cut >= 4096; cut /= 2) {
+                    id<MTLBuffer> t = [impl_->dev newBufferWithBytesNoCopy:p length:cut options:MTLResourceStorageModeShared deallocator:nil];
+                    if (t) { std::fprintf(stderr, "mtl:  a shorter wrap of %zu bytes succeeds\n", cut); break; }   // (ARC owns it)
+                }
+            }
             std::fprintf(stderr, "mtl: wrap %zu failed\n", bytes);
             std::exit(4);
         }

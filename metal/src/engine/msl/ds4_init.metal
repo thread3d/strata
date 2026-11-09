@@ -1829,7 +1829,11 @@ static inline void ds4_sparse_packed_run(device const float* q, device const ush
     ds4_attn_counts(ar, t, n_win, n_sel, w0);
     const device ushort* wbase = win + (size_t) w0 * 512u;
     const device int* sl = sel + (size_t) t * (size_t) sel_stride;
-    const uint lane = uint(lane_in), wp = uint(wp_in);
+    // lane_in / wp_in count the HARDWARE simdgroup (64 lanes on an AMD card), and these tiles are written for 32: the
+    // sparse attention's tile4 holds 64 uint4 a row, two lanes apiece, and its softmax walks 32 lanes - so the tile's own
+    // lane and group come from the thread index (the runtime's prologue).  With the hardware lane, lanes 32..63 read up to
+    // tile4[(r * 64) + 127], past the 16 x 64 array on the last row: the GPU fault the prefill path hit.
+    const uint lane = uint(lane32(ushort(tid), ushort(lane_in))), wp = uint(sg32(ushort(tid), ushort(wp_in)));
     const uint gw = wp / uint(W), wr = wp % uint(W);
     float qr[16];
     for (int x = 0; x < 16; ++x)
@@ -2345,7 +2349,11 @@ static inline void ds4_sparse_bf16_run(device const float* q, device const ushor
     ds4_attn_counts(ar, t, n_win, n_sel, w0);
     const device ushort* wbase = win + (size_t) w0 * 512u;
     const device int* sl = sel + (size_t) t * (size_t) sel_stride;
-    const uint lane = uint(lane_in), wp = uint(wp_in);
+    // lane_in / wp_in count the HARDWARE simdgroup (64 lanes on an AMD card), and these tiles are written for 32: the
+    // sparse attention's tile4 holds 64 uint4 a row, two lanes apiece, and its softmax walks 32 lanes - so the tile's own
+    // lane and group come from the thread index (the runtime's prologue).  With the hardware lane, lanes 32..63 read up to
+    // tile4[(r * 64) + 127], past the 16 x 64 array on the last row: the GPU fault the prefill path hit.
+    const uint lane = uint(lane32(ushort(tid), ushort(lane_in))), wp = uint(sg32(ushort(tid), ushort(wp_in)));
     for (uint i = tid; i < 512u; i += 256u) qs[i] = q[((size_t) t * heads + uint(h)) * 512u + i];
     if (tid == 0u) {
         m_run_s[0] = -1e30f;
