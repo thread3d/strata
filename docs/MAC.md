@@ -314,6 +314,59 @@ compiles and the kernels dispatch, a 1000-dispatch window replays in 0.7 to 1.4 
 - **The residency set** (`MTLResidencySet`, macOS 15) is absent. The runtime then keeps its buffers alive itself and skips the set.
 - **`MTLCompileOptions.mathMode`** is macOS 15's too; the older `fastMathEnabled` flag stands in for it.
 
+### What this Mac's Metal can do
+
+`metal/tools/metal_caps.m` prints, for every GPU the machine reports, the answers that decide which kernel set can run at all:
+the GPU family, the simdgroup width, whether raw device addresses and a residency set exist, whether bf16 and
+MetalPerformancePrimitives compile, and whether a memory range can be handed to the GPU without a copy.
+
+```sh
+clang -fobjc-arc -O1 -framework Metal -framework Foundation metal/tools/metal_caps.m -o /tmp/metal_caps && /tmp/metal_caps
+```
+
+On the Mac Pro above it answers:
+
+```
+device AMD Radeon RX 580                  maxBufferLength 3.8 GB, max threads/threadgroup 1024
+  families: metal3=0 mac2=1 common3=0 common2=0 apple7=0
+  simdgroup: 64 lanes, 4 simdgroups in a 256-thread threadgroup
+  gpuAddress API: absent
+  MTLResidencySet: absent
+  bf16 (bfloat in MSL): absent
+  MetalPerformancePrimitives: absent
+newBufferWithBytesNoCopy, 1 MB:
+  anonymous mmap, writable         accepted
+  anonymous mmap, read-only        REFUSED
+  malloc, 16 KiB aligned           accepted
+  read-only file mmap              REFUSED
+```
+
+Each line is one of the port's decisions: **64 lanes** is why every kernel takes its 32-lane group from the thread index
+(`src/mtl_rt.mm`'s prologue); **metal3=0** and **gpuAddress absent** are why the DeepSeek engine's raw-address kernels cannot
+work; **bf16 / MetalPerformancePrimitives absent** are the two probes that send `ds4_sparse_attn_mx` and the `matmul2d` GEMMs to
+their portable forms; and the **REFUSED** read-only rows are why the model, the experts, the pack's GGUF and the Engram table
+are mapped `PROT_READ | PROT_WRITE` with `MAP_PRIVATE`.
+
+### Looking inside a DeepSeek run
+
+When the numbers are wrong rather than the run broken, these say where (`strata_ds4 --pack ... --ids ... --n 1`):
+
+| switch | what it tells you |
+|---|---|
+| `DS4_DBG_Q8=1`, `DS4_DBG_IQ=1` | the first matvec against a host recompute of the same rows |
+| `DS4_DBG_EMB=1` | `h[0..3]` and `max|h|` right after the embed and `init_pre` |
+| `DS4_DBG_EMBWRITE=1` | the readback inside `embed()`, immediately after its dispatch |
+| `DS4_DBG_HLAYERS=1` (with `DS4_DBG_EMB`) | `max|h|` before and after every layer — the first zero is the layer that stops writing |
+| `--dump-logits FILE` | the head's output (`strata_ds4` writes zeros here on this card) |
+| `DS4_DUMP_L`, `DS4_DUMP_R`, `DS4_DUMP_S` | every layer's residual, the chunk path's routing, layer 0's sub-steps |
+| `DS4_WRAP_DIAG=1` | the wrap failure path: the pointer, its VM region, its allocation and a backtrace |
+| `DS4_NO_IDX_MMA=1` | the scalar indexer, for a Metal on which the matrix-unit one does not link |
+| `STRATA_DS4_ALLOW_UNSTABLE_METAL=1` | run anyway on an unsupported Metal (not recommended: it resets this card) |
+
+The kernel-side questions are answered by the parity programs instead, which need no model: `build-metal/*_parity` (the Qwen
+engine's 263 checks) and `build-metal/dsu_parity` (the DeepSeek engine's 33), each printing `err` per check and exiting non-zero
+on a failure.
+
 ### The DeepSeek engine (`strata_ds4`)
 
 It builds here as well, and it was brought much further than the Qwen engine before stopping: on the Mac above it loads the
