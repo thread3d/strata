@@ -1281,6 +1281,10 @@ int spec_eval(strata::ds4::Model& m, const std::string& ids_path, int n, int win
 #if defined(STRATA_METAL)
 #include "sampler_stat.inc"
 #endif
+#if defined(STRATA_METAL)
+namespace strata { namespace dsv41 { namespace metal_host { bool device_addresses_real(); } } }   // (ds4_host.cpp)
+#endif
+
 int main(int argc, char** argv) {
     strata::ds4::os::fine_timer();
 #if defined(STRATA_METAL)
@@ -1300,7 +1304,13 @@ int main(int argc, char** argv) {
     // wrong numbers: the same configuration that produced finite values an hour earlier has reset the GPU nine times in three
     // runs and taken the machine down.  So the engine stops here, before it loads 138 GB of weights, unless
     // STRATA_DS4_ALLOW_UNSTABLE_METAL=1 says to try anyway (a developer's choice, on a machine they can power-cycle).
-    if (!strata::dsv41::metal_host::device_addresses_real() && std::getenv("STRATA_DS4_ALLOW_UNSTABLE_METAL") == nullptr) {
+    bool informational = false;   // --pack-info and --help read the pack or print usage: no GPU, nothing to guard
+    for (int i = 1; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--pack-info" || a == "--help" || a == "-h") informational = true;
+    }
+    if (!informational && !strata::dsv41::metal_host::device_addresses_real() &&
+        std::getenv("STRATA_DS4_ALLOW_UNSTABLE_METAL") == nullptr) {
         std::fprintf(stderr,
                      "maya-ds4: this Mac's Metal has no device addresses (macOS 13's gpuAddress) and no residency set, which this\n"
                      "engine's Metal path needs: its kernels take raw pointers, its copies and dispatches share two queues, and on\n"
