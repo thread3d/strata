@@ -2825,25 +2825,32 @@ kernel void ds4_axpby_rows(device const float* t [[buffer(0)]], device float* y 
 }
 
 // ds4_q8_quant for several jobs in one dispatch (a matvec call's activations): grid (groups, max rows, jobs)
+// Offsets into the three allocations the dispatch binds, not raw device addresses: a kernel can only dereference a pointer on a
+// Metal 3 device (gpuAddress), and this engine has to run on Metal 2 as well.  The struct keeps its 40-byte layout (a pointer and
+// an offset are both 8 bytes), so the host fills the same fields with offsets.
 struct Ds4Q8Spec {
-    device const float* x;
+    ulong x_off;         // the activations, from the dispatch's bx
     ulong ldx;
     uint rows;
     uint k;
-    device char* q;
-    device float* d;
+    ulong q_off;         // the codes, from bq
+    ulong d_off;         // the scales, from bd
 };
-kernel void ds4_q8_quant_multi(device const Ds4Q8Spec* specs [[buffer(0)]], uint3 tgp [[threadgroup_position_in_grid]],
-                               uint tid [[thread_index_in_threadgroup]]) {
+kernel void ds4_q8_quant_multi(device const Ds4Q8Spec* specs [[buffer(0)]], device const uchar* bxs [[buffer(1)]],
+                               device uchar* bqs [[buffer(2)]], device uchar* bds [[buffer(3)]],
+                               uint3 tgp [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]]) {
     const device Ds4Q8Spec& s = specs[tgp.z];
+    const device float* x = (const device float*) (bxs + s.x_off);
+    device char* q = (device char*) (bqs + s.q_off);
+    device float* d = (device float*) (bds + s.d_off);
     const uint warp = tid / 32u, lane = tid % 32u;
     const uint b = tgp.x * 8u + warp;
     const uint r = tgp.y;
     if (r >= s.rows || (size_t) b * 32u >= (size_t) s.k) return;
-    const device float* xr = s.x + (size_t) r * s.ldx;
+    const device float* xr = x + (size_t) r * s.ldx;
     const float v = xr[(size_t) b * 32u + lane];
     const float am = max32(fabs(v));
     const float sc = am / 127.0f;
-    s.q[(size_t) r * s.k + (size_t) b * 32u + lane] = char(am > 0.0f ? rint(v / sc) : 0.0f);
-    if (lane == 0u) s.d[(size_t) r * (s.k / 32u) + b] = sc;
+    q[(size_t) r * s.k + (size_t) b * 32u + lane] = char(am > 0.0f ? rint(v / sc) : 0.0f);
+    if (lane == 0u) d[(size_t) r * (s.k / 32u) + b] = sc;
 }
