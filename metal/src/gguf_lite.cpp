@@ -64,7 +64,9 @@ bool File::open(const std::string& p, std::string& err) {
     file_bytes = (size_t)st.st_size;
     const size_t page = (size_t)getpagesize();
     map_bytes = (file_bytes + page - 1) / page * page;
-    map = mmap(nullptr, map_bytes, PROT_READ, MAP_SHARED, fd, 0);
+    // PROT_WRITE + MAP_PRIVATE: the pages are wrapped with a no-copy MTLBuffer, which the driver refuses for read-only
+    // backing (Metal 2 on macOS 11); MAP_PRIVATE writes never reach the file.
+    map = mmap(nullptr, map_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
     ::close(fd);
     if (map == MAP_FAILED) { map = nullptr; err = "mmap failed: " + p; return false; }
     Reader r{(const uint8_t*)map, (const uint8_t*)map + file_bytes};

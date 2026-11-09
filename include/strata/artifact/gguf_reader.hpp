@@ -458,7 +458,9 @@ private:
         struct stat st{};
         if (fstat(fd, &st) != 0) throw std::runtime_error("fstat failed");
         size_ = (uint64_t)st.st_size;
-        void* p = mmap(nullptr, size_, PROT_READ, MAP_PRIVATE, fd, 0);
+        // PROT_WRITE: the GPU wraps this file's pages with a no-copy buffer, and a driver that refuses read-only backing for
+        // one (Metal 2 on macOS 11) then runs.  MAP_PRIVATE writes never reach the file.
+        void* p = mmap(nullptr, size_, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
         if (p == MAP_FAILED) throw std::runtime_error("mmap failed");
         base_ = (const uint8_t*)p;
 #endif

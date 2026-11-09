@@ -815,7 +815,9 @@ bool file_tier_probe(const std::vector<std::string>& paths, double& direct_bps, 
     if (best == nullptr || size < 8ull * kPerPass * kRegion * 2) return false;
     const int fd_d = ::open(best->c_str(), O_RDONLY | O_DIRECT | O_CLOEXEC);
     const int fd_b = ::open(best->c_str(), O_RDONLY | O_CLOEXEC);
-    void* map = fd_b >= 0 ? mmap(nullptr, (size_t) size, PROT_READ, MAP_SHARED, fd_b, 0) : MAP_FAILED;
+    // PROT_WRITE + MAP_PRIVATE, not PROT_READ + MAP_SHARED: the GPU wraps this memory with a no-copy buffer, and a driver
+    // that refuses read-only backing for one (Metal 2 on macOS 11) then runs; MAP_PRIVATE writes never reach the file.
+    void* map = fd_b >= 0 ? mmap(nullptr, (size_t) size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd_b, 0) : MAP_FAILED;
     auto cleanup = [&] {
         if (map != MAP_FAILED) munmap(map, (size_t) size);
         if (fd_d >= 0) ::close(fd_d);
@@ -1549,7 +1551,7 @@ bool FileExpertSource::open(const std::string& pack_dir, int64_t n_layers, int64
         err = buf;
         return false;
     }
-    void* view = mmap(nullptr, (size_t) want, PROT_READ, MAP_SHARED, fd, 0);
+    void* view = mmap(nullptr, (size_t) want, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);   // (see the note above: no-copy wrapping)
     if (view == MAP_FAILED) { ::close(fd); err = "FileExpertSource: mmap failed on " + path; return false; }
     fd_ = fd;
     base_ = (const uint8_t*) view;
@@ -1750,7 +1752,7 @@ bool FileExpertSource::open_gguf(std::string& err) {
                     err = "FileExpertSource: cannot open " + path;
                     return false;
                 }
-                void* view = mmap(nullptr, (size_t) st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+                void* view = mmap(nullptr, (size_t) st.st_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);   // (see the note above: no-copy wrapping)
                 if (view == MAP_FAILED) { ::close(fd); err = "FileExpertSource: cannot map " + path; return false; }
                 m.fd = fd;
                 m.bytes = (uint64_t) st.st_size;
@@ -5832,7 +5834,7 @@ bool ArenaExpertSource::open(const std::string& pack_dir, int64_t n_layers, int6
         }
         if (have == file_bytes) {
             const int fd = ::open(path.c_str(), O_RDONLY);
-            void* v = fd >= 0 ? mmap(nullptr, (size_t) file_bytes, PROT_READ, MAP_SHARED, fd, 0) : MAP_FAILED;
+            void* v = fd >= 0 ? mmap(nullptr, (size_t) file_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0) : MAP_FAILED;   // (see the note above)
             if (fd >= 0) ::close(fd);
             if (v == MAP_FAILED) { err = "ArenaExpertSource: mmap of " + path + " failed"; return false; }
             map_ = v;

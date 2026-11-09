@@ -321,7 +321,9 @@ inline void* map_ro(fd_t f, uint64_t bytes) {
     CloseHandle(m);   // (the view keeps the mapping)
     return v;
 #else
-    void* p = ::mmap(nullptr, (size_t) bytes, PROT_READ, MAP_SHARED, (int) f, 0);
+    // PROT_WRITE + MAP_PRIVATE: the Metal runtime wraps these pages with a no-copy MTLBuffer, which the driver refuses for
+    // read-only backing (Metal 2 on macOS 11).  Nothing writes to a model file; MAP_PRIVATE writes would stay private anyway.
+    void* p = ::mmap(nullptr, (size_t) bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, (int) f, 0);
     return p == MAP_FAILED ? nullptr : p;
 #endif
 }
