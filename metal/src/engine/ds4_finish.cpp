@@ -21,6 +21,7 @@
 // called by the gpu layer's synchronisation: everything batched must reach the GPU before a host read
 extern "C" void ds4_metal_flush();
 extern "C" size_t ds4_gpu_alloc_remaining(const void* cpu);
+extern "C" size_t ds4_gpu_alloc_start(const void* cpu, size_t* len);
 extern "C" void* ds4_gpu_buffer_for_cpu(const void* cpu, size_t bytes, size_t* off);
 extern "C" void ds4_gpu_sync_all_streams();
 extern "C" unsigned long long ds4_dispatch_seq();
@@ -41,7 +42,13 @@ static size_t wrap_len(size_t base, size_t need) {
 
 namespace strata::dsv41::metal_host {
 
-bool device_addresses_real();   // ds4_host.cpp: whether a device pointer is a real GPU address (Metal 3's gpuAddress)
+bool device_addresses_real();
+
+// The engine's ONE Metal context and its library.  ds4_host.cpp used to keep a second Context of its own for the embedding,
+// which meant a second MTLCommandQueue: the embedding's write and the first layer's read were on two queues with nothing ordering
+// them, and ds4_init.metal was compiled twice.  Everything now runs on this one.
+mtl::Context& engine_cx();
+int engine_lib_init();   // ds4_host.cpp: whether a device pointer is a real GPU address (Metal 3's gpuAddress)
 
 // mirrors metal/src/engine/msl/ds4_init.metal's Ds4Finish (Metal has no 'long long': 64-bit is 'long')
 struct GpuFinish {
@@ -57,6 +64,8 @@ struct GpuFinish {
 };
 
 namespace {
+
+
 // The CPU address to wrap for one of the engine's device pointers.  Where a device pointer is a real GPU address - Metal 3's
 // gpuAddress, macOS 13 and newer - the runtime's own view is the CPU side of it.  On an earlier macOS the device pointer IS the
 // buffer's contents, and there host_view() answers with a different address: wrapping that wrote into a mapping the engine never
@@ -73,6 +82,35 @@ inline void* cpu_for_wrap(const void* p) {
 mtl::Context* g_cx = nullptr;
 int g_lib = -1;
 int g_lib_iq = -1;
+bool ensure();   // (below)
+
+// Where a range is bound from: the runtime allocation that holds it, when it holds one, and the 16 KiB page otherwise.  A range
+// bound from a page *inside* an allocation is a second MTLBuffer over the same pages, so a kernel's write through it is invisible
+// to whatever bound the allocation itself - which is how this engine's state kept reading as zeros.  Binding from the allocation
+// (and offsetting inside it) keeps one mapping per buffer, which is what every one of its consumers has to share.
+static size_t span_base(const void* host, size_t* alloc_len) {
+    const size_t page = 16384;
+    size_t len = 0;
+    if (ds4_gpu_alloc_start) {
+        const size_t start = ds4_gpu_alloc_start(host, &len);
+        if (start != 0) { if (alloc_len) *alloc_len = len; return start; }
+    }
+    if (alloc_len) *alloc_len = 0;
+    return (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
+}
+
+// the offset of `host` inside the span wrap() binds, and the span itself
+static size_t span_off(void* host) { return (size_t) ((uintptr_t) host) - span_base(host, nullptr); }
+static mtl::Buffer wrap_span(void* host, size_t bytes) {
+    size_t len = 0;
+    const size_t base = span_base(host, &len);
+    const size_t need = (size_t) ((uintptr_t) host) - base + bytes;
+    const size_t page = 16384;
+    size_t n = (need + page - 1) / page * page;
+    if (len != 0 && n > len) n = len;   // never past the allocation: the rest is somebody else's memory
+    return g_cx->wrap((void*) base, n);
+}
+
 
 bool ensure() {
     if (std::getenv("DS4_DBG_MEM")) {   // does a write through host_view read back through cudaMemcpy?
@@ -93,6 +131,11 @@ bool ensure() {
     }
     if (g_cx) return g_lib >= 0;
     g_cx = new mtl::Context();
+    // On a Metal without device addresses (Metal 2) there is no deferred command buffer: every dispatch is committed and waited
+    // for before the next one is encoded, so a step's work is complete before the host or the next step touches its output.
+    // The engine's asynchronous model was written against a driver that keeps deferred work alive across steps; this one does not.
+    // DS4_DEFER=1 asks for the old behaviour back, DS4_FLUSH_EVERY=1 is the same thing spelled out per dispatch.
+    if (!device_addresses_real() && std::getenv("DS4_DEFER") == nullptr) setenv("DS4_FLUSH_EVERY", "1", 0);
     g_cx->start_keepalive();
     g_lib = g_cx->compile({"../src/engine/msl/ds4_init.metal"}, "", false);
     if (g_lib < 0) std::fprintf(stderr, "dsv41 metal: compiling ds4_init.metal failed\n");
@@ -133,6 +176,18 @@ bool ensure() {
     }
     return g_lib >= 0;
 }
+
+}   // (the two accessors below are called from ds4_host.cpp: they need external linkage)
+mtl::Context& engine_cx() {
+    ensure();
+    return *g_cx;
+}
+int engine_lib_init() {
+    ensure();
+    return g_lib;
+}
+namespace {
+
 }  // namespace
 
 // the engine's Finish, as ds4_kernels.cuh declares it
@@ -213,12 +268,8 @@ bool hc_post(const float* y, float* h, const float* post, const float* comb, int
     void* hh = cpu_for_wrap(h);
     if (!hy || !hh) { std::fprintf(stderr, "dsv41 metal: hc_post has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer by = wrap(hy, (size_t) T * dim * 4 );
     mtl::Buffer bh = wrap(hh, (size_t) T * hc * dim * 4 );
     if (!by.handle || !bh.handle) return false;
@@ -264,12 +315,8 @@ bool hc_mix_scale(const float* h, int hcdim, int n_mix, int T, float eps, float*
     void* hm = cpu_for_wrap((void*) mixes);
     if (!hh || !hm) { std::fprintf(stderr, "dsv41 metal: hc_mix_scale has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bh = wrap(hh, (size_t) T * hcdim * 4 );
     mtl::Buffer bm = wrap(hm, (size_t) T * 32 * 4 );
     if (!bh.handle || !bm.handle) return false;
@@ -300,12 +347,8 @@ bool hc_mix(const float* h, const float* fn, int hcdim, int n_mix, int T, float 
     void* hm = cpu_for_wrap((void*) mixes);
     if (!hh || !hf || !hm) { std::fprintf(stderr, "dsv41 metal: hc_mix has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bh = wrap(hh, (size_t) T * hcdim * 4 );
     mtl::Buffer bf = wrap(hf, (size_t) n_mix * hcdim * 4 );
     mtl::Buffer bm = wrap(hm, (size_t) T * 32 * 4 );
@@ -337,12 +380,8 @@ bool hc_split(const float* mixes, const float* scale, const float* base, int hc,
     void* hc_ = cpu_for_wrap((void*) comb);
     if (!hm || !hp || !ho || !hc_) { std::fprintf(stderr, "dsv41 metal: hc_split has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bm = wrap(hm, (size_t) T * 32 * 4 );
     mtl::Buffer bp = wrap(hp, (size_t) T * 8 * 4 );
     mtl::Buffer bo = wrap(ho, (size_t) T * 8 * 4 );
@@ -400,12 +439,8 @@ bool hc_mix_split(const float* h, const float* fn, int hcdim, int n_mix, int T, 
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base_ = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base_, wrap_len(base_, end - base_));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(size_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bh = wrap(hh, (size_t) T * hcdim * 4);
     mtl::Buffer bf = wrap(hf, (size_t) n_mix * hcdim * 4);
     mtl::Buffer bm = wrap(hm, (size_t) T * 32 * 4);
@@ -444,12 +479,8 @@ bool moe_sort(const int* idx, int T, int k, const int* vs, int n_vs, int* bounds
     void* hp = cpu_for_wrap((void*) pos);
     if (!hi || !hv || !hb || !hr || !hp) { std::fprintf(stderr, "dsv41 metal: moe_sort has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     const size_t t_bytes = (size_t) T * (size_t) k * 4;
     mtl::Buffer bi = wrap(hi, t_bytes);
     mtl::Buffer bv = wrap(hv, (size_t) n_vs * 4 );
@@ -501,12 +532,8 @@ bool engram_dequant_tok(const uint8_t* src, size_t per, int cols, int T, int hd,
     void* ho = cpu_for_wrap((void*) out);
     if (!hs || !ho) { std::fprintf(stderr, "dsv41 metal: engram_dequant_tok has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     const size_t rows = (size_t) T * (size_t) cols;
     mtl::Buffer bs = wrap(hs, (size_t) T * per );
     mtl::Buffer bo = wrap(ho, rows * (size_t) hd * 4 );
@@ -533,12 +560,8 @@ bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int 
     void* hx = cpu_for_wrap((void*) x);
     if (!hh || !hm || !hx) { std::fprintf(stderr, "dsv41 metal: hc_pre_norm has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bh = wrap(hh, (size_t) T * hc * dim * 4 );
     mtl::Buffer bm = wrap(hm, (size_t) T * 8 * 4 );
     mtl::Buffer bx = wrap(hx, (size_t) T * dim * 4 );
@@ -595,6 +618,13 @@ bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int 
             std::fprintf(stderr, "DBG pnorm cpu: a0=%.6g ss=%.6g inv=%.6g  expected x0=%.6g  kernel x0=%.6g\n",
                          a0, ss, inv, a0 * inv * (w ? (double) fw[0] : 1.0), (double) fx[0]);
         }
+        {   // read the two back through the engine's OWN copy path as well: the host view and a copy can disagree here
+            float h_first = -1.0f, x_first = -1.0f;
+            cudaMemcpy(&h_first, (void*) h, 4, cudaMemcpyDeviceToHost);
+            cudaMemcpy(&x_first, (void*) x, 4, cudaMemcpyDeviceToHost);
+            std::fprintf(stderr, "DBG pnorm via copy: h[0]=%g x[0]=%g   (via host view: h[0]=%g x[0]=%g)\n",
+                         (double) h_first, (double) x_first, (double) ((const float*) hh)[0], (double) ((const float*) hx)[0]);
+        }
         std::fprintf(stderr, "DBG pnorm T=%d dim=%d hc=%d: |h|=%g |mix|=%g |x|=%g |w|=%g  alloc(h)=%d alloc(mix)=%d alloc(x)=%d  x0=%g\n",
                      T, dim, hc, mx(hh, (size_t) T * hc * dim), mx(hm, (size_t) T * 8), mx(hx, (size_t) T * dim),
                      w ? mx(hw, (size_t) dim) : -1.0f,
@@ -617,12 +647,8 @@ bool q8_quant_rows(const float* x, size_t ldx, int rows, int k, int8_t* q, float
     // The pages the buffer itself spans: [base, base + off + bytes).  A fixed slack (the +65536 the call sites used to
     // carry) walks off the end of the mapping when the buffer is small and sits at an arena chunk's edge, and Metal then
     // refuses the no-copy wrap ("mtl: wrap 81920 failed" - the hd scales here, a few pages).
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bx = wrap(hx, (size_t) rows * ldx * 4);
     mtl::Buffer bq = wrap(hq, (size_t) rows * k);
     mtl::Buffer bd = wrap(hd, (size_t) rows * (k / 32) * 4);
@@ -669,17 +695,36 @@ bool q8_quant_multi(const void* specs, int n) {
         max_rows = std::max(max_rows, sp[i].rows);
         max_k = std::max(max_k, sp[i].k);
     }
+    // The specs carry device pointers; the kernel gets offsets into three bound allocations instead (see the MSL struct).  Every
+    // spec of one call shares them, which is how the engine batches its quantisers; anything else takes the per-spec path.
+    std::vector<HostQ8Spec> specs_copy(sp, sp + n);
+    size_t lx = 0, lq = 0, ld = 0;
+    const size_t bx0 = span_base(sp[0].x, &lx), bq0 = span_base(sp[0].q, &lq), bd0 = span_base(sp[0].d, &ld);
+    for (int i = 0; i < n; ++i) {
+        const uintptr_t px = (uintptr_t) sp[i].x, pq = (uintptr_t) sp[i].q, pd = (uintptr_t) sp[i].d;
+        if (bx0 == 0 || bq0 == 0 || bd0 == 0 || px < bx0 || pq < bq0 || pd < bd0) {   // not one allocation each
+            bool ok = true;
+            for (int k2 = 0; k2 < n; ++k2)
+                ok = q8_quant_rows(sp[k2].x, (size_t) sp[k2].ldx, (int) sp[k2].rows, (int) sp[k2].k, sp[k2].q, sp[k2].d) && ok;
+            return ok;
+        }
+        specs_copy[(size_t) i].x = (const float*) (px - bx0);
+        specs_copy[(size_t) i].q = (int8_t*) (pq - bq0);
+        specs_copy[(size_t) i].d = (float*) (pd - bd0);
+    }
     mtl::Buffer bj = g_cx->alloc((size_t) n * sizeof(HostQ8Spec));
-    std::memcpy(bj.ptr, sp, (size_t) n * sizeof(HostQ8Spec));
+    std::memcpy(bj.ptr, specs_copy.data(), (size_t) n * sizeof(HostQ8Spec));
     static mtl::Pipeline pl;
     static bool have = false;
     if (!have) {
         try { pl = g_cx->pipeline(g_lib, "ds4_q8_quant_multi"); } catch (...) { g_cx->free(bj); return false; }
         have = true;
     }
+    mtl::Buffer bxs = g_cx->wrap((void*) bx0, lx), bqs = g_cx->wrap((void*) bq0, lq), bds = g_cx->wrap((void*) bd0, ld);
+    if (!bxs.handle || !bqs.handle || !bds.handle) { g_cx->free(bj); return false; }
     mtl::Dispatch d;
     d.p = &pl;
-    d.args = {mtl::Arg::B(bj)};
+    d.args = {mtl::Arg::B(bj), mtl::Arg::B(bxs), mtl::Arg::B(bqs), mtl::Arg::B(bds)};
     d.grid[0] = (max_k / 32 + 7) / 8;
     d.grid[1] = max_rows;
     d.grid[2] = (uint32_t) n;
@@ -1126,12 +1171,8 @@ bool ring_to_ext(const void* ring, void* ext, long long p0, int n, int d, size_t
     void* he = cpu_for_wrap(ext);
     if (!hr || !he) { std::fprintf(stderr, "dsv41 metal: ring_to_ext has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer br = wrap(hr, (size_t) n * row_bytes );
     mtl::Buffer be = wrap(he, (size_t) n * d * 2 );
     if (!br.handle || !be.handle) return false;
@@ -1158,12 +1199,8 @@ bool ext_to_ring(const void* ext, void* ring, long long p0, int n, int T, int d,
     if (!he || !hr) { std::fprintf(stderr, "dsv41 metal: ext_to_ring has no host view\n"); return false; }
     void* hb = backup ? cpu_for_wrap(backup) : nullptr;
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer be = wrap(he, (size_t) (n + T) * d * 2 );
     mtl::Buffer br = wrap(hr, (size_t) n * row_bytes );
     if (!be.handle || !br.handle) return false;
@@ -1221,12 +1258,8 @@ bool sparse_attn(const float* q, const uint16_t* win, const void* ckv, const int
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
 
     int wmax = 0;
     if (ar.gen != 0) {
@@ -1374,12 +1407,8 @@ bool route(const float* logits, const float* bias, int n, int k, int T, float ro
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bl = wrap(hl, (size_t) T * 1024 * 4);
     mtl::Buffer bb = wrap(hb, (size_t) n * 4);
     mtl::Buffer bi = wrap(hi, (size_t) T * 8 * 4);
@@ -1437,12 +1466,8 @@ bool gather_rows(const float* x, const void* g, int n, int cols, float* out) {
     Ds4GatherJob gj{};
     std::memcpy(&gj, g, sizeof(gj));
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     int max_src = 0;
     for (int i = 0; i < n; ++i) max_src = gj.src[i] > max_src ? gj.src[i] : max_src;
     mtl::Buffer bx = wrap(hx, (size_t) (max_src + 1) * cols * 4);   // src rows may be beyond the n output rows
@@ -1474,12 +1499,8 @@ bool combine(const float* ed, const float* cpu, const float* sh, const void* c, 
     Ds4CombineJob cj{};
     std::memcpy(&cj, c, sizeof(cj));
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     int max_row = 0;
     for (int t = 0; t < T; ++t)
         for (int j = 0; j < cj.n[t]; ++j) max_row = cj.row[t][j] > max_row ? cj.row[t][j] : max_row;
@@ -1524,12 +1545,8 @@ bool engram_dequant(const uint8_t* rows, const uint8_t* scales, int n, int hd, f
     void* ho = cpu_addr((void*) out);
     if (!hr || !ho) { std::fprintf(stderr, "dsv41 metal: engram_dequant has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     // (the kernel strides rows by hd bytes, as the CUDA kernel does, though an IQ4_NL row only fills hd/32*18 of them:
     // wrapping n * 18/32 * hd left the last rows outside the buffer - garbage scales, measured as inf at row 257 of 288)
     mtl::Buffer br = wrap(hr, (size_t) n * (size_t) hd);
@@ -1557,12 +1574,8 @@ bool engram_gate(float* h, const float* kv, const float* w, int hc, int dim, int
     void* hw = cpu_addr((void*) w);
     if (!hh || !hk || !hw) { std::fprintf(stderr, "dsv41 metal: engram_gate has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bh = wrap(hh, (size_t) T * (size_t) hc * (size_t) dim * 4);
     mtl::Buffer bk = wrap(hk, (size_t) T * (size_t) (hc + 1) * (size_t) dim * 4);
     mtl::Buffer bw = wrap(hw, (size_t) hc * (size_t) dim * 4);
@@ -1616,12 +1629,8 @@ bool compress_win(const float* kv, const float* score, float* kv_state, float* s
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bkv = wrap(hkv, (size_t) T * (size_t) d * 4);
     mtl::Buffer bsc = wrap(hsc, (size_t) T * (size_t) d * 4);
     mtl::Buffer bks = wrap(hks, (size_t) ratio * (size_t) d * 4);
@@ -1660,12 +1669,8 @@ bool index_score(const float* q, const float* wq, const void* kc, int heads, int
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     const size_t kb = kfmt == 3 ? (size_t) ((hd / 2 + hd / 32 + 15) / 16 * 16) : (size_t) hd * 2;
     mtl::Buffer bq = wrap(hq, (size_t) T * (size_t) heads * (size_t) hd * 4);
     mtl::Buffer bwq = wrap(hwq, (size_t) T * 64 * 4);
@@ -1737,12 +1742,8 @@ bool gemv_f16_rows(const uint16_t* W, const float* x, size_t ldx, int n, int k, 
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bw = wrap(hw, (size_t) n * (size_t) k * 2);
     mtl::Buffer bx = wrap(hx, ((size_t) (T - 1) * ldx + (size_t) k) * 4);
     mtl::Buffer by = wrap(hy, ((size_t) (T - 1) * ldy + (size_t) n) * 4);
@@ -1776,12 +1777,8 @@ bool topk(const float* vals, long long stride, int T, const void* rows, const in
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bv = wrap(hv, ((size_t) (T - 1) * (size_t) stride + 1) * 4);
     mtl::Buffer bo = wrap(ho, ((size_t) (T - 1) * (size_t) out_stride + 1) * 4);
     if (!bv.handle || !bo.handle) return false;
@@ -1821,12 +1818,8 @@ bool block_max(const float* score, long long stride, int T, const void* rows, in
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bs = wrap(hs, ((size_t) (T - 1) * (size_t) stride + (size_t) nb_max * (size_t) blk) * 4);
     mtl::Buffer bb = wrap(hb, ((size_t) (T - 1) * (size_t) bm_stride + (size_t) nb_max) * 4);
     if (!bs.handle || !bb.handle) return false;
@@ -1860,12 +1853,8 @@ bool hc_mean(const float* h, int T, int hc, int dim, float* out, long long out_s
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bh = wrap(hh, (size_t) T * (size_t) hc * (size_t) dim * 4);
     mtl::Buffer bo = wrap(ho, ((size_t) (T - 1) * (size_t) out_stride + (size_t) dim) * 4);
     if (!bh.handle || !bo.handle) return false;
@@ -1980,12 +1969,8 @@ bool iota_rows(int* out, int T, int n, int stride) {
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bo = wrap(ho, ((size_t) (T - 1) * (size_t) stride + (size_t) n) * 4);
     if (!bo.handle) return false;
     mtl::Pipeline pl;
@@ -2015,12 +2000,8 @@ bool sample_greedy(const float* logits, int n_tokens, int n_vocab, const int* hi
         return false;
     }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bl = wrap(hl, (size_t) n_tokens * (size_t) n_vocab * 4);
     mtl::Buffer bo = wrap(ho, (size_t) n_tokens * 4);
     if (!bl.handle || !bo.handle) return false;
@@ -2059,12 +2040,8 @@ bool unpack_sel(const void* ckv, const int* sel, int sel_stride, int gen, long l
     void* ho = cpu_addr((void*) out);
     if (!hc || !hs || !ho) { std::fprintf(stderr, "dsv41 metal: unpack_sel has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     int maxrow = -1;
     if (gen != 0 && R > 0) {
         maxrow = (int) ((p0 + t0 + T) / R) + 1;
@@ -2110,12 +2087,8 @@ bool moe_combine(void* acc, const void* y, const int* pos, const float* w_, int 
     void* hw = cpu_addr((void*) w_);
     if (!ha || !hy || !hp || !hw) { std::fprintf(stderr, "dsv41 metal: moe_combine has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer ba = wrap(ha, (size_t) T * dim * 4 );
     mtl::Buffer by = wrap(hy, (size_t) (r1 > r0 ? r1 - r0 : 1) * dim * 4 );
     mtl::Buffer bp = wrap(hp, (size_t) T * 8 * 4 );
@@ -2147,12 +2120,8 @@ bool hc_post_v(const float* y, const float* res, const float* post, const float*
     void* ho = cpu_addr((void*) out);
     if (!hy || !hr || !hp || !hco || !ho) { std::fprintf(stderr, "dsv41 metal: hc_post has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer by = wrap(hy, (size_t) T * dim * 4 );
     mtl::Buffer br = wrap(hr, (size_t) T * hc * dim * 4 );
     mtl::Buffer bp = wrap(hp, (size_t) T * 8 * 4 );
@@ -2184,12 +2153,8 @@ bool gemv_f32(const float* W, const float* x, int n, int k, int T, float* y, int
     void* hy = cpu_addr((void*) y);
     if (!hw || !hx || !hy) { std::fprintf(stderr, "dsv41 metal: gemv_f32 has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bw = wrap(hw, (size_t) n * k * 4 );
     mtl::Buffer bx = wrap(hx, (size_t) T * k * 4 );
     mtl::Buffer by = wrap(hy, (size_t) T * (ldy > 0 ? ldy : n) * 4 );
@@ -2222,12 +2187,8 @@ bool route_publish(const float* logits, const float* bias, int n, int k, int T, 
     void* hp = cpu_addr((void*) plan_ptr);
     if (!hl || !hb || !hv || !hi || !hw || !hp) { std::fprintf(stderr, "dsv41 metal: route_publish has no host view\n"); return false; }
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bl = wrap(hl, (size_t) T * 1024 * 4 );
     mtl::Buffer bb = wrap(hb, (size_t) n * 4 );
     mtl::Buffer bv = wrap(hv, (size_t) n * 8 );
@@ -2273,7 +2234,7 @@ bool swiglu(const float* g, const float* u, int n, float lim, float* h) {
         const size_t end = (size_t) ((uintptr_t) host) + (size_t) n * 4;
         return g_cx->wrap((void*) base, wrap_len(base, end - base));
     };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bg = wrap(hg), bu = wrap(hu), bh = wrap(hh);
     if (!bg.handle || !bu.handle || !bh.handle) return false;
     mtl::Pipeline pl;
@@ -2359,12 +2320,8 @@ bool rows_f16(const float* x, int ldx, const int* idx, int nrows, int ncols, uin
     void* hi = idx ? cpu_for_wrap((void*) idx) : nullptr;
     if (!hx || !ho) return false;
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bx = wrap(hx, ((size_t) (nrows - 1) * (size_t) ldx + (size_t) ncols) * 4);
     mtl::Buffer bo = wrap(ho, (size_t) nrows * (size_t) ncols * 2);
     mtl::Buffer bi = hi ? wrap(hi, (size_t) nrows * 4) : bx;
@@ -2394,12 +2351,8 @@ bool dequant_rows(int kind, const void* raw, size_t ld, int k, int n, uint16_t* 
     void* ho = cpu_for_wrap(out);
     if (!hw || !ho) return false;
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     const size_t wbytes = (size_t) (n - 1) * ld * (kind == 0 ? 2 : 1) + (kind == 0 ? (size_t) k * 2 : (kind == 13 ? (size_t) (k / 256) * 176 : kind == 14 ? (size_t) (k / 256) * 210 : (size_t) (k / 32) * 34));
     if (!std::getenv("DS4_NO_TOUCH")) {   // (the matrix may be file-backed pages not read yet: the GPU does not page them in, it stalls)
         volatile unsigned char sink = 0;
@@ -2435,12 +2388,8 @@ bool gemm_f16_nt(const uint16_t* W16, const uint16_t* X16, int ldx, float* Y, in
     }
     if (g_lib_mm < 0) return false;
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     void* hw = cpu_for_wrap((void*) W16);
     void* hx = cpu_for_wrap((void*) X16);
     void* hy = cpu_for_wrap(Y);
@@ -2547,14 +2496,8 @@ static bool mm_set(bool gate_up, const uint8_t* wbase, size_t stride, const size
     const int ntiles = (int) (tiles.size() / 4);
     if (ntiles == 0) return true;
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        const size_t len = ((end - base + page - 1) / page) * page;
-        if (std::getenv("DS4_MM_DBG")) { size_t o2 = 0; std::fprintf(stderr, "mm wrap %p len %zu own=%d rem=%zu\n", (void*) base, len, ds4_gpu_buffer_for_cpu((void*) base, len, &o2) != nullptr, ds4_gpu_alloc_remaining((void*) base)); }
-        return g_cx->wrap((void*) base, len);
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     void* hw = cpu_for_wrap((void*) wbase);
     if (!hw) return false;
     mtl::Buffer bw = wrap(hw, (size_t) n_exp * stride);
@@ -2718,12 +2661,8 @@ extern "C" bool ds4_ctx_copy(void* dst, const void* src, size_t n) {
     void* hs = cpu_for_wrap((void*) src);
     if (!hd || !hs) return false;
     const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + bytes;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_span(host, bytes); };
+    auto off = [&](void* host) { return span_off(host); };
     mtl::Buffer bs = wrap(hs, n);
     mtl::Buffer bd = wrap(hd, n);
     if (!bs.handle || !bd.handle) return false;
