@@ -41,6 +41,8 @@ static size_t wrap_len(size_t base, size_t need) {
 
 namespace strata::dsv41::metal_host {
 
+bool device_addresses_real();   // ds4_host.cpp: whether a device pointer is a real GPU address (Metal 3's gpuAddress)
+
 // mirrors metal/src/engine/msl/ds4_init.metal's Ds4Finish (Metal has no 'long long': 64-bit is 'long')
 struct GpuFinish {
     uint64_t w;          // device float*  (the engine's gpuAddress, 0 = none)
@@ -55,6 +57,19 @@ struct GpuFinish {
 };
 
 namespace {
+// The CPU address to wrap for one of the engine's device pointers.  Where a device pointer is a real GPU address - Metal 3's
+// gpuAddress, macOS 13 and newer - the runtime's own view is the CPU side of it.  On an earlier macOS the device pointer IS the
+// buffer's contents, and there host_view() answers with a different address: wrapping that wrote into a mapping the engine never
+// reads, which is what embed() was fixed for (metal/src/engine/ds4_host.cpp) and what every wrapper here repeats.
+bool device_pointers_are_gpu() {
+    static const bool r = device_addresses_real();
+    return r;
+}
+inline void* cpu_for_wrap(const void* p) {
+    if (p == nullptr) return nullptr;
+    return device_pointers_are_gpu() ? strata::gpu::host_view((void*) p) : (void*) p;
+}
+
 mtl::Context* g_cx = nullptr;
 int g_lib = -1;
 int g_lib_iq = -1;
@@ -139,7 +154,7 @@ bool finish(float* x, int n_vec, int len, long long stride, const FinishIn& f) {
     // branch (quant without pdst) is the one still unwritten
     const bool pack = f.pdst != nullptr;
     if (!ensure()) return false;
-    void* hx = strata::gpu::host_view(x);
+    void* hx = cpu_for_wrap(x);
     if (!hx) { std::fprintf(stderr, "dsv41 metal: finish has no host view\n"); return false; }
     const size_t page = 16384;
     const size_t bytes = (size_t) (n_vec - 1) * (size_t) stride * sizeof(float) + (size_t) len * sizeof(float);
@@ -194,8 +209,8 @@ bool finish(float* x, int n_vec, int len, long long stride, const FinishIn& f) {
 // ds4_kernels.cu:1677 - hc_post_inplace: h[t][k][e] = post[t][k]*y[t][e] + sum_j comb[t][j][k]*h_old[t][j][e]
 bool hc_post(const float* y, float* h, const float* post, const float* comb, int dim, int hc, int T) {
     if (!ensure()) return false;
-    void* hy = strata::gpu::host_view((void*) y);
-    void* hh = strata::gpu::host_view(h);
+    void* hy = cpu_for_wrap((void*) y);
+    void* hh = cpu_for_wrap(h);
     if (!hy || !hh) { std::fprintf(stderr, "dsv41 metal: hc_post has no host view\n"); return false; }
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
@@ -208,8 +223,8 @@ bool hc_post(const float* y, float* h, const float* post, const float* comb, int
     mtl::Buffer bh = wrap(hh, (size_t) T * hc * dim * 4 );
     if (!by.handle || !bh.handle) return false;
     // post is [T][8], comb is [T][64]: device operands like the others (reached through their host views)
-    void* hpost = strata::gpu::host_view((void*) post);
-    void* hcomb = strata::gpu::host_view((void*) comb);
+    void* hpost = cpu_for_wrap((void*) post);
+    void* hcomb = cpu_for_wrap((void*) comb);
     if (!hpost || !hcomb) { std::fprintf(stderr, "dsv41 metal: hc_post has no host view for post / comb\n"); return false; }
     mtl::Buffer bp = wrap(hpost, (size_t) T * 8 * 4);
     mtl::Buffer bc = wrap(hcomb, (size_t) T * 64 * 4);
@@ -245,8 +260,8 @@ bool hc_post(const float* y, float* h, const float* post, const float* comb, int
 // ds4_kernels.cu:1692 - hc_mix_scale: mixes[t][i] *= rsqrt(sum(h[t])^2 / hcdim + eps)
 bool hc_mix_scale(const float* h, int hcdim, int n_mix, int T, float eps, float* mixes) {
     if (!ensure()) return false;
-    void* hh = strata::gpu::host_view((void*) h);
-    void* hm = strata::gpu::host_view((void*) mixes);
+    void* hh = cpu_for_wrap((void*) h);
+    void* hm = cpu_for_wrap((void*) mixes);
     if (!hh || !hm) { std::fprintf(stderr, "dsv41 metal: hc_mix_scale has no host view\n"); return false; }
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
@@ -280,9 +295,9 @@ bool hc_mix_scale(const float* h, int hcdim, int n_mix, int T, float eps, float*
 // ds4_kernels.cu:1901 - hc_mix: mixes[t][m] = (h[t] . fn[m]) * rsqrt(mean(h[t]^2) + eps)
 bool hc_mix(const float* h, const float* fn, int hcdim, int n_mix, int T, float eps, float* mixes) {
     if (!ensure()) return false;
-    void* hh = strata::gpu::host_view((void*) h);
-    void* hf = strata::gpu::host_view((void*) fn);
-    void* hm = strata::gpu::host_view((void*) mixes);
+    void* hh = cpu_for_wrap((void*) h);
+    void* hf = cpu_for_wrap((void*) fn);
+    void* hm = cpu_for_wrap((void*) mixes);
     if (!hh || !hf || !hm) { std::fprintf(stderr, "dsv41 metal: hc_mix has no host view\n"); return false; }
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
@@ -316,10 +331,10 @@ bool hc_mix(const float* h, const float* fn, int hcdim, int n_mix, int T, float 
 bool hc_split(const float* mixes, const float* scale, const float* base, int hc, int iters, float hc_eps, int T,
               float* pre, float* post, float* comb) {
     if (!ensure()) return false;
-    void* hm = strata::gpu::host_view((void*) mixes);
-    void* hp = strata::gpu::host_view((void*) pre);
-    void* ho = strata::gpu::host_view((void*) post);
-    void* hc_ = strata::gpu::host_view((void*) comb);
+    void* hm = cpu_for_wrap((void*) mixes);
+    void* hp = cpu_for_wrap((void*) pre);
+    void* ho = cpu_for_wrap((void*) post);
+    void* hc_ = cpu_for_wrap((void*) comb);
     if (!hm || !hp || !ho || !hc_) { std::fprintf(stderr, "dsv41 metal: hc_split has no host view\n"); return false; }
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
@@ -334,8 +349,8 @@ bool hc_split(const float* mixes, const float* scale, const float* base, int hc,
     mtl::Buffer bc = wrap(hc_, (size_t) T * 64 * 4 );
     if (!bm.handle || !bp.handle || !bo.handle || !bc.handle) return false;
     // scale and base come from the engine like every other operand: reach them through host_view, not as raw host pointers
-    void* hs = strata::gpu::host_view((void*) scale);
-    void* hb = strata::gpu::host_view((void*) base);
+    void* hs = cpu_for_wrap((void*) scale);
+    void* hb = cpu_for_wrap((void*) base);
     if (!hs || !hb) { std::fprintf(stderr, "dsv41 metal: hc_split scale/base have no host view\n"); return false; }
     const size_t nbase = (size_t) (2 * hc + hc * hc);
     mtl::Buffer bs = wrap(hs, 3 * sizeof(float));
@@ -372,14 +387,14 @@ bool hc_mix_split(const float* h, const float* fn, int hcdim, int n_mix, int T, 
                   const float* scale, const float* base, int hc, int iters, float hc_eps, float* pre, float* post,
                   float* comb) {
     if (!ensure()) return false;
-    void* hh = strata::gpu::host_view((void*) h);
-    void* hf = strata::gpu::host_view((void*) fn);
-    void* hm = strata::gpu::host_view((void*) mixes);
-    void* hs = strata::gpu::host_view((void*) scale);
-    void* hb = strata::gpu::host_view((void*) base);
-    void* hp = strata::gpu::host_view((void*) pre);
-    void* ho = strata::gpu::host_view((void*) post);
-    void* hc_ = strata::gpu::host_view((void*) comb);
+    void* hh = cpu_for_wrap((void*) h);
+    void* hf = cpu_for_wrap((void*) fn);
+    void* hm = cpu_for_wrap((void*) mixes);
+    void* hs = cpu_for_wrap((void*) scale);
+    void* hb = cpu_for_wrap((void*) base);
+    void* hp = cpu_for_wrap((void*) pre);
+    void* ho = cpu_for_wrap((void*) post);
+    void* hc_ = cpu_for_wrap((void*) comb);
     if (!hh || !hf || !hm || !hs || !hb || !hp || !ho || !hc_) {
         std::fprintf(stderr, "dsv41 metal: hc_mix_split has no host view\n");
         return false;
@@ -422,11 +437,11 @@ bool hc_mix_split(const float* h, const float* fn, int hcdim, int n_mix, int T, 
 // Three dispatches on one command buffer, so their order is the order of the calls (serial dispatch).
 bool moe_sort(const int* idx, int T, int k, const int* vs, int n_vs, int* bounds, int* row_tok, int* pos) {
     if (!ensure()) return false;
-    void* hi = strata::gpu::host_view((void*) idx);
-    void* hv = strata::gpu::host_view((void*) vs);
-    void* hb = strata::gpu::host_view((void*) bounds);
-    void* hr = strata::gpu::host_view((void*) row_tok);
-    void* hp = strata::gpu::host_view((void*) pos);
+    void* hi = cpu_for_wrap((void*) idx);
+    void* hv = cpu_for_wrap((void*) vs);
+    void* hb = cpu_for_wrap((void*) bounds);
+    void* hr = cpu_for_wrap((void*) row_tok);
+    void* hp = cpu_for_wrap((void*) pos);
     if (!hi || !hv || !hb || !hr || !hp) { std::fprintf(stderr, "dsv41 metal: moe_sort has no host view\n"); return false; }
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
@@ -482,8 +497,8 @@ bool moe_sort(const int* idx, int T, int k, const int* vs, int n_vs, int* bounds
 bool engram_dequant_tok(const uint8_t* src, size_t per, int cols, int T, int hd, float* out, int fmt) {
     if (T <= 0) return true;
     if (!ensure()) return false;
-    void* hs = strata::gpu::host_view((void*) src);
-    void* ho = strata::gpu::host_view((void*) out);
+    void* hs = cpu_for_wrap((void*) src);
+    void* ho = cpu_for_wrap((void*) out);
     if (!hs || !ho) { std::fprintf(stderr, "dsv41 metal: engram_dequant_tok has no host view\n"); return false; }
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
@@ -513,9 +528,9 @@ bool engram_dequant_tok(const uint8_t* src, size_t per, int cols, int T, int hd,
 // ds4_kernels.cu:341 - hc_pre_norm: a = sum_s mix[s]*h[s][e]; x = a * rsqrt(mean(a^2) + eps) (x w when given)
 bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int hc, int T, float eps, float* x) {
     if (!ensure()) return false;
-    void* hh = strata::gpu::host_view((void*) h);
-    void* hm = strata::gpu::host_view((void*) mix);
-    void* hx = strata::gpu::host_view((void*) x);
+    void* hh = cpu_for_wrap((void*) h);
+    void* hm = cpu_for_wrap((void*) mix);
+    void* hx = cpu_for_wrap((void*) x);
     if (!hh || !hm || !hx) { std::fprintf(stderr, "dsv41 metal: hc_pre_norm has no host view\n"); return false; }
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
@@ -530,8 +545,9 @@ bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int 
     if (!bh.handle || !bm.handle || !bx.handle) return false;
     mtl::Buffer bw;
     size_t w_off = 0;
+    void* hw = nullptr;
     if (w) {
-        void* hw = strata::gpu::host_view((void*) w);
+        hw = cpu_for_wrap((void*) w);
         if (!hw) { std::fprintf(stderr, "dsv41 metal: hc_pre_norm weight has no host view\n"); return false; }
         bw = wrap(hw, (size_t) dim * 4 );
         w_off = off(hw);
@@ -550,6 +566,41 @@ bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int 
     d.grid[1] = d.grid[2] = 1;
     d.tg[0] = 1024; d.tg[1] = d.tg[2] = 1;
     g_cx->run({d});
+    if (std::getenv("DS4_DBG_PNORM")) {   // the activations the matvecs consume are made here: are they, and from what?
+        g_cx->flush_runs();
+        auto mx = [](const void* v, size_t n) {
+            const float* f = (const float*) v;
+            float m = 0.0f;
+            for (size_t i = 0; i < n; ++i) { const float a = f[i] < 0 ? -f[i] : f[i]; if (a > m) m = a; }
+            return m;
+        };
+        // is each range inside ONE of the runtime's allocations?  (a wrap that misses makes a second mapping over the pages)
+        auto in_one = [](const void* p_, size_t bytes) {
+            size_t o = 0;
+            return ds4_gpu_buffer_for_cpu && ds4_gpu_buffer_for_cpu(p_, bytes, &o) != nullptr;
+        };
+        {   // what x[0] should be, computed here: a = sum_s mix[s]*h[s][0]; x0 = a * rsqrt(mean(a^2) + eps) * w[0]
+            const float* fh = (const float*) hh;
+            const float* fm = (const float*) hm;
+            const float* fw = (const float*) hw;
+            const float* fx = (const float*) hx;
+            double ss = 0.0, a0 = 0.0;
+            for (int e = 0; e < dim; ++e) {
+                double a = 0.0;
+                for (int s = 0; s < hc && s < 8; ++s) a += (double) fm[s] * fh[(size_t) s * dim + e];
+                if (e == 0) a0 = a;
+                ss += a * a;
+            }
+            const double inv = 1.0 / std::sqrt(ss / dim + (double) eps);
+            std::fprintf(stderr, "DBG pnorm cpu: a0=%.6g ss=%.6g inv=%.6g  expected x0=%.6g  kernel x0=%.6g\n",
+                         a0, ss, inv, a0 * inv * (w ? (double) fw[0] : 1.0), (double) fx[0]);
+        }
+        std::fprintf(stderr, "DBG pnorm T=%d dim=%d hc=%d: |h|=%g |mix|=%g |x|=%g |w|=%g  alloc(h)=%d alloc(mix)=%d alloc(x)=%d  x0=%g\n",
+                     T, dim, hc, mx(hh, (size_t) T * hc * dim), mx(hm, (size_t) T * 8), mx(hx, (size_t) T * dim),
+                     w ? mx(hw, (size_t) dim) : -1.0f,
+                     (int) in_one(hh, (size_t) T * hc * dim * 4), (int) in_one(hm, (size_t) T * 8 * 4),
+                     (int) in_one(hx, (size_t) T * dim * 4), ((const float*) hx)[0]);
+    }
     return true;
 }
 
@@ -558,9 +609,9 @@ bool hc_pre_norm(const float* h, const float* mix, const float* w, int dim, int 
 bool q8_quant_rows(const float* x, size_t ldx, int rows, int k, int8_t* q, float* d) {
     if (rows <= 0 || k <= 0) return true;
     if (!ensure()) return false;
-    void* hx = strata::gpu::host_view((void*) x);
-    void* hq = strata::gpu::host_view((void*) q);
-    void* hd = strata::gpu::host_view((void*) d);
+    void* hx = cpu_for_wrap((void*) x);
+    void* hq = cpu_for_wrap((void*) q);
+    void* hd = cpu_for_wrap((void*) d);
     if (!hx || !hq || !hd) { std::fprintf(stderr, "dsv41 metal: q8_quant has no host view\n"); return false; }
     const size_t page = 16384;
     // The pages the buffer itself spans: [base, base + off + bytes).  A fixed slack (the +65536 the call sites used to
@@ -1071,8 +1122,8 @@ bool mx_combine(const void* plan_ptr, const void* plan_w, const void* part, cons
 bool ring_to_ext(const void* ring, void* ext, long long p0, int n, int d, size_t row_bytes) {
     if (n <= 0 || d <= 0) return true;
     if (!ensure()) return false;
-    void* hr = strata::gpu::host_view((void*) ring);
-    void* he = strata::gpu::host_view(ext);
+    void* hr = cpu_for_wrap((void*) ring);
+    void* he = cpu_for_wrap(ext);
     if (!hr || !he) { std::fprintf(stderr, "dsv41 metal: ring_to_ext has no host view\n"); return false; }
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
@@ -1102,10 +1153,10 @@ bool ring_to_ext(const void* ring, void* ext, long long p0, int n, int d, size_t
 bool ext_to_ring(const void* ext, void* ring, long long p0, int n, int T, int d, size_t row_bytes, void* backup) {
     if (T <= 0 || n <= 0 || d <= 0) return true;
     if (!ensure()) return false;
-    void* he = strata::gpu::host_view((void*) ext);
-    void* hr = strata::gpu::host_view(ring);
+    void* he = cpu_for_wrap((void*) ext);
+    void* hr = cpu_for_wrap(ring);
     if (!he || !hr) { std::fprintf(stderr, "dsv41 metal: ext_to_ring has no host view\n"); return false; }
-    void* hb = backup ? strata::gpu::host_view(backup) : nullptr;
+    void* hb = backup ? cpu_for_wrap(backup) : nullptr;
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {   // the pages the buffer itself spans (see q8_quant_rows' note)
         const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
@@ -1458,7 +1509,7 @@ bool combine(const float* ed, const float* cpu, const float* sh, const void* c, 
 // On Apple silicon every device pointer is a CPU address (unified memory), so a pointer the gpu allocator does not know about
 // (the engine builds some of its small arrays itself) still wraps correctly: host_view when it has one, the pointer otherwise.
 static inline void* cpu_addr(void* p) {
-    void* h = strata::gpu::host_view(p);
+    void* h = cpu_for_wrap(p);
     return h ? h : p;
 }
 
@@ -2303,9 +2354,9 @@ mtl::Buffer scratch(mtl::Buffer& b, size_t bytes) {
 bool rows_f16(const float* x, int ldx, const int* idx, int nrows, int ncols, uint16_t* out) {
     if (nrows <= 0 || ncols <= 0) return true;
     if (!ensure()) return false;
-    void* hx = strata::gpu::host_view((void*) x);
-    void* ho = strata::gpu::host_view(out);
-    void* hi = idx ? strata::gpu::host_view((void*) idx) : nullptr;
+    void* hx = cpu_for_wrap((void*) x);
+    void* ho = cpu_for_wrap(out);
+    void* hi = idx ? cpu_for_wrap((void*) idx) : nullptr;
     if (!hx || !ho) return false;
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {
@@ -2339,8 +2390,8 @@ bool dequant_rows(int kind, const void* raw, size_t ld, int k, int n, uint16_t* 
     const char* fn = kind == 13 ? "ds4_dq_q5k" : kind == 14 ? "ds4_dq_q6k" : kind == 8 ? "ds4_dq_q8" : kind == 0 ? "ds4_dq_bf16" : nullptr;
     if (!fn) return false;
     if (((kind == 13 || kind == 14) && k % 256 != 0) || (kind == 8 && k % 32 != 0)) return false;
-    void* hw = strata::gpu::host_view((void*) raw);
-    void* ho = strata::gpu::host_view(out);
+    void* hw = cpu_for_wrap((void*) raw);
+    void* ho = cpu_for_wrap(out);
     if (!hw || !ho) return false;
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {
@@ -2390,9 +2441,9 @@ bool gemm_f16_nt(const uint16_t* W16, const uint16_t* X16, int ldx, float* Y, in
         return g_cx->wrap((void*) base, wrap_len(base, end - base));
     };
     auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
-    void* hw = strata::gpu::host_view((void*) W16);
-    void* hx = strata::gpu::host_view((void*) X16);
-    void* hy = strata::gpu::host_view(Y);
+    void* hw = cpu_for_wrap((void*) W16);
+    void* hx = cpu_for_wrap((void*) X16);
+    void* hy = cpu_for_wrap(Y);
     if (!hw || !hx || !hy) return false;
     mtl::Buffer bw = wrap(hw, (size_t) N * K * 2);
     mtl::Buffer bx = wrap(hx, ((size_t) (rows - 1) * (size_t) ldx + (size_t) K) * 2);
@@ -2504,7 +2555,7 @@ static bool mm_set(bool gate_up, const uint8_t* wbase, size_t stride, const size
         return g_cx->wrap((void*) base, len);
     };
     auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
-    void* hw = strata::gpu::host_view((void*) wbase);
+    void* hw = cpu_for_wrap((void*) wbase);
     if (!hw) return false;
     mtl::Buffer bw = wrap(hw, (size_t) n_exp * stride);
     mtl::Buffer bt = g_cx->alloc(tiles.size() * 4);
@@ -2540,9 +2591,9 @@ static bool mm_set(bool gate_up, const uint8_t* wbase, size_t stride, const size
             if (g_mm_xs.handle) g_cx->free(g_mm_xs);
             g_mm_xs = g_cx->alloc(xs_bytes + (xs_bytes >> 2));
         }
-        void* hx = strata::gpu::host_view((void*) xf);
-        void* hi = strata::gpu::host_view((void*) idx);
-        void* ho = strata::gpu::host_view(hout);
+        void* hx = cpu_for_wrap((void*) xf);
+        void* hi = cpu_for_wrap((void*) idx);
+        void* ho = cpu_for_wrap(hout);
         if (!hx || !hi || !ho) { g_cx->free(bt); return false; }
         // (the float rows: the whole token slab the engine's c.x holds; its extent is the allocation's)
         const size_t xrem = ds4_gpu_alloc_remaining(hx);
@@ -2575,8 +2626,8 @@ static bool mm_set(bool gate_up, const uint8_t* wbase, size_t stride, const size
         d.args = {mtl::Arg::B(bw, off(hw)), mtl::Arg::B(g_mm_xs), mtl::Arg::B(g_mm_hs), mtl::Arg::B(bt), mtl::Arg::V(a), mtl::Arg::V((unsigned) ntiles)};
         d.grid[0] = (uint32_t) (n_ff / COLS);
     } else {
-        void* hh = strata::gpu::host_view((void*) hin);
-        void* hy = strata::gpu::host_view(yout);
+        void* hh = cpu_for_wrap((void*) hin);
+        void* hy = cpu_for_wrap(yout);
         void* hy_real = nullptr;
         if (!hh || !hy) { g_cx->free(bt); return false; }
         const size_t hrem = ds4_gpu_alloc_remaining(hh);
@@ -2619,7 +2670,7 @@ static bool mm_set(bool gate_up, const uint8_t* wbase, size_t stride, const size
     g_cx->run({d});
     if (!std::getenv("DS4_MM_LEAK")) g_cx->free(bt);
     if (!gate_up) {   // the result into the engine's rows
-        void* hyr = strata::gpu::host_view(yout);
+        void* hyr = cpu_for_wrap(yout);
         const size_t n4 = (size_t) total_rows * (size_t) n_embd;
         const size_t base = (size_t) ((uintptr_t) hyr) & ~(size_t) (page - 1);
         mtl::Buffer bd = g_cx->wrap((void*) base, wrap_len(base, (size_t) (uintptr_t) hyr + n4 * 4 - base));
@@ -2663,8 +2714,8 @@ extern "C" bool ds4_ctx_copy(void* dst, const void* src, size_t n) {
     const unsigned long long copy_t0 = copy_log ? copy_now_us() : 0;
     struct CopyDone { bool on; unsigned long long t0; size_t n; ~CopyDone() { if (on) { g_copy_us.n++; g_copy_us.bytes += n; g_copy_us.us += copy_now_us() - t0; } } } copy_done{copy_log, copy_t0, n};
     if (!ensure()) return false;
-    void* hd = strata::gpu::host_view(dst);
-    void* hs = strata::gpu::host_view((void*) src);
+    void* hd = cpu_for_wrap(dst);
+    void* hs = cpu_for_wrap((void*) src);
     if (!hd || !hs) return false;
     const size_t page = 16384;
     auto wrap = [&](void* host, size_t bytes) {
@@ -2692,7 +2743,7 @@ extern "C" bool ds4_ctx_copy(void* dst, const void* src, size_t n) {
 extern "C" bool ds4_ctx_fill(void* dst, int value, size_t n) {
     if (n == 0) return true;
     if (!ensure()) return false;
-    void* hd = strata::gpu::host_view(dst);
+    void* hd = cpu_for_wrap(dst);
     if (!hd) return false;
     const size_t page = 16384;
     const size_t base = (size_t) ((uintptr_t) hd) & ~(size_t) (page - 1);
