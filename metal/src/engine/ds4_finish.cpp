@@ -225,22 +225,43 @@ bool finish(float* x, int n_vec, int len, long long stride, const FinishIn& f) {
     if (!ensure()) return false;
     void* hx = cpu_for_wrap(x);
     if (!hx) { std::fprintf(stderr, "dsv41 metal: finish has no host view\n"); return false; }
-    const size_t page = 16384;
     const size_t bytes = (size_t) (n_vec - 1) * (size_t) stride * sizeof(float) + (size_t) len * sizeof(float);
-    const size_t base = ((uintptr_t) hx) & ~(uintptr_t) (page - 1);
-    const size_t off = ((uintptr_t) hx) - base;
-    mtl::Buffer bx = g_cx->wrap((void*) base, wrap_len(base, bytes + off));
+    mtl::Buffer bx = wrap_span(hx, bytes);   // from the allocation, so this write is what every other kernel reads
     if (!bx.handle) { std::fprintf(stderr, "dsv41 metal: finish wrap failed\n"); return false; }
+    // The struct carries the engine's device addresses, and a Metal 2 kernel cannot dereference one: each field becomes an OFFSET
+    // into an allocation bound here (buffers 4..7 of the kernel), and kNoOff marks a field the engine left null.  Before this the
+    // kernel read its norm weights through a CPU address and wrote the KV rows through one, so the rows stayed zero and the
+    // attention summed zeros - measured with DS4_DBG_FIN.
+    mtl::Buffer bdum = g_cx->alloc(8);
+    constexpr uint64_t kNoOff = ~uint64_t(0);   // (the MSL side's kNoOff: the engine left this field null)
+    auto bind_off = [&](const void* p, size_t n, uint64_t* off) -> mtl::Buffer {
+        void* h = p != nullptr ? cpu_for_wrap(p) : nullptr;
+        if (h == nullptr) { *off = kNoOff; return bdum; }
+        *off = (uint64_t) span_off(h);
+        return wrap_span(h, n);
+    };
+    const size_t dst_bytes = f.dst != nullptr ? (((size_t) (n_vec - 1) * (size_t) f.dst_stride + (size_t) len) * sizeof(uint16_t)) : 8;
+    const size_t pdst_bytes = f.pdst != nullptr ? ((size_t) (n_vec - 1) * (size_t) f.pdst_stride + (size_t) len) : 8;
+    uint64_t ow = 0, oq = 0, od = 0, op = 0;
+    mtl::Buffer bw = bind_off(f.w, (size_t) len * sizeof(float), &ow);
+    mtl::Buffer bq = bind_off(f.freqs, (size_t) (f.rd > 0 ? f.rd : 1) * sizeof(float), &oq);
+    mtl::Buffer bdst = bind_off(f.dst, dst_bytes, &od);
+    mtl::Buffer bpd = bind_off(f.pdst, pdst_bytes, &op);
+    if (!bw.handle || !bq.handle || !bdst.handle || !bpd.handle) {
+        g_cx->free(bdum);
+        std::fprintf(stderr, "dsv41 metal: finish could not bind the struct's allocations\n");
+        return false;
+    }
 
     GpuFinish gf{};
-    gf.w = (uint64_t) (uintptr_t) f.w;
+    gf.w = ow;
     gf.eps = f.eps;
     gf.rd = f.rd; gf.pos = f.pos; gf.inverse = f.inverse; gf.vpp = f.vpp; gf.pos_step = f.pos_step;
-    gf.freqs = (uint64_t) (uintptr_t) f.freqs;
+    gf.freqs = oq;
     gf.quant = f.quant;
-    gf.dst = (uint64_t) (uintptr_t) f.dst;
+    gf.dst = od;
     gf.dst_stride = f.dst_stride;
-    gf.pdst = (uint64_t) (uintptr_t) f.pdst;
+    gf.pdst = op;
     gf.pdst_stride = f.pdst_stride;
 
     mtl::Pipeline pl;
@@ -252,22 +273,22 @@ bool finish(float* x, int n_vec, int len, long long stride, const FinishIn& f) {
     // one dispatch, one threadgroup a vector (the kernel's blockIdx.x is threadgroup_position_in_grid)
     mtl::Dispatch d;
     d.p = &pl;
-    d.args = {mtl::Arg::B(bx, off), mtl::Arg::V((long) stride), mtl::Arg::V((unsigned) len), mtl::Arg::V(gf)};
+    d.args = {mtl::Arg::B(bx, span_off(hx)), mtl::Arg::V((long) stride), mtl::Arg::V((unsigned) len), mtl::Arg::V(gf),
+              mtl::Arg::B(bw), mtl::Arg::B(bq), mtl::Arg::B(bdst), mtl::Arg::B(bpd)};
     d.grid[0] = (uint32_t) n_vec;
     d.grid[1] = d.grid[2] = 1;
     d.tg[0] = 256;
     d.tg[1] = d.tg[2] = 1;
     g_cx->run({d});
+    g_cx->free(bdum);
     // The fp8-rounding finishes (the KV rows, the attention output) are read stale by the next dispatch when it shares their
     // command buffer: end the buffer after them (committed, not waited for: the queue orders the buffers).
     // (it once ended the command buffer after every fp8-rounding finish, 2 a layer, against a stale read; each extra buffer costs the GPU ~0.3 ms idle, a third of a decode token.
     // The decode-path score is bit-identical without it, the dispatch barrier after every dispatch orders the readers. DS4_FINISH_SPLIT=1 brings it back.)
     static const bool split_after = std::getenv("DS4_FINISH_SPLIT") != nullptr;
     if (f.quant && split_after) g_cx->split_runs();
-    // DS4_DBG_FIN=1: the kernel dereferences the finish struct's own pointer fields (f.w[e], f.freqs[i], f.dst[...], f.pdst[...]),
-    // and the port passes the engine's raw addresses.  On a Metal without device addresses a kernel cannot read or write those, so
-    // this prints what the host sees in the buffers the kernel was told to fill, after the dispatch completed: unchanged means the
-    // write went nowhere.
+    // DS4_DBG_FIN=1: what the host sees in the buffers this call was told to fill, after the dispatch completed.  A row that is
+    // still zero after a KV pack means the kernel's write did not land (it is how the raw-address defect above was measured).
     if (std::getenv("DS4_DBG_FIN") != nullptr) {
         static long fin_calls = 0;
         if (fin_calls < 12) {
