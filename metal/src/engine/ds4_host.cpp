@@ -7,6 +7,46 @@
 #include "mtl_rt.h"
 
 #include <strata/gpu/runtime.hpp>
+// the runtime's allocation bookkeeping (gpu/runtime.cpp): where the allocation holding a CPU address starts, and its numbers
+extern "C" size_t ds4_gpu_alloc_start(const void* cpu, size_t* len);
+extern "C" size_t ds4_gpu_alloc_remaining(const void* cpu);
+
+namespace {
+constexpr size_t kWrapPage = 16384;
+// Where a range is bound from, and how long the binding is.  The same rule ds4_finish.cpp's wrap_span follows, so that the
+// producer and the consumer of a buffer share ONE MTLBuffer: bind from the runtime allocation that holds the range, not from the
+// page the pointer happens to sit in, and take the length from that base.  Two things went wrong here and both lost writes
+// silently: a page-based base with only the range's own length is short by the page offset whenever the pointer is not
+// page-aligned (the tail of the kernel's write fell outside the buffer - the embedding's last 8192 bytes, measured), and a base
+// page that belongs to the *neighbouring* allocation makes the runtime refuse the range and a second mapping is created.
+size_t wrap_base_of(const void* host, size_t* len) {
+    if (ds4_gpu_alloc_start) {
+        const size_t s = ds4_gpu_alloc_start(host, len);
+        if (s != 0) return s;
+    }
+    if (len) *len = 0;
+    return (size_t) ((uintptr_t) host & ~(size_t) (kWrapPage - 1));
+}
+size_t wrap_off_of(void* host) { return (size_t) ((uintptr_t) host) - wrap_base_of(host, nullptr); }
+mtl::Buffer wrap_range(mtl::Context& cx, void* host, size_t bytes) {
+    size_t len = 0;
+    const size_t base = wrap_base_of(host, &len);
+    const size_t need = wrap_off_of(host) + bytes;
+    size_t n = (need + kWrapPage - 1) / kWrapPage * kWrapPage;
+    if (len != 0 && n > len) {
+        // Cutting the bind at the allocation keeps ONE mapping for every byte inside it (a second mapping of the same pages is
+        // the incoherence that read as zeros everywhere in this port); a bind shorter than the range drops the tail of a write,
+        // so it is reported once rather than passed over.
+        static bool said = false;
+        if (!said) {
+            said = true;
+            std::fprintf(stderr, "mtl: wrap of %zu bytes at %p reaches past its allocation: binding %zu\n", bytes, host, len);
+        }
+        n = len;
+    }
+    return cx.wrap((void*) base, n);
+}
+}  // namespace
 
 
 
@@ -119,15 +159,12 @@ bool embed(const uint16_t* rows, int T, float* h, int dim, int hc, void*) {
     if (std::getenv("DS4_DBG_HV"))
         std::fprintf(stderr, "DBG hostview: rows %p -> %p   h %p -> %p\n",
                      (void*) rows, hrows, (void*) h, hh);
-    const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        return strata::dsv41::metal_host::shared_cx().wrap((void*) (((uintptr_t) host) & ~(uintptr_t) (page - 1)), ((bytes + page - 1) / page) * page);
-    };
-    mtl::Buffer br = wrap(hrows, (size_t) T * dim * 2);
-    mtl::Buffer bh = wrap(hh, (size_t) T * hc * dim * 4);
+    const size_t page = kWrapPage;
+    mtl::Buffer br = wrap_range(strata::dsv41::metal_host::shared_cx(), hrows, (size_t) T * dim * 2);
+    mtl::Buffer bh = wrap_range(strata::dsv41::metal_host::shared_cx(), hh, (size_t) T * hc * dim * 4);
     if (!br.handle || !bh.handle) { std::fprintf(stderr, "dsv41 metal: embed wrap failed\n"); return false; }
-    const size_t dro = (size_t) (((uintptr_t) hrows) - (((uintptr_t) hrows) & ~(uintptr_t) (page - 1)));
-    const size_t dho = (size_t) (((uintptr_t) hh) - (((uintptr_t) hh) & ~(uintptr_t) (page - 1)));
+    const size_t dro = wrap_off_of(hrows);
+    const size_t dho = wrap_off_of(hh);
     mtl::Pipeline pl;
     try { pl = strata::dsv41::metal_host::shared_cx().pipeline(g_lib_init, "ds4_embed"); } catch (...) { return false; }
     mtl::Dispatch d;
@@ -138,6 +175,24 @@ bool embed(const uint16_t* rows, int T, float* h, int dim, int hc, void*) {
     d.grid[2] = 1;
     d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
     strata::dsv41::metal_host::shared_cx().run({d});
+    if (std::getenv("DS4_DBG_EMBTAIL")) {
+        // The last 12288 bytes of h come back as the embedding in one run and as zeros in the next, so the write itself is in
+        // question.  Print both routes the engine has for the same memory (the port's own pointer and host_view), where the
+        // allocation the wrap binds actually starts and how much of it the runtime reports, and the first and last values.
+        strata::dsv41::metal_host::shared_cx().flush_runs();
+        const size_t need = (size_t) T * hc * dim;
+        const float* viaport = (const float*) hh;
+        const float* viaview = (const float*) strata::gpu::host_view(h);
+        size_t len = 0;
+        const size_t start = ds4_gpu_alloc_start(hh, &len);
+        std::fprintf(stderr,
+                     "DBG embtail: h=%p port=%p view=%p need=%zuB wrap=%zuB allocstart=%zx mtllen=%zu rem=%zu bias=%zu\n",
+                     (void*) h, hh, (const void*) viaview, need * 4, ((need * 4 + page - 1) / page) * page, start, len,
+                     ds4_gpu_alloc_remaining(hh), (size_t) bh.bias);
+        std::fprintf(stderr, "DBG embtail: port[0]=%g view[0]=%g | port[end]=%g view[end]=%g | port[end-3]=%g view[end-3]=%g\n",
+                     viaport[0], viaview ? viaview[0] : -1.0f, viaport[need - 1], viaview ? viaview[need - 1] : -1.0f,
+                     viaport[need - 3072], viaview ? viaview[need - 3072] : -1.0f);
+    }
     if (std::getenv("DS4_DBG_EMBWRITE")) {
         strata::dsv41::metal_host::shared_cx().flush_runs();
         const float* f0 = (const float*) hh;
@@ -160,11 +215,8 @@ bool sgemm_tn(const float* A, const float* B, float* C, int m, int nt, int k, in
     void* hb = strata::gpu::host_view((void*) B);
     void* hc = strata::gpu::host_view((void*) C);
     if (!ha || !hb || !hc) { std::fprintf(stderr, "dsv41 metal: sgemm_tn has no host view\n"); return false; }
-    const size_t page = 16384;
-    auto wrap = [&](void* host, size_t bytes) {
-        return finish_cx().wrap((void*) (((uintptr_t) host) & ~(uintptr_t) (page - 1)), ((bytes + page - 1) / page) * page);
-    };
-    auto off = [&](void* host) { return (size_t) ((uintptr_t) host - (((uintptr_t) host) & ~(uintptr_t) (page - 1))); };
+    auto wrap = [&](void* host, size_t bytes) { return wrap_range(finish_cx(), host, bytes); };
+    auto off = [&](void* host) { return wrap_off_of(host); };
     mtl::Buffer ba = wrap(ha, (size_t) m * lda * 4);
     mtl::Buffer bb = wrap(hb, (size_t) nt * ldb * 4);
     mtl::Buffer bc = wrap(hc, (size_t) nt * ldc * 4);
