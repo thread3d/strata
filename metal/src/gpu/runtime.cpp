@@ -329,10 +329,55 @@ Error encode_copy(StreamImpl* s, void* dst, const void* src, size_t n) {
         return kSuccess;
     }
     // host memory on one side (a pinned array included): the stream's earlier work must be complete first (the conservative CUDA
-    // pageable-memory semantics: the call returns when the copy is done).  On a card whose buffers are shared memory this is a
-    // plain memcpy into the buffer's own CPU view.
+    // pageable-memory semantics: the call returns when the copy is done).  On a card whose buffers are shared memory this can be a
+    // plain memcpy into the buffer's own CPU view - but not always: the engine's dense pool was uploaded that way and the matvec
+    // that consumed it read uninitialised rows exactly where the host read the tensor correctly (DS4_DBG_Q8's sweep, 105 of 1280
+    // rows as inf where a host recompute of the same address gave -2.8e-4).  DS4_COPY_BLIT=1 makes the GPU do the write, through a
+    // staging buffer, which is a write the GPU's own view cannot miss.
     flush(s);
     wait_value(s->tl, s->submitted);
+#if defined(STRATA_DS4_RUNTIME)
+    if (ad && !as && n > 0 && std::getenv("DS4_COPY_BLIT") != nullptr) {   // (upload: opt-in, it changed nothing measured)
+        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+        MTL::Buffer* st = rt().dev->newBuffer(n, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeUntracked);
+        if (st == nullptr) { pool->release(); return fail(kErrorMemoryAllocation); }
+        std::memcpy(st->contents(), src, n);
+        end_encoder(s);
+        MTL::BlitCommandEncoder* b = open_cb(s)->blitCommandEncoder();
+        b->copyFromBuffer(st, 0, ad->buf, od, n);
+        b->endEncoding();
+        ++rt().stats.blits;
+        flush(s);
+        wait_value(s->tl, s->submitted);
+        st->release();
+        pool->release();
+        return kSuccess;
+    }
+#endif
+#if defined(STRATA_DS4_RUNTIME)
+    // DS4_COPY_BLIT=1, device -> host: the CPU's view of a buffer the GPU wrote LAGS.  Measured: a row read straight out of the
+    // wrapped pages right after the command buffer completed gave inf, and the same address 200 ms later gave -0.46; the engine's
+    // own readbacks (the logits the sampler reads, the picks, the dumps) all take this path, which is how one run's sampled token
+    // came out different from another's with the prompt bit-identical.  So read through a buffer Metal owns: blit into a staging
+    // buffer, wait, then copy that out.
+    static const bool blit_readback = std::getenv("DS4_NO_COPY_BLIT") == nullptr;   // (on: the direct read lagged, see below)
+    if (as && !ad && n > 0 && blit_readback) {
+        NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+        MTL::Buffer* st = rt().dev->newBuffer(n, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeUntracked);
+        if (st == nullptr) { pool->release(); return fail(kErrorMemoryAllocation); }
+        end_encoder(s);
+        MTL::BlitCommandEncoder* b = open_cb(s)->blitCommandEncoder();
+        b->copyFromBuffer(as->buf, os, st, 0, n);
+        b->endEncoding();
+        ++rt().stats.blits;
+        flush(s);
+        wait_value(s->tl, s->submitted);
+        std::memcpy(dst, st->contents(), n);
+        st->release();
+        pool->release();
+        return kSuccess;
+    }
+#endif
     uint8_t* d = ad ? ad->cpu + od : (uint8_t*) dst;
     const uint8_t* sp = as ? as->cpu + os : (const uint8_t*) src;
     std::memcpy(d, sp, n);
