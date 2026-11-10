@@ -723,7 +723,8 @@ kernel void ds4_mx_mv(device const uchar* jobs [[buffer(0)]], device const uchar
 kernel void ds4_q8_mv(device const uchar* jobs [[buffer(0)]], device const uchar* bws [[buffer(1)]], device const uchar* bxs [[buffer(2)]],
                       device const uchar* bdy [[buffer(3)]], device const uchar* bbs [[buffer(4)]],
                       device const uchar* bxq [[buffer(5)]], device const uchar* bxd [[buffer(6)]], uint2 tgp [[threadgroup_position_in_grid]],
-                      uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+                      uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]],
+                      device float* PROBE [[buffer(7)]], constant int& probe_row [[buffer(8)]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MxJob& b = *(const device Ds4MxJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MxJob));
     const device uchar* W = bws + b.w;   // (the job's pointers, as offsets into the bound allocations)
@@ -735,6 +736,20 @@ kernel void ds4_q8_mv(device const uchar* jobs [[buffer(0)]], device const uchar
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
     const device uchar* w = (const device uchar*) W + (size_t) row * b.ld;
+
+    if (tid == 0u && tgp.x == 0u && tgp.y == 0u) PROBE[31] = -7.0f;   // (the probe buffer is bound and writable)
+    // DS4_DBG_PROBE: what THIS shader reads for one row, so a host reading the same address afterwards can be told apart from the
+    // shader that read it during the matvec (weight block head, the scale it decodes, the row offset, and the activation's head).
+    if (probe_row >= 0 && int(row) == probe_row && (tid & 31u) == 0u) {   // (lane 0 of the row's warp)
+        const ushort dh0 = ushort(w[0]) | (ushort(w[1]) << 8);
+        PROBE[0] = float(row);
+        PROBE[1] = float(as_type<half>(dh0));
+        PROBE[2] = as_type<float>(uint((size_t) (w - W)));
+        for (uint j = 0; j < 8u; ++j) PROBE[3u + j] = float(w[2u + j]);
+        for (uint j = 0; j < 8u; ++j) PROBE[11u + j] = float(XQ != nullptr ? (int) XQ[j] : 0);
+        PROBE[19] = XD != nullptr ? XD[0] : 0.0f;
+        PROBE[20] = as_type<float>(uint((size_t) (W - bws)));
+    }
     const uint nb = uint(b.k) / 32u;
     float acc[8];
     for (uint c = 0; c < 8u; ++c) acc[c] = 0.0f;
