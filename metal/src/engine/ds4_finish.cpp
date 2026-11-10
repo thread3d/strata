@@ -886,10 +886,14 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
             g_cx->free(bj);
             return false;
         }
+        // DS4_DBG_PROBE=<row>: the shader reports what it read for that row (see ds4_q8_mv), so the host's read of the same bytes
+        // can be compared with the read the matvec itself made.
+        static const int probe_row = std::getenv("DS4_DBG_PROBE") ? std::atoi(std::getenv("DS4_DBG_PROBE")) : -1;
+        mtl::Buffer bprobe = g_cx->alloc(32 * sizeof(float));
         mtl::Dispatch d;
         d.p = &pl;
         d.args = {mtl::Arg::B(bj), mtl::Arg::B(bWs), mtl::Arg::B(bXs), mtl::Arg::B(bYs), mtl::Arg::B(bBs),
-                  mtl::Arg::B(bQs), mtl::Arg::B(bDs)};
+                  mtl::Arg::B(bQs), mtl::Arg::B(bDs), mtl::Arg::B(bprobe), mtl::Arg::V(probe_row)};
         // DS4_DBG_BINDQ=1: the batch's shape and whether grid[0] (from max_n) covers every job's rows, plus how much of the x and
         // y allocations each job leaves.  The layer-4 q projection's rows past ~1024 come back as nan in some runs, and 1280 rows
         // over a grid of 1024 is exactly 1024/8 = 128 threadgroups: a grid one job short would drop just those rows.
@@ -918,6 +922,24 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
         d.grid[2] = 1;
         d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
         g_cx->run({d});
+        if (probe_row >= 0 && probe_row < (int) v[0].n) {
+            g_cx->flush_runs();
+            const float* pr = (const float*) bprobe.ptr;
+            const size_t hoff = (size_t) (uintptr_t) v[0].w + (size_t) probe_row * (size_t) v[0].ld;
+            const uint8_t* hp = (const uint8_t*) ((uintptr_t) bw + hoff);
+            const uint16_t hdh = (uint16_t) (hp[0] | (hp[1] << 8));
+            char wb[64], hb[64];
+            for (int j = 0; j < 8; ++j) {
+                std::snprintf(wb + 3 * j, 4, "%02x ", hp[2 + j]);
+                std::snprintf(hb + 3 * j, 4, "%02x ", (uint8_t) pr[3 + j]);
+            }
+            std::fprintf(stderr, "DBG probe-bind %s probe_row=%d alive=%.1f\n", fn, probe_row, (double) pr[31]);
+            std::fprintf(stderr,
+                         "DBG probe %s row=%d/%d | shader: dw=%g rowoff=%g w=%.17g xd0=%g xq0=%g bytes=[%s] | host: dw=%g bytes=[%s] %s\n",
+                         fn, (int) pr[0], (int) v[0].n, pr[1], pr[2], pr[20], pr[19], pr[11], hb, *(const float*) &hdh,
+                         wb, (wb[0] == hb[0] && wb[1] == hb[1] && wb[2] == hb[2]) ? "same-head" : "DIFFERENT-head");
+        }
+        g_cx->free(bprobe);
         g_cx->free(bj);
     }
     return true;
