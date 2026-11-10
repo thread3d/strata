@@ -10086,6 +10086,23 @@ struct Model::Impl {
           while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < 0.2) { } }
 #endif
         dump_sub(d, "attn_x_late", l.il, p0, T, d.x, (size_t) T * D * 4);
+#if defined(STRATA_METAL)
+        // DS4_DBG_CK=1: the GPU's own view of the activation the quantiser is about to read, beside the host's.  The host's view is
+        // what every dump has been comparing (and it is stable), so if the GPU's view of the same address differs run to run while
+        // the host's does not, that is the difference the quantiser sees.
+        if (ds4_dbg("DS4_DBG_CK")) {
+            const size_t nb = (size_t) T * D * 4;
+            uint64_t ck[2] = {0, 0};
+            if (::strata::dsv41::metal_host::dbg_device_checksum((const void*) d.x, nb, ck)) {
+                const uint8_t* hxp = (const uint8_t*) strata::gpu::host_view((void*) d.x);
+                uint64_t ha = 0, hb = 0;
+                for (size_t q = 0; hxp != nullptr && q < nb; ++q) { const uint64_t v = hxp[q]; ha += v * (uint64_t) (q + 1); hb += v; }
+                std::fprintf(stderr, "DBG ck-x layer=%d p0=%lld host=%016llx,%016llx gpu=%016llx,%016llx %s\n", l.il, (long long) p0,
+                             (unsigned long long) ha, (unsigned long long) hb, (unsigned long long) ck[0],
+                             (unsigned long long) ck[1], (ha == ck[0] && hb == ck[1]) ? "agree" : "DIFFER");
+            }
+        }
+#endif
         {
             x3::MvJob j[4];
             int nj = 0;

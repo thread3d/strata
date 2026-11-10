@@ -757,14 +757,24 @@ bool q8_quant_multi(const void* specs, int n) {
     std::vector<HostQ8Spec> specs_copy(sp, sp + n);
     size_t lx = 0, lq = 0, ld = 0;
     const size_t bx0 = span_base(sp[0].x, &lx), bq0 = span_base(sp[0].q, &lq), bd0 = span_base(sp[0].d, &ld);
+    // Every spec of the batch has to live in the SAME three allocations, because the kernel reads each spec's x/q/d as an offset from
+    // the first spec's base and the dispatch binds that base's buffer alone.  The check used to be only "not below the first base",
+    // which lets a spec in a *higher* allocation through: its offset then runs past the bound buffer into whatever is mapped there,
+    // and whether such a mix arises at all depends on where the engine's buffers happen to land - i.e. on the run.  Anything that is
+    // not inside the first spec's allocations takes the per-spec path.
+    bool one_alloc = bx0 != 0 && bq0 != 0 && bd0 != 0;
+    for (int i = 0; one_alloc && i < n; ++i) {
+        size_t a = 0, b = 0, c = 0;
+        if (span_base(sp[i].x, &a) != bx0 || span_base(sp[i].q, &b) != bq0 || span_base(sp[i].d, &c) != bd0) one_alloc = false;
+    }
+    if (!one_alloc) {
+        bool ok = true;
+        for (int k2 = 0; k2 < n; ++k2)
+            ok = q8_quant_rows(sp[k2].x, (size_t) sp[k2].ldx, (int) sp[k2].rows, (int) sp[k2].k, sp[k2].q, sp[k2].d) && ok;
+        return ok;
+    }
     for (int i = 0; i < n; ++i) {
         const uintptr_t px = (uintptr_t) sp[i].x, pq = (uintptr_t) sp[i].q, pd = (uintptr_t) sp[i].d;
-        if (bx0 == 0 || bq0 == 0 || bd0 == 0 || px < bx0 || pq < bq0 || pd < bd0) {   // not one allocation each
-            bool ok = true;
-            for (int k2 = 0; k2 < n; ++k2)
-                ok = q8_quant_rows(sp[k2].x, (size_t) sp[k2].ldx, (int) sp[k2].rows, (int) sp[k2].k, sp[k2].q, sp[k2].d) && ok;
-            return ok;
-        }
         specs_copy[(size_t) i].x = (const float*) (px - bx0);
         specs_copy[(size_t) i].q = (int8_t*) (pq - bq0);
         specs_copy[(size_t) i].d = (float*) (pd - bd0);
