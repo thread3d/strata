@@ -35,7 +35,21 @@ static unsigned long long g_q8_deduped = 0;
 static size_t wrap_len(size_t base, size_t need) {
     const size_t pg = 16384, up = (need + pg - 1) / pg * pg;
     const size_t rem = ds4_gpu_alloc_remaining((const void*) base);
-    return rem > 0 && rem < up ? rem : up;   // (sparse_attn asks for one row more than the window buffer holds, which it never reads)
+    if (rem > 0 && rem < up) {
+        // Cutting the bind at the allocation keeps ONE mapping for all the bytes inside it, which is what makes a kernel's write
+        // what every other kernel reads; a second mapping of the same pages is the incoherence this port has been bitten by.  But
+        // a bind shorter than `need` drops the tail of any write there with no error anywhere, so say so once: the case this is
+        // for (sparse_attn asking for one row more than the window buffer holds, which it never reads) is harmless, and anything
+        // else that reaches here is a real over-ask worth seeing.
+        static bool said = false;
+        if (!said) {
+            said = true;
+            std::fprintf(stderr, "mtl: a range of %zu bytes at 0x%zx reaches %zu bytes past its allocation: binding %zu\n", need,
+                         base, up - rem, rem);
+        }
+        return rem;
+    }
+    return up;
 }
 
 #define DSV41_PROBE(fmt, ...) do { static bool once_ = false; if (!once_) { once_ = true; std::fprintf(stderr, "[probe] " fmt, __VA_ARGS__); } } while (0)
@@ -2228,7 +2242,38 @@ bool hc_post_v(const float* y, const float* res, const float* post, const float*
     d.grid[1] = (uint32_t) T;
     d.grid[2] = 1;
     d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
+    // DS4_DBG_HCP=1: this call's operands as the kernel will read them (through the port's own pointers) and its output read back
+    // through BOTH routes - the engine's device pointer and the port's.  The first divergence between two identical runs lands on
+    // this kernel with every operand bit-identical, so the question is which mapping the dispatch actually binds.
+    static const bool hcp_dbg = std::getenv("DS4_DBG_HCP") != nullptr;
+    static long hcp_calls = 0;
+    const bool hcp_log = hcp_dbg && hcp_calls < 8;
+    if (hcp_log) {
+        auto span = [](void* p, size_t* len) { *len = 0; return ds4_gpu_alloc_start ? ds4_gpu_alloc_start(p, len) : (size_t) 0; };
+        size_t lr = 0, lp = 0, lc = 0, lo = 0, ly = 0;
+        const size_t sr = span(hr, &lr), sp = span(hp, &lp), sc = span(hco, &lc), so = span(ho, &lo), sy = span(hy, &ly);
+        std::fprintf(stderr, "DBG hcp #%ld T=%d dim=%d hc=%d\n", hcp_calls, T, dim, hc);
+        std::fprintf(stderr, "  res p=%p port=%p span=%zx len=%zu  handle=%p off=%zu\n", (void*) res, hr, sr, lr, br.handle, off(hr));
+        std::fprintf(stderr, "  y   p=%p port=%p span=%zx len=%zu  handle=%p off=%zu\n", (void*) y, hy, sy, ly, by.handle, off(hy));
+        std::fprintf(stderr, "  post p=%p port=%p span=%zx len=%zu handle=%p off=%zu\n", (void*) post, hp, sp, lp, bp.handle, off(hp));
+        std::fprintf(stderr, "  comb p=%p port=%p span=%zx len=%zu handle=%p off=%zu\n", (void*) comb, hco, sc, lc, bc.handle, off(hco));
+        std::fprintf(stderr, "  out  p=%p port=%p span=%zx len=%zu  handle=%p off=%zu\n", (void*) out, ho, so, lo, bo.handle, off(ho));
+        const float* fr = (const float*) hr;
+        const float* fp2 = (const float*) hp;
+        const float* fc = (const float*) hco;
+        std::fprintf(stderr, "  in  res=%g %g post=%g %g comb=%g %g y=%g\n", fr[0], fr[1], fp2[0], fp2[1], fc[0], fc[1],
+                     ((const float*) hy)[0]);
+    }
     g_cx->run({d});
+    if (hcp_log) {
+        g_cx->flush_runs();
+        float e0 = 0.f, e1 = 0.f;
+        cudaMemcpy(&e0, (const void*) out, 4, cudaMemcpyDeviceToHost);
+        cudaMemcpy(&e1, (const void*) (out + 1), 4, cudaMemcpyDeviceToHost);
+        const float* fo = (const float*) ho;
+        std::fprintf(stderr, "  out engine=%g %g  port=%g %g\n", e0, e1, fo[0], fo[1]);
+        ++hcp_calls;
+    }
     return true;
 }
 

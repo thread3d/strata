@@ -860,8 +860,17 @@ Buffer Context::wrap(void* p, size_t bytes) {
     }
 #endif
 #if defined(STRATA_DS4_RUNTIME)
-    if (std::getenv("DS4_WRAP_LOG"))   // debugging: a wrap that is not inside one runtime allocation gets a second GPU mapping of the pages
+    if (std::getenv("DS4_WRAP_LOG")) {   // debugging: a wrap that is not inside one runtime allocation gets a second GPU mapping of the pages
         std::fprintf(stderr, "mtl: wrap FALLBACK p=%p bytes=%zu alloc_remaining=%zu\n", p, bytes, ds4_gpu_alloc_remaining ? ds4_gpu_alloc_remaining(p) : (size_t) 0);
+        if (std::getenv("DS4_WRAP_BT")) {   // ... and which wrapper asked for it
+            void* bt[16];
+            const int nb = backtrace(bt, 16);
+            char** syms = backtrace_symbols(bt, nb);
+            std::fprintf(stderr, "mtl:  caller:");
+            for (int i = 1; i < nb && i < 6; ++i) std::fprintf(stderr, " %s;", syms ? syms[i] : "?");
+            std::fprintf(stderr, "\n");
+        }
+    }
 #endif
 #if defined(STRATA_DS4_RUNTIME)
     Buffer r;
