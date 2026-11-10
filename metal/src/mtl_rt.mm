@@ -847,6 +847,19 @@ static bool read_only_range(void* p, size_t bytes) {
 
 Buffer Context::wrap(void* p, size_t bytes) {
 #if defined(STRATA_DS4_RUNTIME)
+    // A read-only range is the model itself: file-backed mmap pages, and a no-copy MTLBuffer over them is only right if the GPU
+    // sees the file's bytes.  It does not always: with the page cache under pressure the GPU read zeros and garbage where the host
+    // read the tensor correctly (measured - DS4_DBG_Q8's sweep said "105 of 1280 rows miss the host recompute, kernel=inf" while the
+    // host's own recompute of the same rows was -0.00028, and a bigger --reserve-mib, i.e. less page cache, made it worse).  Ask for
+    // the pages and touch them so they are in memory when the GPU reads them.
+    static const bool touch_ro = std::getenv("DS4_TOUCH_RO") != nullptr;   // (off: it did not change the outcome, see NEXT.md)
+    if (touch_ro && bytes > 0 && read_only_range(p, bytes)) {
+        madvise(p, bytes, MADV_WILLNEED);
+        const size_t pg = 4096;   // (the page the file is mapped in, not the wrap's 16 KiB)
+        volatile const char* q = (volatile const char*) p;
+        for (size_t i = 0; i < bytes; i += pg) (void) q[i];
+        (void) q[bytes - 1];
+    }
     if (ds4_gpu_buffer_for_cpu && !std::getenv("DS4_WRAP_COPY")) {
         size_t off = 0;
         if (void* mb = ds4_gpu_buffer_for_cpu(p, bytes, &off)) {
@@ -857,6 +870,21 @@ Buffer Context::wrap(void* p, size_t bytes) {
             r.bias = off;
             return r;
         }
+    }
+    // DS4_RO_COPY=1: give a read-only range a real MTLBuffer of its own, so the GPU holds a copy of the bytes rather than a view of
+    // the model's file-backed pages.  A test of the residency question: the same rows that came back as nan/inf from a no-copy view
+    // (while the host read them correctly) must come back right if the bytes are copied.
+    if (std::getenv("DS4_RO_COPY") && bytes > 0 && read_only_range(p, bytes)) {
+        Buffer r;
+        @autoreleasepool {
+            id<MTLBuffer> b = [impl_->dev newBufferWithBytes:p length:bytes options:MTLResourceStorageModeShared];
+            if (!b) { std::fprintf(stderr, "mtl: read-only copy of %zu bytes failed\n", bytes); std::exit(4); }
+            r.handle = (__bridge_retained void*)b;
+        }
+        allocated_ += bytes;
+        r.ptr = p;
+        r.bytes = bytes;
+        return r;
     }
 #endif
 #if defined(STRATA_DS4_RUNTIME)

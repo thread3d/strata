@@ -1293,6 +1293,36 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
                 std::fprintf(stderr, "DBG q8 job0 k=%d n=%d ncol=%d ld=%zu xcs=%zu c=%d r=%d recompute=%.5g exactf=%.5g kernel_y=%.5g xd0=%g xq0=%d\n", b.k, b.n, b.ncol,
                              b.ld, b.xcs, c, r, acc, accf, y[(size_t) c * b.ycs + r], xd[(size_t) c * (b.k / 32)], (int) xq[(size_t) c * b.k]);
             }
+        // The whole first column, row by row: does the kernel's answer match a host recompute of the same weights and the same
+        // quantisation?  A row that does not is one the kernel computed from different bytes than the host sees - the state the
+        // layer-4 q projection's ~757 bad rows are in (nan and 1e37-scale values, the same ones in every bad run).
+        {
+            int nbad = 0, firstbad = -1;
+            double worst = 0.0, worsth = 0.0, worstk = 0.0;
+            for (int r = 0; r < b.n; ++r) {
+                double acc = 0.0;
+                for (int kb = 0; kb < b.k / 32; ++kb) {
+                    const uint8_t* p = w + (size_t) r * b.ld + (size_t) kb * 34;
+                    uint16_t dh;
+                    std::memcpy(&dh, p, 2);
+                    const float dw = __half2float(*(const __half*) &dh);
+                    int sum = 0;
+                    for (int j = 0; j < 32; ++j) sum += (int) (int8_t) p[2 + j] * (int) xq[kb * 32 + j];
+                    acc += (double) dw * xd[kb] * sum;
+                }
+                const double kv = y[(size_t) r];
+                const double rel = std::fabs(acc - kv) / (std::fabs(acc) + 1e-9);
+                if (rel > 1e-3) {
+                    ++nbad;
+                    if (firstbad < 0) firstbad = r;
+                }
+                if (rel > worst) { worst = rel; worsth = acc; worstk = kv; }
+            }
+            std::fprintf(stderr,
+                         "DBG q8 sweep job0 col0: %d of %d rows miss the host recompute (rel>1e-3), first=%d, worst rel=%.3g host=%.6g "
+                         "kernel=%.6g\n",
+                         nbad, b.n, firstbad, worst, worsth, worstk);
+        }
     }
 #endif
     if (nij > 0 && !iq::mv(IJ, nij, s)) {
