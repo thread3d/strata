@@ -902,12 +902,13 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
                 const long long wneed = (long long) ((size_t) j0.n * (size_t) j0.ld);
                 std::fprintf(stderr,
                              "DBG mxmv %s fmt=%d jobs=%zu max_n=%d grid0=%u | job0 n=%d k=%llu ld=%llu ncol=%d | wremain=%lld "
-                             "wneed=%lld wfit=%s | xremain=%lld yremain=%lld\n",
+                             "wneed=%lld wfit=%s | xremain=%lld yremain=%lld ycs=%llu xcs=%llu\n",
                              fn, fmt, v.size(), max_n, (unsigned) ((max_n + 7) / 8), (int) j0.n, (unsigned long long) j0.k,
                              (unsigned long long) j0.ld, (int) j0.ncol, wrem, wneed,
                              (wrem < 0 || wrem >= wneed) ? "yes" : "NO",
                              bx ? (long long) (lx - (size_t) (uintptr_t) j0.x) : -1LL,
-                             (long long) (ly - (size_t) (uintptr_t) j0.y));
+                             (long long) (ly - (size_t) (uintptr_t) j0.y), (unsigned long long) j0.ycs,
+                             (unsigned long long) j0.xcs);
                 for (size_t q = 1; q < v.size() && q < 4; ++q)
                     std::fprintf(stderr, "          job%zu n=%d k=%llu\n", q, (int) v[q].n, (unsigned long long) v[q].k);
             }
@@ -1722,6 +1723,37 @@ bool combine(const float* ed, const float* cpu, const float* sh, const void* c, 
 static inline void* cpu_addr(void* p) {
     void* h = cpu_for_wrap(p);
     return h ? h : p;
+}
+
+// DS4_DBG_CK: the GPU's own view of a range of memory, as two order-independent partial sums (a weighted sum and a plain one).  The
+// host computes the same two numbers over the same pointer; if they disagree, the GPU and the CPU are looking at different bytes.
+bool dbg_device_checksum(const void* p, size_t bytes, uint64_t out[2]) {
+    if (p == nullptr || bytes == 0) return false;
+    if (!ensure()) return false;
+    void* h = cpu_for_wrap((void*) p);
+    if (h == nullptr) return false;
+    mtl::Buffer bp = wrap_span(h, bytes);
+    mtl::Buffer bo = g_cx->alloc(512 * sizeof(uint64_t));
+    if (!bp.handle || !bo.ptr) {
+        if (bo.ptr) g_cx->free(bo);
+        return false;
+    }
+    mtl::Pipeline pl;
+    try { pl = g_cx->pipeline(g_lib, "ds4_dbg_ck"); } catch (...) { g_cx->free(bo); return false; }
+    mtl::Dispatch d;
+    d.p = &pl;
+    d.args = {mtl::Arg::B(bp, span_off(h)), mtl::Arg::V((unsigned long) bytes), mtl::Arg::B(bo)};
+    d.grid[0] = 1; d.grid[1] = d.grid[2] = 1;
+    d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
+    g_cx->run({d});
+    g_cx->flush_runs();
+    const uint64_t* v = (const uint64_t*) bo.ptr;
+    uint64_t a = 0, b = 0;
+    for (int i = 0; i < 256; ++i) { a += v[i]; b += v[256 + i]; }
+    out[0] = a;
+    out[1] = b;
+    g_cx->free(bo);
+    return true;
 }
 
 // ds4_kernels.cu:1286 engram_dequant_kernel - the Engram rows (fmt 2 = IQ4_NL, the tables this model's pack carries; the

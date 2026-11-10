@@ -1267,6 +1267,17 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
         }
     }
     quant_flush(QI, s);
+#if defined(STRATA_METAL)
+    // DS4_DBG_Q8: paint the first Q8 job's output before the matvec, so the sweep can count what the kernel did not write.
+    if (ds4_dbg("DS4_DBG_Q8") && nj[2] > 0) {
+        const BfJob& b0 = J[2].j[0];
+        float* yv = (float*) strata::gpu::host_view((void*) b0.y);
+        if (yv != nullptr) {
+            const size_t ny = (size_t) (b0.ncol - 1) * b0.ycs + (size_t) b0.n;
+            for (size_t q = 0; q < ny; ++q) yv[q] = -12345.0f;
+        }
+    }
+#endif
     for (int f = 0; f < 3; ++f) mv_set(f, J[f], nj[f], max_n[f], max_c[f], vec[f], s);
 #if defined(STRATA_METAL)
     if (ds4_dbg("DS4_DBG_Q8") && nj[2] > 0) {   // DBG: the Q8_0 matvec's first job against a host recompute
@@ -1318,6 +1329,9 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
                 }
                 if (rel > worst) { worst = rel; worsth = acc; worstk = kv; }
             }
+            int nleft = 0;
+            for (int r = 0; r < b.n; ++r) if (y[(size_t) r] == -12345.0f) ++nleft;
+            std::fprintf(stderr, "DBG q8 unwritten job0 col0: %d of %d rows still hold the sentinel\n", nleft, b.n);
             // If the host's read of a GPU-written row is merely *late*, a second read after a pause shows the right value: that is
             // the difference between "the kernel computed garbage" and "the CPU's view of the buffer had not caught up".
             double again = 0.0;
@@ -1325,6 +1339,41 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
                 { const auto t0 = std::chrono::steady_clock::now();
                   while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < 0.2) { } }
                 again = y[(size_t) firstbad];
+            }
+            // The bytes themselves, hashed: if two runs that take different branches hash the same tensor the same way, the weights
+            // are not what differs and the difference is on the activation side; if they differ, something wrote the tensor.
+            {
+                uint64_t h = 1469598103934665603ull;
+                const uint8_t* wh = (const uint8_t*) w;
+                const size_t wbytes = (size_t) b.n * b.ld;
+                for (size_t q = 0; q < wbytes; ++q) { h ^= wh[q]; h *= 1099511628211ull; }
+                static long swq = 0;
+                ++swq;
+                std::fprintf(stderr, "DBG q8 whash #%ld n=%d ld=%zu bytes=%zu hash=%016llx\n", swq, b.n, b.ld, wbytes,
+                             (unsigned long long) h);
+                // and the activations the same job was given, quantised: if the weights match across runs and the answer still
+                // differs, this is the side that has to differ
+                uint64_t hq = 1469598103934665603ull, hd2 = 1469598103934665603ull;
+                const size_t qbytes = (size_t) b.ncol * (size_t) b.k;
+                for (size_t q = 0; q < qbytes; ++q) { hq ^= ((const uint8_t*) xq)[q]; hq *= 1099511628211ull; }
+                const size_t dbytes = (size_t) b.ncol * (size_t) (b.k / 32);
+                for (size_t q = 0; q < dbytes; ++q) { hd2 ^= ((const uint8_t*) xd)[q]; hd2 *= 1099511628211ull; }
+                std::fprintf(stderr, "DBG q8 ahash #%ld qbytes=%zu qhash=%016llx dbytes=%zu dhash=%016llx\n", swq, qbytes,
+                             (unsigned long long) hq, dbytes, (unsigned long long) hd2);
+            }
+            // The same two sums over the same pointer, computed by the GPU and by the host: a difference here means the two are
+            // looking at different bytes, whatever the host's own hash says.
+            {
+                const size_t wbytes = (size_t) b.n * b.ld;
+                uint64_t ck[2] = {0, 0};
+                if (::strata::dsv41::metal_host::dbg_device_checksum((const void*) w, wbytes, ck)) {
+                    const uint8_t* wh = (const uint8_t*) w;
+                    uint64_t ha = 0, hb = 0;
+                    for (size_t q = 0; q < wbytes; ++q) { const uint64_t v = wh[q]; ha += v * (uint64_t) (q + 1); hb += v; }
+                    std::fprintf(stderr, "DBG q8 ck bytes=%zu host=%016llx,%016llx gpu=%016llx,%016llx %s\n", wbytes,
+                                 (unsigned long long) ha, (unsigned long long) hb, (unsigned long long) ck[0],
+                                 (unsigned long long) ck[1], (ha == ck[0] && hb == ck[1]) ? "agree" : "DIFFER");
+                }
             }
             static long swp = 0;
             std::fprintf(stderr,

@@ -10084,6 +10084,8 @@ struct Model::Impl {
             if (!mv_n(d, j, nj, err)) return false;
         }
         dump_sub(d, "qr_raw", l.il, p0, T, d.qr, (size_t) T * g.q_lora * 4);
+        dump_sub(d, "qr_raw2", l.il, p0, T, d.qr, (size_t) T * g.q_lora * 4);   // (the same buffer again: if the two records
+                                                                                 // differ, the dump path itself is racy)
         dump_sub(d, "kvr_raw", l.il, p0, T, d.kvr, (size_t) T * HD * 4);
         Finish fq;
         fq.w = l.q_norm;
