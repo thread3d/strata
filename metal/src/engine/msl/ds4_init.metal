@@ -614,19 +614,23 @@ kernel void ds4_q8_quant(device const float* x [[buffer(0)]], constant ulong& ld
 // activations share each decoded block (the T=8 window), then a warp sum and y[c][row] = alpha*v + bias[row].
 // Block layout (kMxBytes = 17 a 32 values): the E8M0 scale byte, then 16 bytes whose low nibble is value j and high nibble
 // value j+16, each an index into the 16-entry codebook {0,1,2,3,4,6,8,12} and its negatives.
+// The job's pointers are OFFSETS into the five allocations the dispatch binds: a Metal 2 kernel cannot dereference an address.
+// Pointers and offsets are both 8 bytes, so the layout the engine fills is unchanged; kNoBias marks a job without a bias.
 struct Ds4MxJob {
-    device const void* w;
+    ulong w;
     ulong ld;           // bytes a row
-    device const float* x;
+    ulong x;
     ulong xcs;
-    device float* y;
+    ulong y;
     ulong ycs;
-    device const float* bias;
+    ulong bias;
     float alpha;
     int k, n, ncol;
-    device const char* xq;
-    device const float* xd;
+    ulong xq;
+    ulong xd;
 };
+constant constexpr ulong kNoBias = ~ulong(0);
+constant constexpr ulong kNone = ~ulong(0);
 
 static inline float ds4_e8m0(uint e) {   // 2^(e - 128), ggml's GGML_E8M0_TO_FP32_HALF
     return as_type<float>(e < 2u ? (0x00200000u << e) : ((e - 1u) << 23));
@@ -641,7 +645,9 @@ static inline void ds4_mx_block(device const uchar* p, threadgroup const float* 
     }
 }
 
-kernel void ds4_mx_mv(device const uchar* jobs [[buffer(0)]],
+kernel void ds4_mx_mv(device const uchar* jobs [[buffer(0)]], device const uchar* bws [[buffer(1)]], device const uchar* bxs [[buffer(2)]],
+                      device const uchar* bdy [[buffer(3)]], device const uchar* bbs [[buffer(4)]],
+                      device const uchar* bxq [[buffer(5)]], device const uchar* bxd [[buffer(6)]],
                       uint2 tgp [[threadgroup_position_in_grid]], uint tid [[thread_index_in_threadgroup]],
                       ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
@@ -652,9 +658,15 @@ kernel void ds4_mx_mv(device const uchar* jobs [[buffer(0)]],
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     const device Ds4MxJob& b = *(const device Ds4MxJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MxJob));
+    const device uchar* W = bws + b.w;   // (the job's pointers, as offsets into the bound allocations)
+    const device float* X = (const device float*) (bxs + b.x);
+    device float* Y = (device float*) (bdy + b.y);
+    const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
+    const device char* XQ = b.xq == kNone ? nullptr : (const device char*) (bxq + b.xq);
+    const device float* XD = b.xd == kNone ? nullptr : (const device float*) (bxd + b.xd);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
-    const device uchar* w = (const device uchar*) b.w + (size_t) row * b.ld;
+    const device uchar* w = (const device uchar*) W + (size_t) row * b.ld;
     thread float acc[8];
     for (uint c = 0; c < 8u; ++c) acc[c] = 0.0f;
     const uint nblk = uint(b.k) / 32u;
@@ -663,7 +675,7 @@ kernel void ds4_mx_mv(device const uchar* jobs [[buffer(0)]],
         ds4_mx_block(w + (size_t) kb * 17u, lut, wv);
         for (uint c = 0; c < 8u; ++c) {
             if (int(c) >= b.ncol) break;
-            const device float* x = b.x + c * b.xcs + (size_t) kb * 32u;
+            const device float* x = X + c * b.xcs + (size_t) kb * 32u;
             float a = acc[c];
             for (uint j = 0; j < 32u; ++j) a = fma(wv[j], x[j], a);
             acc[c] = a;
@@ -677,7 +689,7 @@ kernel void ds4_mx_mv(device const uchar* jobs [[buffer(0)]],
         v += simd_shuffle_xor(v, 4);
         v += simd_shuffle_xor(v, 2);
         v += simd_shuffle_xor(v, 1);
-        if (lane == 0u) b.y[(size_t) c * b.ycs + row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
+        if (lane == 0u) Y[(size_t) c * b.ycs + row] = b.alpha * v + (BIAS != nullptr ? BIAS[row] : 0.0f);
     }
 }
 
@@ -685,13 +697,21 @@ kernel void ds4_mx_mv(device const uchar* jobs [[buffer(0)]],
 // grid = (ceil(n / 8), jobs), threadgroup 256: a warp a row, a lane strides the 34-byte blocks (fp16 d + 32 int8), the dot is
 // integer (CUDA's __dp4a in four-value groups; here the same sum written out), then acc += (dw * xd[c]) * sum.
 // The staged-prefetch (ST) and vector variants of the CUDA kernel are prefetch strategies only - this reads the blocks directly.
-kernel void ds4_q8_mv(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
+kernel void ds4_q8_mv(device const uchar* jobs [[buffer(0)]], device const uchar* bws [[buffer(1)]], device const uchar* bxs [[buffer(2)]],
+                      device const uchar* bdy [[buffer(3)]], device const uchar* bbs [[buffer(4)]],
+                      device const uchar* bxq [[buffer(5)]], device const uchar* bxd [[buffer(6)]], uint2 tgp [[threadgroup_position_in_grid]],
                       uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MxJob& b = *(const device Ds4MxJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MxJob));
+    const device uchar* W = bws + b.w;   // (the job's pointers, as offsets into the bound allocations)
+    const device float* X = (const device float*) (bxs + b.x);
+    device float* Y = (device float*) (bdy + b.y);
+    const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
+    const device char* XQ = b.xq == kNone ? nullptr : (const device char*) (bxq + b.xq);
+    const device float* XD = b.xd == kNone ? nullptr : (const device float*) (bxd + b.xd);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
-    const device uchar* w = (const device uchar*) b.w + (size_t) row * b.ld;
+    const device uchar* w = (const device uchar*) W + (size_t) row * b.ld;
     const uint nb = uint(b.k) / 32u;
     float acc[8];
     for (uint c = 0; c < 8u; ++c) acc[c] = 0.0f;
@@ -703,10 +723,10 @@ kernel void ds4_q8_mv(device const uchar* jobs [[buffer(0)]], uint2 tgp [[thread
         for (uint j = 0; j < 32u; ++j) wv[j] = int((char) p[2u + j]);
         for (uint c = 0; c < 8u; ++c) {
             if (int(c) >= b.ncol) break;
-            const device char* xq = b.xq + (size_t) c * b.k + (size_t) kb * 32u;
+            const device char* xq = XQ + (size_t) c * b.k + (size_t) kb * 32u;
             int sum = 0;
             for (uint j = 0; j < 32u; ++j) sum += wv[j] * int(xq[j]);
-            acc[c] = fma(dw * b.xd[(size_t) c * nb + kb], float(sum), acc[c]);
+            acc[c] = fma(dw * XD[(size_t) c * nb + kb], float(sum), acc[c]);
         }
     }
     for (uint c = 0; c < 8u; ++c) {
@@ -717,7 +737,7 @@ kernel void ds4_q8_mv(device const uchar* jobs [[buffer(0)]], uint2 tgp [[thread
         v += simd_shuffle_xor(v, 4);
         v += simd_shuffle_xor(v, 2);
         v += simd_shuffle_xor(v, 1);
-        if (lane == 0u) b.y[(size_t) c * b.ycs + row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
+        if (lane == 0u) Y[(size_t) c * b.ycs + row] = b.alpha * v + (BIAS != nullptr ? BIAS[row] : 0.0f);
     }
 }
 
@@ -1091,13 +1111,21 @@ kernel void ds4_engram_gate(device float* h [[buffer(0)]], device const float* k
 // BF16 dense matrices the jobs' f == 0 names).  Same frame as ds4_mx_mv above: a warp a row, a lane strides the row; here a
 // lane 8 BF16 weights (16 bytes = one uint4) and 8 activations, so the row is walked in 256-value steps.
 // A pair's F32 is bit-exact - the low half zeroed - which is bf16_mv_kernel's __uint_as_float(w << 16).
-kernel void ds4_bf16_mv(device const uchar* jobs [[buffer(0)]], uint2 tgp [[threadgroup_position_in_grid]],
+kernel void ds4_bf16_mv(device const uchar* jobs [[buffer(0)]], device const uchar* bws [[buffer(1)]], device const uchar* bxs [[buffer(2)]],
+                      device const uchar* bdy [[buffer(3)]], device const uchar* bbs [[buffer(4)]],
+                      device const uchar* bxq [[buffer(5)]], device const uchar* bxd [[buffer(6)]], uint2 tgp [[threadgroup_position_in_grid]],
                         uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MxJob& b = *(const device Ds4MxJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MxJob));
+    const device uchar* W = bws + b.w;   // (the job's pointers, as offsets into the bound allocations)
+    const device float* X = (const device float*) (bxs + b.x);
+    device float* Y = (device float*) (bdy + b.y);
+    const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
+    const device char* XQ = b.xq == kNone ? nullptr : (const device char*) (bxq + b.xq);
+    const device float* XD = b.xd == kNone ? nullptr : (const device float*) (bxd + b.xd);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
-    const device ushort* w = (const device ushort*) b.w + (size_t) row * b.ld;
+    const device ushort* w = (const device ushort*) W + (size_t) row * b.ld;
     thread float acc[16];   // (the CUDA template's largest NC; ncol cuts the rest)
     for (uint c = 0; c < 16u; ++c) acc[c] = 0.0f;
     for (uint i = uint(lane) * 8u; i < uint(b.k); i += 256u) {
@@ -1108,7 +1136,7 @@ kernel void ds4_bf16_mv(device const uchar* jobs [[buffer(0)]], uint2 tgp [[thre
                              as_type<float>(q.w << 16), as_type<float>(q.w & 0xffff0000u)};
         for (uint c = 0; c < 16u; ++c) {
             if (int(c) >= b.ncol) break;
-            const device float4* xp = (const device float4*) (b.x + c * b.xcs + (size_t) i);
+            const device float4* xp = (const device float4*) (X + c * b.xcs + (size_t) i);
             const float4 x0 = xp[0], x1 = xp[1];
             float a = acc[c];
             a = fma(wf[0], x0.x, a);
@@ -1130,7 +1158,7 @@ kernel void ds4_bf16_mv(device const uchar* jobs [[buffer(0)]], uint2 tgp [[thre
         v += simd_shuffle_xor(v, 4);
         v += simd_shuffle_xor(v, 2);
         v += simd_shuffle_xor(v, 1);
-        if (lane == 0u) b.y[(size_t) c * b.ycs + row] = b.alpha * v + (b.bias != nullptr ? b.bias[row] : 0.0f);
+        if (lane == 0u) Y[(size_t) c * b.ycs + row] = b.alpha * v + (BIAS != nullptr ? BIAS[row] : 0.0f);
     }
 }
 

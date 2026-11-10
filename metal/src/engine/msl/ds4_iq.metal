@@ -27,10 +27,10 @@ kernel void ds4_iq_mv(device const uchar* jobs [[buffer(0)]], device const uchar
                       uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -159,10 +159,10 @@ kernel void ds4_iq_mv_k(device const uchar* jobs [[buffer(0)]], device const uch
                         uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -391,7 +391,7 @@ static inline Ds4IqSub ds4_iq_sub(device const uchar* row, uint bs, int kb, int 
 // 4 int8 codes against the 4 int8 activations packed in x (ds4_iq.cu:350's __dp4a: Metal has no such instruction)
 static inline int ds4_iq_dot4(int q, int x) {
     const char4 a = as_type<char4>(q), b = as_type<char4>(x);
-    return int(a.x) * int(b.x) + int(a.y) * int(Y) + int(a.z) * int(b.z) + int(a.w) * int(W);
+    return int(a.x) * int(b.x) + int(a.y) * int(b.y) + int(a.z) * int(b.z) + int(a.w) * int(b.w);
 }
 
 // ds4_iq.cu:349 sub_dot: the sub-block against its 32 int8 activations (8 packed ints), the scales in F32
@@ -706,10 +706,10 @@ kernel void ds4_q5k_mv1(device const uchar* jobs [[buffer(0)]], device const uch
                         uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -759,10 +759,10 @@ kernel void ds4_iq2xxs_mv1(device const uchar* jobs [[buffer(0)]], device const 
                            uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -809,10 +809,10 @@ kernel void ds4_iq2xs_mv1(device const uchar* jobs [[buffer(0)]], device const u
                           uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -859,10 +859,10 @@ kernel void ds4_iq2s_mv1(device const uchar* jobs [[buffer(0)]], device const uc
                          uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -911,10 +911,10 @@ kernel void ds4_iq3xxs_mv1(device const uchar* jobs [[buffer(0)]], device const 
                            uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -974,10 +974,10 @@ kernel void ds4_q5k_mvn(device const uchar* jobs [[buffer(0)]], device const uch
                         uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -1037,10 +1037,10 @@ kernel void ds4_q6k_mvn(device const uchar* jobs [[buffer(0)]], device const uch
                         uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -1218,10 +1218,10 @@ kernel void ds4_iqg_mvn(device const uchar* jobs [[buffer(0)]], device const uch
                         uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
     const device Ds4MvJob& b = *(const device Ds4MvJob*) (jobs + (size_t) tgp.y * sizeof(Ds4MvJob));
-    const device uchar* W = bws + W;   // (the job's five pointers, as offsets into the bound allocations)
-    const device char* XQ = (const device char*) (bxs + XQ);
-    const device float* XD = (const device float*) (bds + XD);
-    device float* Y = (device float*) (bdy + Y);
+    const device uchar* W = bws + b.w;   // (the job's five pointers, as offsets into the bound allocations)
+    const device char* XQ = (const device char*) (bxs + b.xq);
+    const device float* XD = (const device float*) (bds + b.xd);
+    device float* Y = (device float*) (bdy + b.y);
     const device float* BIAS = b.bias == kNoBias ? nullptr : (const device float*) (bbs + b.bias);
     const uint row = tgp.x * 8u + (tid >> 5);
     if (int(row) >= b.n) return;
@@ -1258,15 +1258,18 @@ kernel void ds4_iqg_mvn(device const uchar* jobs [[buffer(0)]], device const uch
     ds4_mvn_store<NC>(b, row, lane, acc, Y, BIAS);
 }
 
+// the parameter types the explicit instantiations below spell out: jobs, the five bound allocations, and the thread ids
+#define SIGFULL device const uchar*, device const uchar*, device const uchar*, device const uchar*, device uchar*, \
+                 device const uchar*, uint2, uint, ushort
 #define DS4_MVN_INST(NC)                                                                                                    \
-    template [[host_name("ds4_q5k_mvn" #NC)]] kernel void ds4_q5k_mvn<NC>(device const uchar*, uint2, uint, ushort);        \
-    template [[host_name("ds4_q6k_mvn" #NC)]] kernel void ds4_q6k_mvn<NC>(device const uchar*, uint2, uint, ushort);        \
-    template [[host_name("ds4_iq2xxs_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 16>(device const uchar*, uint2, uint, ushort); \
-    template [[host_name("ds4_iq2xs_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 17>(device const uchar*, uint2, uint, ushort);  \
-    template [[host_name("ds4_iq2s_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 22>(device const uchar*, uint2, uint, ushort);   \
-    template [[host_name("ds4_iq3xxs_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 18>(device const uchar*, uint2, uint, ushort); \
-    template [[host_name("ds4_iq1m_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 29>(device const uchar*, uint2, uint, ushort);  \
-    template [[host_name("ds4_iq1s_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 19>(device const uchar*, uint2, uint, ushort);
+    template [[host_name("ds4_q5k_mvn" #NC)]] kernel void ds4_q5k_mvn<NC>(SIGFULL);        \
+    template [[host_name("ds4_q6k_mvn" #NC)]] kernel void ds4_q6k_mvn<NC>(SIGFULL);        \
+    template [[host_name("ds4_iq2xxs_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 16>(SIGFULL); \
+    template [[host_name("ds4_iq2xs_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 17>(SIGFULL);  \
+    template [[host_name("ds4_iq2s_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 22>(SIGFULL);   \
+    template [[host_name("ds4_iq3xxs_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 18>(SIGFULL); \
+    template [[host_name("ds4_iq1m_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 29>(SIGFULL);  \
+    template [[host_name("ds4_iq1s_mvn" #NC)]] kernel void ds4_iqg_mvn<NC, 19>(SIGFULL);
 DS4_MVN_INST(1)
 DS4_MVN_INST(2)
 DS4_MVN_INST(4)

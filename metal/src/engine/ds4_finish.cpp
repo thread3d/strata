@@ -781,16 +781,55 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
     }
     const void* jobs = cut.empty() ? jobs_in : (const void*) cut.data();
     const int nj = cut.empty() ? nj_in : (int) cut.size();
+    // The jobs carry device pointers; the kernels take offsets into six bound allocations instead (see Ds4MxJob in ds4_init.metal).
+    std::vector<HostBfJob> offs;
+    size_t lw = 0, lx = 0, ly = 0, lb = 0, lq = 0, ld2 = 0;
+    const HostBfJob* src2 = (const HostBfJob*) jobs;
+    const size_t bw = src2[0].w ? span_base(src2[0].w, &lw) : 0;
+    const size_t bx = src2[0].x ? span_base(src2[0].x, &lx) : 0;
+    const size_t by = src2[0].y ? span_base(src2[0].y, &ly) : 0;
+    const size_t bb = src2[0].bias ? span_base(src2[0].bias, &lb) : 0;
+    const size_t bq = src2[0].xq ? span_base(src2[0].xq, &lq) : 0;
+    const size_t bd = src2[0].xd ? span_base(src2[0].xd, &ld2) : 0;
+    for (int i = 0; i < nj; ++i) {
+        HostBfJob o = src2[i];
+        const uintptr_t pw = (uintptr_t) o.w, px = (uintptr_t) o.x, py = (uintptr_t) o.y, pb = (uintptr_t) o.bias,
+                          pq = (uintptr_t) o.xq, pd = (uintptr_t) o.xd;
+        if ((o.w && (!bw || pw < bw)) || (o.x && (!bx || px < bx)) || (o.y && (!by || py < by)) ||
+            (o.bias && (!bb || pb < bb)) || (o.xq && (!bq || pq < bq)) || (o.xd && (!bd || pd < bd))) {
+            std::fprintf(stderr, "dsv41 metal: mx_mv job %d is not inside the batch's allocations\n", i);
+            return false;
+        }
+        o.w = (const void*) (o.w ? pw - bw : 0);
+        o.x = (const float*) (o.x ? px - bx : 0);
+        o.y = (float*) (py - by);
+        o.bias = o.bias ? (const float*) (pb - bb) : nullptr;
+        o.xq = o.xq ? (const int8_t*) (pq - bq) : nullptr;
+        o.xd = o.xd ? (const float*) (pd - bd) : nullptr;
+        offs.push_back(o);
+    }
     mtl::Buffer bj = g_cx->alloc((size_t) nj * job_bytes);
     if (!bj.ptr) { std::fprintf(stderr, "dsv41 metal: mx_mv job buffer failed\n"); return false; }
-    std::memcpy(bj.ptr, jobs, (size_t) nj * job_bytes);
+    std::memcpy(bj.ptr, offs.data(), (size_t) nj * job_bytes);
     mtl::Pipeline pl;
     // fmt 1 = MXFP4, 2 = Q8_0, 0 = BF16 (a dense matrix: the engram's wkv, ds4_gguf.cu:1064)
     const char* fn = fmt == 2 ? "ds4_q8_mv" : (fmt == 1 ? "ds4_mx_mv" : "ds4_bf16_mv");
     try { pl = g_cx->pipeline(g_lib, fn); } catch (...) { return false; }
     mtl::Dispatch d;
     d.p = &pl;
-    d.args = {mtl::Arg::B(bj)};
+    mtl::Buffer bWs = bw ? g_cx->wrap((void*) bw, lw) : g_cx->alloc(8);
+    mtl::Buffer bXs = bx ? g_cx->wrap((void*) bx, lx) : g_cx->alloc(8);
+    mtl::Buffer bYs = g_cx->wrap((void*) by, ly);
+    mtl::Buffer bBs = bb ? g_cx->wrap((void*) bb, lb) : g_cx->alloc(8);
+    mtl::Buffer bQs = bq ? g_cx->wrap((void*) bq, lq) : g_cx->alloc(8);
+    mtl::Buffer bDs = bd ? g_cx->wrap((void*) bd, ld2) : g_cx->alloc(8);
+    if (!bWs.handle || !bXs.handle || !bYs.handle || !bBs.handle || !bQs.handle || !bDs.handle) {
+        std::fprintf(stderr, "dsv41 metal: mx_mv could not bind the job's allocations\n");
+        g_cx->free(bj);
+        return false;
+    }
+    d.args = {mtl::Arg::B(bj), mtl::Arg::B(bWs), mtl::Arg::B(bXs), mtl::Arg::B(bYs), mtl::Arg::B(bBs),
+              mtl::Arg::B(bQs), mtl::Arg::B(bDs)};
     d.grid[0] = (uint32_t) ((max_n + 7) / 8);
     d.grid[1] = (uint32_t) nj;
     d.grid[2] = 1;
@@ -818,6 +857,17 @@ struct Ds4IqMvJob {
     float alpha;
 };
 static_assert(sizeof(Ds4IqMvJob) == 80, "Ds4IqMvJob layout must match ds4_iq.cuh's MvJob");
+
+// The same 80 bytes with the five pointers as offsets into the allocations the dispatch binds (see ds4_iq.metal's struct): a
+// Metal 2 kernel cannot dereference an address, so the port rewrites them on the way to the GPU.  kNoBias marks a job with none.
+struct Ds4IqMvJobOff {
+    uint64_t w, ld;
+    int type, k, n, ncol;
+    uint64_t xq, xd, y, ycs, bias;
+    float alpha;
+};
+static_assert(sizeof(Ds4IqMvJobOff) == sizeof(Ds4IqMvJob), "the offsets mirror must stay 80 bytes");
+constexpr uint64_t kNoBias = ~uint64_t(0);
 }  // namespace
 
 bool iq_mv(const void* jobs, int nj) {
@@ -826,7 +876,9 @@ bool iq_mv(const void* jobs, int nj) {
     const Ds4IqMvJob* src = (const Ds4IqMvJob*) jobs;
     // Each job goes to the kernel of its type and column count: NC = 1, 2, 4 or 8 activations decode the row's weights once
     // (ds4_*_mvn<NC>); a job of more columns is cut into pieces of 8.  Other types keep the 16-column kernels.
-    std::map<std::string, std::vector<Ds4IqMvJob>> groups;
+    // a group is one kernel AND one set of five allocation bases (a batch whose jobs live in the same places can share the binds)
+    using GroupKey = std::tuple<std::string, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t>;
+    std::map<GroupKey, std::vector<Ds4IqMvJobOff>> groups;
     int max_n = 0;
     if (std::getenv("DS4_DBG_JOBS")) {
         std::fprintf(stderr, "iq_mv call:");
@@ -868,22 +920,50 @@ bool iq_mv(const void* jobs, int nj) {
             } else {
                 fn = (b.type == 13 || b.type == 14) ? "ds4_iq_mv_k" : "ds4_iq_mv";
             }
-            groups[fn].push_back(b);
+            size_t lw = 0, lxq = 0, lxd = 0, ly = 0, lb = 0;
+            const uint64_t bw = b.w ? span_base(b.w, &lw) : 0, bxq = b.xq ? span_base(b.xq, &lxq) : 0,
+                           bxd = b.xd ? span_base(b.xd, &lxd) : 0, by = b.y ? span_base(b.y, &ly) : 0,
+                           bb = b.bias ? span_base(b.bias, &lb) : 0;
+            Ds4IqMvJobOff o{};
+            o.ld = b.ld; o.type = b.type; o.k = b.k; o.n = b.n; o.ncol = b.ncol; o.ycs = b.ycs; o.alpha = b.alpha;
+            o.w = (uint64_t) (uintptr_t) b.w - bw;
+            o.xq = (uint64_t) (uintptr_t) b.xq - bxq;
+            o.xd = (uint64_t) (uintptr_t) b.xd - bxd;
+            o.y = (uint64_t) (uintptr_t) b.y - by;
+            o.bias = b.bias ? ((uint64_t) (uintptr_t) b.bias - bb) : kNoBias;
+            groups[GroupKey{fn, bw, bxq, bxd, by, bb}].push_back(o);
         }
     }
     if (max_n <= 0) return true;
     const size_t kBatch = 64;   // the CUDA host's job-array limit; one command buffer a group
     for (auto& kv : groups) {
-        std::vector<Ds4IqMvJob>& v = kv.second;
-        mtl::Buffer bj = g_cx->alloc(v.size() * sizeof(Ds4IqMvJob));
+        std::vector<Ds4IqMvJobOff>& v = kv.second;
+        const uint64_t bw = std::get<1>(kv.first), bxq = std::get<2>(kv.first), bxd = std::get<3>(kv.first),
+                       by = std::get<4>(kv.first), bb = std::get<5>(kv.first);
+        size_t lw = 0, lxq = 0, lxd = 0, ly = 0, lb = 0;
+        if (bw) span_base((const void*) bw, &lw);
+        if (bxq) span_base((const void*) bxq, &lxq);
+        if (bxd) span_base((const void*) bxd, &lxd);
+        if (by) span_base((const void*) by, &ly);
+        if (bb) span_base((const void*) bb, &lb);
+        mtl::Buffer bws = bw ? g_cx->wrap((void*) bw, lw) : g_cx->alloc(8);
+        mtl::Buffer bxs = bxq ? g_cx->wrap((void*) bxq, lxq) : g_cx->alloc(8);
+        mtl::Buffer bds = bxd ? g_cx->wrap((void*) bxd, lxd) : g_cx->alloc(8);
+        mtl::Buffer bdy = by ? g_cx->wrap((void*) by, ly) : g_cx->alloc(8);
+        mtl::Buffer bbs = bb ? g_cx->wrap((void*) bb, lb) : g_cx->alloc(8);
+        if (!bws.handle || !bxs.handle || !bds.handle || !bdy.handle || !bbs.handle) {
+            std::fprintf(stderr, "dsv41 metal: iq_mv could not bind the job's allocations\n");
+            return false;
+        }
+        mtl::Buffer bj = g_cx->alloc(v.size() * sizeof(Ds4IqMvJobOff));
         if (!bj.ptr) {
             std::fprintf(stderr, "dsv41 metal: iq_mv job buffer failed\n");
             return false;
         }
-        std::memcpy(bj.ptr, v.data(), v.size() * sizeof(Ds4IqMvJob));
+        std::memcpy(bj.ptr, v.data(), v.size() * sizeof(Ds4IqMvJobOff));
         mtl::Pipeline pl;
         try {
-            pl = g_cx->pipeline(g_lib_iq, kv.first);
+            pl = g_cx->pipeline(g_lib_iq, std::get<0>(kv.first));
         } catch (...) {
             g_cx->free(bj);
             return false;
@@ -893,7 +973,8 @@ bool iq_mv(const void* jobs, int nj) {
             const size_t cnt = std::min(kBatch, v.size() - base);
             mtl::Dispatch d;
             d.p = &pl;
-            d.args = {mtl::Arg::B(bj, base * sizeof(Ds4IqMvJob))};
+            d.args = {mtl::Arg::B(bj, base * sizeof(Ds4IqMvJobOff)), mtl::Arg::B(bws), mtl::Arg::B(bxs),
+                      mtl::Arg::B(bds), mtl::Arg::B(bdy), mtl::Arg::B(bbs)};
             d.grid[0] = (uint32_t) ((max_n + 7) / 8);
             d.grid[1] = (uint32_t) cnt;
             d.grid[2] = 1;
