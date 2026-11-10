@@ -2401,14 +2401,12 @@ bool swiglu(const float* g, const float* u, int n, float lim, float* h) {
     void* hu = cpu_addr((void*) u);
     void* hh = cpu_addr((void*) h);
     if (!hg || !hu || !hh) { std::fprintf(stderr, "dsv41 metal: swiglu has no host view\n"); return false; }
-    const size_t page = 16384;
-    auto wrap = [&](void* host) {
-        const size_t base = (size_t) ((uintptr_t) host) & ~(size_t) (page - 1);
-        const size_t end = (size_t) ((uintptr_t) host) + (size_t) n * 4;
-        return g_cx->wrap((void*) base, wrap_len(base, end - base));
-    };
+    // Bound from the allocation that holds each operand, with the offset taken from the SAME base.  This used to wrap from the page
+    // base and then pass span_off (which is allocation-relative): the two disagreed whenever the operand was not page-aligned, which
+    // over d.sg/d.su/d.sh in the engine's arena they are not - a second mapping of the pages, holding what the mv dispatches had not
+    // written there.  Measured: sh differed in all 11520 floats across two runs while sg and su were bit-identical.
+    mtl::Buffer bg = wrap_span(hg, (size_t) n * 4), bu = wrap_span(hu, (size_t) n * 4), bh = wrap_span(hh, (size_t) n * 4);
     auto off = [&](void* host) { return span_off(host); };
-    mtl::Buffer bg = wrap(hg), bu = wrap(hu), bh = wrap(hh);
     if (!bg.handle || !bu.handle || !bh.handle) return false;
     mtl::Pipeline pl;
     try { pl = g_cx->pipeline(g_lib, "ds4_swiglu"); } catch (...) { return false; }
@@ -2788,13 +2786,12 @@ static bool mm_set(bool gate_up, const uint8_t* wbase, size_t stride, const size
     if (!gate_up) {   // the result into the engine's rows
         void* hyr = cpu_for_wrap(yout);
         const size_t n4 = (size_t) total_rows * (size_t) n_embd;
-        const size_t base = (size_t) ((uintptr_t) hyr) & ~(size_t) (page - 1);
-        mtl::Buffer bd = g_cx->wrap((void*) base, wrap_len(base, (size_t) (uintptr_t) hyr + n4 * 4 - base));
+        mtl::Buffer bd = wrap_span(hyr, n4 * 4);   // (from its allocation: a page-based base made a second mapping here too)
         mtl::Pipeline pc;
         try { pc = g_cx->pipeline(g_lib, "ds4_copy4"); } catch (...) { return false; }
         mtl::Dispatch c;
         c.p = &pc;
-        c.args = {mtl::Arg::B(g_mm_ys), mtl::Arg::B(bd, (size_t) ((uintptr_t) hyr - base)), mtl::Arg::V((unsigned long) n4)};
+        c.args = {mtl::Arg::B(g_mm_ys), mtl::Arg::B(bd, span_off(hyr)), mtl::Arg::V((unsigned long) n4)};
         c.tg[0] = 256; c.tg[1] = c.tg[2] = 1;
         c.grid[0] = (uint32_t) ((n4 + 255) / 256);
         c.grid[1] = c.grid[2] = 1;
@@ -2857,20 +2854,19 @@ extern "C" bool ds4_ctx_fill(void* dst, int value, size_t n) {
     if (!ensure()) return false;
     void* hd = cpu_for_wrap(dst);
     if (!hd) return false;
-    const size_t page = 16384;
-    const size_t base = (size_t) ((uintptr_t) hd) & ~(size_t) (page - 1);
-    const size_t end = (size_t) ((uintptr_t) hd) + n;
-    // The wrap covers whole pages from the base, and a page-aligned base can sit before the allocation; a range that leaves
-    // its allocation cannot be bound as one buffer (and the wrap ends the process when the driver refuses it), so a fill that
-    // is not all inside one allocation is left to the caller's own path.
-    if (ds4_gpu_alloc_remaining && ds4_gpu_alloc_remaining((const void*) base) < end - base) return false;
-    mtl::Buffer bd = g_cx->wrap((void*) base, wrap_len(base, end - base));
+    // from the allocation that holds the range, offset from the same base (a page-based base can sit before the allocation, and then
+    // the wrap is a second mapping of pages - or refused, which ends the process)
+    size_t dlen = 0;
+    const size_t dbase = span_base(hd, &dlen);
+    const size_t doff = (size_t) ((uintptr_t) hd) - dbase;
+    if (dlen != 0 && doff + n > dlen) return false;   // not all inside one allocation: the caller's own path
+    mtl::Buffer bd = wrap_span(hd, n);
     if (!bd.handle) return false;
     mtl::Pipeline pl;
     try { pl = g_cx->pipeline(g_lib, "ds4_fill1"); } catch (...) { return false; }
     mtl::Dispatch d;
     d.p = &pl;
-    d.args = {mtl::Arg::B(bd, (size_t) ((uintptr_t) hd - base)), mtl::Arg::V((unsigned long) n), mtl::Arg::V((unsigned) (value & 0xff))};
+    d.args = {mtl::Arg::B(bd, span_off(hd)), mtl::Arg::V((unsigned long) n), mtl::Arg::V((unsigned) (value & 0xff))};
     d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
     d.grid[0] = (uint32_t) ((n + 255) / 256);
     d.grid[1] = d.grid[2] = 1;
