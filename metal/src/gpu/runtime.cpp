@@ -360,14 +360,18 @@ Error encode_copy(StreamImpl* s, void* dst, const void* src, size_t n) {
     // own readbacks (the logits the sampler reads, the picks, the dumps) all take this path, which is how one run's sampled token
     // came out different from another's with the prompt bit-identical.  So read through a buffer Metal owns: blit into a staging
     // buffer, wait, then copy that out.
-    static const bool blit_readback = std::getenv("DS4_NO_COPY_BLIT") == nullptr;   // (on: the direct read lagged, see below)
+    static const bool blit_readback = std::getenv("DS4_COPY_BLIT") != nullptr;   // (opt-in: none of the three modes settled the branch)
     if (as && !ad && n > 0 && blit_readback) {
         NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-        MTL::Buffer* st = rt().dev->newBuffer(n, MTL::ResourceStorageModeShared | MTL::ResourceHazardTrackingModeUntracked);
+        // MANAGED, with synchronizeResource: on this driver a GPU write is not in the CPU's view when the command buffer completes
+        // (measured: inf straight after completion, a plausible value 200 ms later).  A managed buffer's synchronizeResource is the
+        // documented way to make GPU writes visible to the CPU, and it is what this readback needs.
+        MTL::Buffer* st = rt().dev->newBuffer(n, MTL::ResourceStorageModeManaged | MTL::ResourceHazardTrackingModeUntracked);
         if (st == nullptr) { pool->release(); return fail(kErrorMemoryAllocation); }
         end_encoder(s);
         MTL::BlitCommandEncoder* b = open_cb(s)->blitCommandEncoder();
         b->copyFromBuffer(as->buf, os, st, 0, n);
+        b->synchronizeResource(st);
         b->endEncoding();
         ++rt().stats.blits;
         flush(s);

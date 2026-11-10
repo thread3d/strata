@@ -42,6 +42,20 @@ kernel void ds4_sgemm_tn(device const float* A [[buffer(0)]], device const float
     C[(size_t) t * ldc + mm] = acc;
 }
 
+// DS4_DBG_CK: what bytes does the GPU actually see at an address?  Per-thread, order-independent partials (a weighted sum and a
+// plain sum), so the host can add them up and compare with its own view of the same memory.
+kernel void ds4_dbg_ck(device const uchar* p [[buffer(0)]], constant ulong& bytes [[buffer(1)]],
+                       device ulong* out [[buffer(2)]], uint tid [[thread_index_in_threadgroup]]) {
+    ulong a = 0ul, b = 0ul;
+    for (ulong q = ulong(tid); q < bytes; q += 256ul) {
+        const ulong v = ulong(p[q]);
+        a += v * (q + 1ul);
+        b += v;
+    }
+    out[tid] = a;
+    out[256u + tid] = b;
+}
+
 // ds4_kernels.cu:1894  finish_kernel<false> - RMS norm (f.w), mrope (f.rd), rounding (f.quant), then store to x or dst.
 // The struct's pointer fields are OFFSETS into allocations the dispatch binds (buffers 4..7), because a Metal 2 kernel cannot
 // dereference an address; the port rewrites them on the way in, and kNoOff marks a field the engine left null.  A pointer and an
