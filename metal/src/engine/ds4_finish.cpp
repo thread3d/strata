@@ -23,7 +23,10 @@ extern "C" void ds4_metal_flush();
 extern "C" size_t ds4_gpu_alloc_remaining(const void* cpu);
 extern "C" size_t ds4_gpu_alloc_start(const void* cpu, size_t* len);
 extern "C" void* ds4_gpu_buffer_for_cpu(const void* cpu, size_t bytes, size_t* off);
+static thread_local int
+g_layer = -1;   // (the engine calls ds4_set_layer at each layer's start, so diagnostics can name the layer)
 extern "C" void ds4_gpu_sync_all_streams();
+extern "C" void ds4_set_layer(int il) { g_layer = il; }
 extern "C" unsigned long long ds4_dispatch_seq();
 static unsigned long long g_q8_deduped = 0;
 
@@ -933,10 +936,12 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
                 std::snprintf(wb + 3 * j, 4, "%02x ", hp[2 + j]);
                 std::snprintf(hb + 3 * j, 4, "%02x ", (uint8_t) pr[3 + j]);
             }
+            static long pc = 0;
             std::fprintf(stderr, "DBG probe-bind %s probe_row=%d alive=%.1f\n", fn, probe_row, (double) pr[31]);
             std::fprintf(stderr,
-                         "DBG probe %s row=%d/%d | shader: dw=%g rowoff=%g w=%.17g xd0=%g xq0=%g bytes=[%s] | host: dw=%g bytes=[%s] %s\n",
-                         fn, (int) pr[0], (int) v[0].n, pr[1], pr[2], pr[20], pr[19], pr[11], hb, *(const float*) &hdh,
+                         "DBG probe #%ld layer=%d %s n=%d k=%llu woff=%llu row=%d/%d | shader: dw=%g rowoff=%g w=%.17g xd0=%g xq0=%g bytes=[%s] | host: dw=%g bytes=[%s] %s\n",
+                         ++pc, g_layer, fn, (int) v[0].n, (unsigned long long) v[0].k, (unsigned long long) v[0].w,
+                         (int) pr[0], (int) v[0].n, pr[1], pr[2], pr[20], pr[19], pr[11], hb, *(const float*) &hdh,
                          wb, (wb[0] == hb[0] && wb[1] == hb[1] && wb[2] == hb[2]) ? "same-head" : "DIFFERENT-head");
         }
         g_cx->free(bprobe);
