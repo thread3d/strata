@@ -890,6 +890,23 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
         d.p = &pl;
         d.args = {mtl::Arg::B(bj), mtl::Arg::B(bWs), mtl::Arg::B(bXs), mtl::Arg::B(bYs), mtl::Arg::B(bBs),
                   mtl::Arg::B(bQs), mtl::Arg::B(bDs)};
+        // DS4_DBG_BINDQ=1: the batch's shape and whether grid[0] (from max_n) covers every job's rows, plus how much of the x and
+        // y allocations each job leaves.  The layer-4 q projection's rows past ~1024 come back as nan in some runs, and 1280 rows
+        // over a grid of 1024 is exactly 1024/8 = 128 threadgroups: a grid one job short would drop just those rows.
+        if (std::getenv("DS4_DBG_BINDQ") != nullptr) {
+            static long mx_n = 0;
+            if (mx_n < 80) {
+                ++mx_n;
+                const HostBfJob& j0 = v[0];
+                std::fprintf(stderr,
+                             "DBG mxmv %s fmt=%d jobs=%zu max_n=%d grid0=%u | job0 n=%d k=%llu ncol=%d | xremain=%lld yremain=%lld\n",
+                             fn, fmt, v.size(), max_n, (unsigned) ((max_n + 7) / 8), (int) j0.n, (unsigned long long) j0.k,
+                             (int) j0.ncol, bx ? (long long) (lx - (size_t) (uintptr_t) j0.x) : -1LL,
+                             (long long) (ly - (size_t) (uintptr_t) j0.y));
+                for (size_t q = 1; q < v.size() && q < 4; ++q)
+                    std::fprintf(stderr, "          job%zu n=%d k=%llu\n", q, (int) v[q].n, (unsigned long long) v[q].k);
+            }
+        }
         d.grid[0] = (uint32_t) ((max_n + 7) / 8);
         d.grid[1] = (uint32_t) v.size();
         d.grid[2] = 1;
@@ -1015,6 +1032,32 @@ bool iq_mv(const void* jobs, int nj) {
         if (!bws.handle || !bxs.handle || !bds.handle || !bdy.handle || !bbs.handle) {
             std::fprintf(stderr, "dsv41 metal: iq_mv could not bind the job's allocations\n");
             return false;
+        }
+        // DS4_DBG_BINDQ=1: does the weight allocation the dispatch binds cover the whole tensor this group's jobs read?  A tensor
+        // that straddles two allocations is read through the first one only, and its tail rows are whatever is past that buffer -
+        // the shape of the layer-4 q projection's rows past ~1024 (nan and 1e37-scale values, reproduced but not every run).
+        if (std::getenv("DS4_DBG_BINDQ") != nullptr) {
+            static long bindq_n = 0;
+            if (bindq_n < 400) {
+                ++bindq_n;
+                const Ds4IqMvJobOff& j0 = v[0];
+                double bpb = 0.0;   // bytes a 256-value block
+                switch (j0.type) {
+                    case 13: bpb = 176.0; break;   // Q5_K
+                    case 14: bpb = 210.0; break;   // Q6_K
+                    case 16: bpb = 66.0; break;    // IQ2_XXS
+                    case 17: bpb = 74.0; break;    // IQ2_XS
+                    default: bpb = 0.0; break;
+                }
+                const double need = bpb > 0.0 ? (double) j0.n * (double) (j0.k / 256) * bpb : 0.0;
+                std::fprintf(stderr,
+                             "DBG bindq %s type=%d k=%d n=%d jobs=%zu | woff=%llu wbase=%llx wlen=%zu remain=%lld need=%.0f "
+                             "fit=%s | xremain=%lld yremain=%lld\n",
+                             std::get<0>(kv.first).c_str(), j0.type, j0.k, j0.n, v.size(), (unsigned long long) j0.w,
+                             (unsigned long long) bw, lw, (long long) (lw - j0.w), need,
+                             (need <= 0.0 || (double) (lw - j0.w) >= need) ? "yes" : "NO",
+                             (long long) (bxq ? lxq - j0.xq : -1), (long long) (by ? ly - j0.y : -1));
+            }
         }
         mtl::Buffer bj = g_cx->alloc(v.size() * sizeof(Ds4IqMvJobOff));
         if (!bj.ptr) {
