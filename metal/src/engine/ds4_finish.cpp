@@ -898,10 +898,15 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
             if (mx_n < 80) {
                 ++mx_n;
                 const HostBfJob& j0 = v[0];
+                const long long wrem = lw ? (long long) (lw - (size_t) (uintptr_t) j0.w) : -1LL;
+                const long long wneed = (long long) ((size_t) j0.n * (size_t) j0.ld);
                 std::fprintf(stderr,
-                             "DBG mxmv %s fmt=%d jobs=%zu max_n=%d grid0=%u | job0 n=%d k=%llu ncol=%d | xremain=%lld yremain=%lld\n",
+                             "DBG mxmv %s fmt=%d jobs=%zu max_n=%d grid0=%u | job0 n=%d k=%llu ld=%llu ncol=%d | wremain=%lld "
+                             "wneed=%lld wfit=%s | xremain=%lld yremain=%lld\n",
                              fn, fmt, v.size(), max_n, (unsigned) ((max_n + 7) / 8), (int) j0.n, (unsigned long long) j0.k,
-                             (int) j0.ncol, bx ? (long long) (lx - (size_t) (uintptr_t) j0.x) : -1LL,
+                             (unsigned long long) j0.ld, (int) j0.ncol, wrem, wneed,
+                             (wrem < 0 || wrem >= wneed) ? "yes" : "NO",
+                             bx ? (long long) (lx - (size_t) (uintptr_t) j0.x) : -1LL,
                              (long long) (ly - (size_t) (uintptr_t) j0.y));
                 for (size_t q = 1; q < v.size() && q < 4; ++q)
                     std::fprintf(stderr, "          job%zu n=%d k=%llu\n", q, (int) v[q].n, (unsigned long long) v[q].k);
