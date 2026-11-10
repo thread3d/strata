@@ -31,6 +31,10 @@
 #include "strata/kernels/f16_bits.hpp"
 #include "strata/dsv41/moe_win.hpp"
 #include "strata/dsv41/sampler.hpp"
+#if defined(STRATA_METAL)
+// the port's both-queue drain (metal/src/gpu/runtime.cpp): every stream's pending copies committed and waited for
+extern "C" void ds4_gpu_sync_all_streams();
+#endif
 #if defined(STRATA_USE_HIP)
 #include "wmma_gemm.h"   // strata_pf_gemm_f16_ld: the RDNA3 WMMA dense GEMM (gemm() prefers it over hipBLAS on gfx11; -Isrc/prefill)
 #endif
@@ -10457,9 +10461,14 @@ struct Model::Impl {
 #endif
         if (ds4_dbg("DS4_DBG_MOE")) { dbg_nf("x", l.il, d.x, (size_t) T * D); dbg_nf("sg", l.il, d.sg, (size_t) T * g.ff); dbg_nf("su", l.il, d.su, (size_t) T * g.ff);
             std::fprintf(stderr, "DBG s1 fmt=%d K=%d k=%d n=%d ld=%d raw=%p\n", l.s1.fmt, l.s1.K, l.s1.k, l.s1.n, l.s1.ld, (void*) l.s1.raw); }
+        // (the shared expert, stage by stage: the combine's other operand, and moe_out has differed with cpu_part identical)
+        dump_sub(d, "sg", l.il, p0, T, d.sg, (size_t) T * g.ff * 4);
+        dump_sub(d, "su", l.il, p0, T, d.su, (size_t) T * g.ff * 4);
         swiglu(d.sg, d.su, T * g.ff, g.lim, d.sh, s);
         if (ds4_dbg("DS4_DBG_MOE")) dbg_nf("sh", l.il, d.sh, (size_t) T * g.ff);
+        dump_sub(d, "sh", l.il, p0, T, d.sh, (size_t) T * g.ff * 4);
         if (!mv(d, {job(l.s2, d.sh, d.sh_out, T, g.ff, D)}, err)) return false;
+        dump_sub(d, "sh_out", l.il, p0, T, d.sh_out, (size_t) T * D * 4);
         const double tw = now_ms();
         CK(cudaEventSynchronize(d.ev));
         st.gpu_wait_ms += now_ms() - tw;
@@ -10588,6 +10597,13 @@ struct Model::Impl {
             dump_sub_host("cpu_part", l.il, p0, T, h_part, (size_t) T * D * 4);
             CK(cudaMemcpyAsync(d.cpu_part, h_part, (size_t) T * D * 4, cudaMemcpyHostToDevice, s));
         }
+#if defined(STRATA_METAL)
+        // DS4_SYNC_MOE=1: drain both queues before the combine.  Diagnostic: two identical runs part at moe_out with everything
+        // before it (the gate's input, its logits, the picks) bit-identical, so either an operand of the combine was still in
+        // flight - the CPU lane's part is copied to the device on another queue - or the value is wrong.  Runs that agree with
+        // this set and differ without it point at the first; runs that still differ point at the second.
+        if (ds4_dbg("DS4_SYNC_MOE")) { ds4_metal_flush(); ds4_gpu_sync_all_streams(); }
+#endif
         combine(d.ed, ents.empty() ? nullptr : d.cpu_part, d.sh_out, cm, T, D, d.moe_out, s);
         dump_sub(d, "moe_out", l.il, p0, T, d.moe_out, (size_t) T * D * 4);
         if (ds4_dbg("DS4_DBG_MOE")) {

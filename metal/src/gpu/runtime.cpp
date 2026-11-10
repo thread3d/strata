@@ -309,7 +309,12 @@ Error encode_copy(StreamImpl* s, void* dst, const void* src, size_t n) {
     const Alloc* as = find(src, &os);
     check_purged(ad, "copy");
     check_purged(as, "copy");
-    if (ad && as) {   // buffer to buffer: a blit, in stream order
+    // A buffer-to-buffer blit is in order with this stream's own work, but NOT with the context's queue: a host-side allocation is a
+    // buffer here too (host_alloc gives it one), so a host->device copy of an ordinary `halloc` array took this async path, and the
+    // MoE combine - a dispatch on the context's queue - read the CPU lane's part before the blit landed.  Measured: two identical
+    // runs differed in every element of moe_out with the gate's input, its logits and the picks bit-identical, and draining both
+    // queues before the combine made them agree.  So a copy with host memory on either side takes the synchronous route below.
+    if (ad && as && !ad->host && !as->host) {   // device to device: a blit, in stream order
         end_encoder(s);
 #if defined(STRATA_DS4_RUNTIME)
         ScopedPool pool;
@@ -323,8 +328,9 @@ Error encode_copy(StreamImpl* s, void* dst, const void* src, size_t n) {
         ++rt().stats.blits;
         return kSuccess;
     }
-    // ordinary host memory on one side: the stream's earlier work must be complete first (the conservative CUDA
-    // pageable-memory semantics: the call returns when the copy is done)
+    // host memory on one side (a pinned array included): the stream's earlier work must be complete first (the conservative CUDA
+    // pageable-memory semantics: the call returns when the copy is done).  On a card whose buffers are shared memory this is a
+    // plain memcpy into the buffer's own CPU view.
     flush(s);
     wait_value(s->tl, s->submitted);
     uint8_t* d = ad ? ad->cpu + od : (uint8_t*) dst;
