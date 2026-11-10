@@ -1318,10 +1318,19 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
                 }
                 if (rel > worst) { worst = rel; worsth = acc; worstk = kv; }
             }
+            // If the host's read of a GPU-written row is merely *late*, a second read after a pause shows the right value: that is
+            // the difference between "the kernel computed garbage" and "the CPU's view of the buffer had not caught up".
+            double again = 0.0;
+            if (nbad > 0 && firstbad >= 0) {
+                { const auto t0 = std::chrono::steady_clock::now();
+                  while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < 0.2) { } }
+                again = y[(size_t) firstbad];
+            }
+            static long swp = 0;
             std::fprintf(stderr,
-                         "DBG q8 sweep job0 col0: %d of %d rows miss the host recompute (rel>1e-3), first=%d, worst rel=%.3g host=%.6g "
-                         "kernel=%.6g\n",
-                         nbad, b.n, firstbad, worst, worsth, worstk);
+                         "DBG q8 sweep #%ld job0 col0: %d of %d rows miss the host recompute (rel>1e-3), first=%d, worst rel=%.3g "
+                         "host=%.6g kernel=%.6g | again(200ms)=%.6g | w=%p ld=%zu xcs=%zu alpha=%g\n",
+                         ++swp, nbad, b.n, firstbad, worst, worsth, worstk, again, (const void*) b.w, b.ld, b.xcs, b.alpha);
         }
     }
 #endif
