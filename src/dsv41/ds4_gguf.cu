@@ -1271,6 +1271,17 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
     // DS4_DBG_Q8: the quantiser's output at the moment it is produced - before the next layer's call can rewrite the scratch, which
     // is what round 4's "the activations hash identically" was actually measuring.  The probe inside ds4_q8_mv reads the same buffer
     // later and sees different bytes per run, with d.x bit-identical, so this is where to look.
+    // DS4_SELFCHECK: is the quantiser deterministic for this input at all?  One run says so, without needing two runs to differ.
+    if (ds4_dbg("DS4_SELFCHECK") && nj[2] > 0) {
+        static long sc_n = 0;
+        if (sc_n++ < 64) {
+            const BfJob& bq0 = J[2].j[0];
+            uint32_t rep[3] = {0, 0, 0};
+            if (::strata::dsv41::metal_host::q8_quant_selfcheck(bq0.x, (size_t) (bq0.xcs > 0 ? bq0.xcs : (size_t) bq0.k), bq0.ncol,
+                                                                bq0.k, rep))
+                std::fprintf(stderr, "DBG selfcheck quantiser: %u codes of %u differ, %u scales differ\n", rep[0], rep[2], rep[1]);
+        }
+    }
     if (ds4_dbg("DS4_DBG_Q8") && nj[2] > 0) {
         extern int ds4_get_layer();
         ds4_metal_flush();

@@ -743,6 +743,50 @@ struct HostQ8Spec {
     float* d;
 };
 }  // namespace
+// DS4_SELFCHECK: run one quantisation twice, each dispatch committed and waited, into two separate buffers, and compare.  A difference
+// means the quantiser itself is not deterministic for this input - visible in a single run, without needing two runs to differ.
+bool q8_quant_selfcheck(const float* x, size_t ldx, int rows, int k, void* report) {
+    if (x == nullptr || rows <= 0 || k <= 0) return false;
+    if (!ensure()) return false;
+    void* hx = cpu_for_wrap((void*) x);
+    if (hx == nullptr) return false;
+    const size_t qb = (size_t) rows * (size_t) k, db = (size_t) rows * (size_t) (k / 32) * sizeof(float);
+    mtl::Buffer bq1 = g_cx->alloc(qb), bq2 = g_cx->alloc(qb);
+    mtl::Buffer bd1 = g_cx->alloc(db), bd2 = g_cx->alloc(db);
+    if (!bq1.ptr || !bq2.ptr || !bd1.ptr || !bd2.ptr) return false;
+    mtl::Pipeline pl;
+    try { pl = g_cx->pipeline(g_lib, "ds4_q8_quant"); } catch (...) { return false; }
+    mtl::Buffer bx = wrap_span(hx, (size_t) rows * ldx * sizeof(float));
+    if (!bx.handle) return false;
+    for (int pass = 0; pass < 2; ++pass) {
+        mtl::Dispatch d;
+        d.p = &pl;
+        d.args = {mtl::Arg::B(bx, span_off(hx)), mtl::Arg::V((unsigned long) ldx), mtl::Arg::V((unsigned) rows),
+                  mtl::Arg::V((unsigned) k), mtl::Arg::B(pass == 0 ? bq1 : bq2), mtl::Arg::B(pass == 0 ? bd1 : bd2)};
+        d.grid[0] = (uint32_t) (k / 32);
+        d.grid[1] = (uint32_t) rows;
+        d.grid[2] = 1;
+        d.tg[0] = 32; d.tg[1] = d.tg[2] = 1;
+        g_cx->run({d});
+        g_cx->flush_runs();   // each pass complete before the next, so a difference is not a race between the two
+    }
+    const int8_t* q1 = (const int8_t*) bq1.ptr;
+    const int8_t* q2 = (const int8_t*) bq2.ptr;
+    const float* s1 = (const float*) bd1.ptr;
+    const float* s2 = (const float*) bd2.ptr;
+    size_t ndq = 0, nds = 0;
+    for (size_t i = 0; i < qb; ++i) if (q1[i] != q2[i]) ++ndq;
+    for (size_t i = 0; i < db / sizeof(float); ++i) if (s1[i] != s2[i]) ++nds;
+    if (report != nullptr) {
+        auto* r = (uint32_t*) report;
+        r[0] = (uint32_t) ndq;
+        r[1] = (uint32_t) nds;
+        r[2] = (uint32_t) (qb + db / sizeof(float));
+    }
+    g_cx->free(bq1); g_cx->free(bq2); g_cx->free(bd1); g_cx->free(bd2);
+    return true;
+}
+
 bool q8_quant_multi(const void* specs, int n) {
     if (n <= 0) return true;
     if (!ensure()) return false;
