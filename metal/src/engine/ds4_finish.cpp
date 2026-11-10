@@ -264,6 +264,24 @@ bool finish(float* x, int n_vec, int len, long long stride, const FinishIn& f) {
     // The decode-path score is bit-identical without it, the dispatch barrier after every dispatch orders the readers. DS4_FINISH_SPLIT=1 brings it back.)
     static const bool split_after = std::getenv("DS4_FINISH_SPLIT") != nullptr;
     if (f.quant && split_after) g_cx->split_runs();
+    // DS4_DBG_FIN=1: the kernel dereferences the finish struct's own pointer fields (f.w[e], f.freqs[i], f.dst[...], f.pdst[...]),
+    // and the port passes the engine's raw addresses.  On a Metal without device addresses a kernel cannot read or write those, so
+    // this prints what the host sees in the buffers the kernel was told to fill, after the dispatch completed: unchanged means the
+    // write went nowhere.
+    if (std::getenv("DS4_DBG_FIN") != nullptr) {
+        static long fin_calls = 0;
+        if (fin_calls < 12) {
+            g_cx->flush_runs();
+            const uint16_t* d0 = (const uint16_t*) f.dst;
+            const float* w0 = (const float*) f.w;
+            const float* q0 = (const float*) f.freqs;
+            std::fprintf(stderr, "DBG fin #%ld len=%d rd=%d quant=%d | dst=%p ->%04x %04x %04x | w=%p ->%g %g | freqs=%p ->%g\n",
+                         fin_calls, len, (int) f.rd, (int) f.quant, (const void*) d0, d0 ? (unsigned) d0[0] : 0u,
+                         d0 ? (unsigned) d0[1] : 0u, d0 ? (unsigned) d0[2] : 0u, (const void*) w0, w0 ? w0[0] : 0.0f,
+                         w0 ? w0[1] : 0.0f, (const void*) q0, q0 ? q0[0] : 0.0f);
+            ++fin_calls;
+        }
+    }
     if (const char* fm2 = std::getenv("DS4_FLUSH_FINISH_CTX")) { if (f.quant) { if (std::atoi(fm2) == 2) g_cx->split_runs(); else g_cx->flush_runs(); } }
     if (const char* fm = std::getenv("DS4_FLUSH_FINISH")) {   // debugging: which finish calls need a drain after them
         const int m = std::atoi(fm);
