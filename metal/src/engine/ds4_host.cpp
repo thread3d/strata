@@ -71,14 +71,19 @@ bool q8_quant(mtl::Context& cx, const float* x, int ldx, int n, void* q, void* d
 }  // namespace strata::dsv41::metal_host
 
 namespace strata::dsv41::metal_host {
+mtl::Context& engine_cx();   // ds4_finish.cpp: the engine's one context
+int engine_lib_init();       // ... and ds4_init.metal's library in it
+
 namespace {
 mtl::Context* g_init_cx = nullptr;
 int g_lib_init = -1;
 
 mtl::Context& shared_cx() {
     if (!g_init_cx) {
-        g_init_cx = new mtl::Context();
-        g_lib_init = g_init_cx->compile({"../src/engine/msl/ds4_init.metal"}, "", false);
+        // the engine's single context and its library (ds4_finish.cpp): a second one here was a second queue, unordered against
+        // the first layer's reads, and compiled the same file twice
+        g_init_cx = &engine_cx();
+        g_lib_init = engine_lib_init();
         if (g_lib_init < 0) std::fprintf(stderr, "dsv41 metal: compiling ds4_init.metal failed\n");
     }
     return *g_init_cx;

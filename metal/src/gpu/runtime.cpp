@@ -888,6 +888,18 @@ extern "C" void* ds4_gpu_buffer_for_cpu(const void* cpu, size_t bytes, size_t* o
 extern "C" void* ds4_gpu_residency_set() { return (void*) strata::gpu::residency_set_impl(); }
 
 // bytes from `cpu` to the end of the allocation that holds it (0: not an allocation)
+// The start of the allocation that holds this address, and its length (0 when it holds none).  A wrapper binds a range from the
+// allocation's own start, so that the producer and the consumer of a buffer share ONE MTLBuffer: a range bound from a page
+// boundary inside it is a second mapping of the same pages, and a kernel's write through one is not what the other reads.
+extern "C" size_t ds4_gpu_alloc_start(const void* cpu, size_t* len) {
+    size_t off = 0;
+    void* b = strata::gpu::buffer_for_cpu_impl(cpu, 1, &off);
+    if (!b) return 0;
+    const uintptr_t start = (uintptr_t) cpu - off;
+    if (len) *len = ((MTL::Buffer*) b)->length();
+    return start;
+}
+
 extern "C" size_t ds4_gpu_alloc_remaining(const void* cpu) {
     size_t off = 0;
     void* b = strata::gpu::buffer_for_cpu_impl(cpu, 1, &off);
