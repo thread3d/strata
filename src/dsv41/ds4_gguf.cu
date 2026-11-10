@@ -1268,6 +1268,29 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
     }
     quant_flush(QI, s);
 #if defined(STRATA_METAL)
+    // DS4_DBG_Q8: the quantiser's output at the moment it is produced - before the next layer's call can rewrite the scratch, which
+    // is what round 4's "the activations hash identically" was actually measuring.  The probe inside ds4_q8_mv reads the same buffer
+    // later and sees different bytes per run, with d.x bit-identical, so this is where to look.
+    if (ds4_dbg("DS4_DBG_Q8") && nj[2] > 0) {
+        extern int ds4_get_layer();
+        ds4_metal_flush();
+        const BfJob& bq0 = J[2].j[0];
+        const int8_t* q0 = (const int8_t*) strata::gpu::host_view((void*) bq0.xq);
+        const float* d0 = (const float*) strata::gpu::host_view((void*) bq0.xd);
+        if (q0 != nullptr && d0 != nullptr) {
+            uint64_t hq = 1469598103934665603ull, hd = 1469598103934665603ull;
+            const size_t qb = (size_t) bq0.ncol * (size_t) bq0.k;
+            const size_t db = (size_t) bq0.ncol * (size_t) (bq0.k / 32);
+            for (size_t i = 0; i < qb; ++i) { hq ^= (uint8_t) q0[i]; hq *= 1099511628211ull; }
+            for (size_t i = 0; i < db; ++i) {
+                uint32_t u;
+                std::memcpy(&u, &d0[i], 4);
+                for (int t = 0; t < 4; ++t) { hd ^= (u >> (8 * t)) & 0xffu; hd *= 1099511628211ull; }
+            }
+            std::fprintf(stderr, "DBG qflush layer=%d ncol=%d k=%d qhash=%016llx dhash=%016llx xq0=%d xd0=%g\n", ds4_get_layer(),
+                         bq0.ncol, bq0.k, (unsigned long long) hq, (unsigned long long) hd, (int) q0[0], (double) d0[0]);
+        }
+    }
     // DS4_DBG_Q8: paint the first Q8 job's output before the matvec, so the sweep can count what the kernel did not write.
     if (ds4_dbg("DS4_DBG_Q8") && nj[2] > 0) {
         const BfJob& b0 = J[2].j[0];

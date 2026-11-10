@@ -27,6 +27,7 @@ static thread_local int
 g_layer = -1;   // (the engine calls ds4_set_layer at each layer's start, so diagnostics can name the layer)
 extern "C" void ds4_gpu_sync_all_streams();
 extern "C" void ds4_set_layer(int il) { g_layer = il; }
+extern "C" int ds4_get_layer() { return g_layer; }
 extern "C" unsigned long long ds4_dispatch_seq();
 static unsigned long long g_q8_deduped = 0;
 
