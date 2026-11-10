@@ -43,18 +43,21 @@ kernel void ds4_sgemm_tn(device const float* A [[buffer(0)]], device const float
 }
 
 // ds4_kernels.cu:1894  finish_kernel<false> - RMS norm (f.w), mrope (f.rd), rounding (f.quant), then store to x or dst.
-// The mrope and rounding branches are not written yet; the host wrapper will decline until they are.
+// The struct's pointer fields are OFFSETS into allocations the dispatch binds (buffers 4..7), because a Metal 2 kernel cannot
+// dereference an address; the port rewrites them on the way in, and kNoOff marks a field the engine left null.  A pointer and an
+// offset are both 8 bytes, so the layout the engine fills is unchanged.
 struct Ds4Finish {
-    device float* w;
+    ulong w;             // offset into WF: the norm weights
     float eps;
     int rd, pos, inverse, vpp, pos_step;
-    device float* freqs;
+    ulong freqs;         // offset into FR: the mrope frequencies
     int quant;
-    device ushort* dst;
+    ulong dst;           // offset into DS: the BF16 row
     long dst_stride;
-    device uchar* pdst;
+    ulong pdst;          // offset into PD: the packed row
     long pdst_stride;
 };
+constant constexpr ulong kNoOff = ~ulong(0);
 
 static inline float ds4_warp_sum(float v) {
     v += simd_shuffle_xor(v, 16);
@@ -115,10 +118,16 @@ static inline float ds4_e2m1_rt(float v) {   // E2M1 magnitudes 0 .5 1 1.5 2 3 4
 
 kernel void ds4_finish(device float* x [[buffer(0)]], constant long& stride [[buffer(1)]],
                        constant uint& len [[buffer(2)]], constant Ds4Finish& f [[buffer(3)]],
+                       device const uchar* WF [[buffer(4)]], device const uchar* FR [[buffer(5)]],
+                       device uchar* DS [[buffer(6)]], device uchar* PD [[buffer(7)]],
                        uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                        ushort w_ [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
+    // the struct's offsets become the pointers the arithmetic below is written in terms of
+    const device float* fw = f.w == kNoOff ? nullptr : (const device float*) (WF + f.w);
+    const device float* ff = f.freqs == kNoOff ? nullptr : (const device float*) (FR + f.freqs);
+    device ushort* fd = f.dst == kNoOff ? nullptr : (device ushort*) (DS + f.dst);
     threadgroup float red[8];
     device float* v = x + (long) b * stride;
     const uint nj = (len + 255u) / 256u;
@@ -130,13 +139,13 @@ kernel void ds4_finish(device float* x [[buffer(0)]], constant long& stride [[bu
         r[j] = e < len ? v[e] : 0.0f;
         ss += r[j] * r[j];
     }
-    if (f.w != nullptr) {
+    if (fw != nullptr) {
         const float tot = ds4_block_sum(ss, red, lane, w);
         const float inv = rsqrt(tot / float(len) + f.eps);
         for (uint j = 0; j < 32u; ++j) {
             if (j >= nj) break;
             const uint e = tid + j * 256u;
-            if (e < len) r[j] = r[j] * inv * f.w[e];
+            if (e < len) r[j] = r[j] * inv * fw[e];
         }
     }
     if (f.rd > 0) {
@@ -150,7 +159,7 @@ kernel void ds4_finish(device float* x [[buffer(0)]], constant long& stride [[bu
             const float other = simd_shuffle_xor(r[j], 1);
             if (e >= r0 && e < len) {
                 const uint i = (e - r0) >> 1;
-                const float ang = float(pos) * f.freqs[i];
+                const float ang = float(pos) * ff[i];
                 const float c = cos(ang);
                 const float sn = f.inverse ? -sin(ang) : sin(ang);
                 r[j] = ((e - r0) & 1u) == 0u ? r[j] * c - other * sn : other * sn + r[j] * c;
@@ -181,9 +190,9 @@ kernel void ds4_finish(device float* x [[buffer(0)]], constant long& stride [[bu
         if (j >= nj) break;
         const uint e = tid + j * 256u;
         if (e >= len) continue;
-        if (f.dst != nullptr) {
+        if (fd != nullptr) {
             const uint bits = as_type<uint>(r[j]);
-            f.dst[(long) b * f.dst_stride + (long) e] = ushort((bits + 0x7fffu + ((bits >> 16) & 1u)) >> 16);   // BF16 round to nearest even, the vector's own row
+            fd[(long) b * f.dst_stride + (long) e] = ushort((bits + 0x7fffu + ((bits >> 16) & 1u)) >> 16);   // BF16 round to nearest even, the vector's own row
         } else {
             v[e] = r[j];
         }
@@ -1393,10 +1402,17 @@ static inline uint ds4_e2m1_code(float q) {   // (bit 3 the sign, -0 kept; the m
 
 kernel void ds4_finish_pack(device float* x [[buffer(0)]], constant long& stride [[buffer(1)]],
                             constant uint& len [[buffer(2)]], constant Ds4Finish& f [[buffer(3)]],
+                            device const uchar* WF [[buffer(4)]], device const uchar* FR [[buffer(5)]],
+                            device uchar* DS [[buffer(6)]], device uchar* PD [[buffer(7)]],
                             uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                             ushort w_ [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
     const ushort lane = lane_;   // the tile's own lane (mapped once, above: mapping it again broke every reduction here)
+    // the struct's offsets become the pointers the arithmetic below is written in terms of
+    const device float* fw = f.w == kNoOff ? nullptr : (const device float*) (WF + f.w);
+    const device float* ff = f.freqs == kNoOff ? nullptr : (const device float*) (FR + f.freqs);
+    device ushort* fd = f.dst == kNoOff ? nullptr : (device ushort*) (DS + f.dst);
+    device uchar* fp = f.pdst == kNoOff ? nullptr : (device uchar*) (PD + f.pdst);
     threadgroup float red[8];
     device float* v = x + (long) b * stride;
     const uint nj = (len + 255u) / 256u;
@@ -1408,13 +1424,13 @@ kernel void ds4_finish_pack(device float* x [[buffer(0)]], constant long& stride
         r[j] = e < len ? v[e] : 0.0f;
         ss += r[j] * r[j];
     }
-    if (f.w != nullptr) {
+    if (fw != nullptr) {
         const float tot = ds4_block_sum(ss, red, lane, w);
         const float inv = rsqrt(tot / float(len) + f.eps);
         for (uint j = 0; j < 32u; ++j) {
             if (j >= nj) break;
             const uint e = tid + j * 256u;
-            if (e < len) r[j] = r[j] * inv * f.w[e];
+            if (e < len) r[j] = r[j] * inv * fw[e];
         }
     }
     if (f.rd > 0) {
@@ -1426,7 +1442,7 @@ kernel void ds4_finish_pack(device float* x [[buffer(0)]], constant long& stride
             const float other = simd_shuffle_xor(r[j], 1);
             if (e >= r0 && e < len) {
                 const uint i = (e - r0) >> 1;
-                const float ang = float(pos) * f.freqs[i];
+                const float ang = float(pos) * ff[i];
                 const float c = cos(ang);
                 const float sn = f.inverse ? -sin(ang) : sin(ang);
                 r[j] = ((e - r0) & 1u) == 0u ? r[j] * c - other * sn : other * sn + r[j] * c;
@@ -1437,7 +1453,7 @@ kernel void ds4_finish_pack(device float* x [[buffer(0)]], constant long& stride
     // scale bytes at pr[len + e/32]; 2: E2M1 pairs at pr[e/2] with E4M3 scales at pr[len/2 + e/16]; 3: E2M1 pairs with
     // UE8M0 scales at pr[len/2 + e/32])
     const uint g = f.quant == 2 ? 16u : 32u;
-    device uchar* pr = f.pdst + (long) b * f.pdst_stride;
+    device uchar* pr = fp + (long) b * f.pdst_stride;
     for (uint j = 0; j < 32u; ++j) {
         if (j >= nj) break;
         const uint e = tid + j * 256u;
@@ -1468,7 +1484,7 @@ kernel void ds4_finish_pack(device float* x [[buffer(0)]], constant long& stride
             pr[(f.quant == 1 ? len : len / 2u) + e / g] =
                 uchar(f.quant == 2 ? ds4_e4m3_code(s, 0) : (as_type<uint>(s) >> 23));
     }
-    device ushort* d = f.dst != nullptr ? f.dst + (long) b * f.dst_stride : nullptr;
+    device ushort* d = fd != nullptr ? fd + (long) b * f.dst_stride : nullptr;
     for (uint j = 0; j < 32u; ++j) {
         if (j >= nj) break;
         const uint e = tid + j * 256u;
