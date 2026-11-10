@@ -782,60 +782,68 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
     const void* jobs = cut.empty() ? jobs_in : (const void*) cut.data();
     const int nj = cut.empty() ? nj_in : (int) cut.size();
     // The jobs carry device pointers; the kernels take offsets into six bound allocations instead (see Ds4MxJob in ds4_init.metal).
-    std::vector<HostBfJob> offs;
-    size_t lw = 0, lx = 0, ly = 0, lb = 0, lq = 0, ld2 = 0;
+    // A batch can mix allocations (one expert's weights here, another's there), so the jobs are grouped by their six bases and each
+    // group is one dispatch.
+    using Bases = std::tuple<size_t, size_t, size_t, size_t, size_t, size_t>;
+    std::map<Bases, std::vector<HostBfJob>> groups;
     const HostBfJob* src2 = (const HostBfJob*) jobs;
-    const size_t bw = src2[0].w ? span_base(src2[0].w, &lw) : 0;
-    const size_t bx = src2[0].x ? span_base(src2[0].x, &lx) : 0;
-    const size_t by = src2[0].y ? span_base(src2[0].y, &ly) : 0;
-    const size_t bb = src2[0].bias ? span_base(src2[0].bias, &lb) : 0;
-    const size_t bq = src2[0].xq ? span_base(src2[0].xq, &lq) : 0;
-    const size_t bd = src2[0].xd ? span_base(src2[0].xd, &ld2) : 0;
     for (int i = 0; i < nj; ++i) {
-        HostBfJob o = src2[i];
-        const uintptr_t pw = (uintptr_t) o.w, px = (uintptr_t) o.x, py = (uintptr_t) o.y, pb = (uintptr_t) o.bias,
-                          pq = (uintptr_t) o.xq, pd = (uintptr_t) o.xd;
-        if ((o.w && (!bw || pw < bw)) || (o.x && (!bx || px < bx)) || (o.y && (!by || py < by)) ||
-            (o.bias && (!bb || pb < bb)) || (o.xq && (!bq || pq < bq)) || (o.xd && (!bd || pd < bd))) {
-            std::fprintf(stderr, "dsv41 metal: mx_mv job %d is not inside the batch's allocations\n", i);
+        const HostBfJob& o = src2[i];
+        size_t lw = 0, lx = 0, ly = 0, lb = 0, lq = 0, ld6 = 0;
+        const size_t bw = o.w ? span_base(o.w, &lw) : 0;
+        const size_t bx = o.x ? span_base(o.x, &lx) : 0;
+        const size_t by = o.y ? span_base(o.y, &ly) : 0;
+        const size_t bb = o.bias ? span_base(o.bias, &lb) : 0;
+        const size_t bq = o.xq ? span_base(o.xq, &lq) : 0;
+        const size_t bd = o.xd ? span_base(o.xd, &ld6) : 0;
+        HostBfJob c = o;
+        c.w = (const void*) (o.w ? (uintptr_t) o.w - bw : 0);
+        c.x = (const float*) (o.x ? (uintptr_t) o.x - bx : 0);
+        c.y = (float*) ((uintptr_t) o.y - by);
+        c.bias = o.bias ? (const float*) ((uintptr_t) o.bias - bb) : nullptr;
+        c.xq = o.xq ? (const int8_t*) ((uintptr_t) o.xq - bq) : nullptr;
+        c.xd = o.xd ? (const float*) ((uintptr_t) o.xd - bd) : nullptr;
+        groups[Bases{bw, bx, by, bb, bq, bd}].push_back(c);
+    }
+    for (auto& kv : groups) {
+        std::vector<HostBfJob>& v = kv.second;
+        const size_t bw = std::get<0>(kv.first), bx = std::get<1>(kv.first), by = std::get<2>(kv.first),
+                     bb = std::get<3>(kv.first), bq = std::get<4>(kv.first), bd = std::get<5>(kv.first);
+        size_t lw = 0, lx = 0, ly = 0, lb = 0, lq = 0, ld6 = 0;
+        if (bw) span_base((const void*) bw, &lw);
+        if (bx) span_base((const void*) bx, &lx);
+        if (by) span_base((const void*) by, &ly);
+        if (bb) span_base((const void*) bb, &lb);
+        if (bq) span_base((const void*) bq, &lq);
+        if (bd) span_base((const void*) bd, &ld6);
+        mtl::Buffer bj = g_cx->alloc(v.size() * job_bytes);
+        if (!bj.ptr) { std::fprintf(stderr, "dsv41 metal: mx_mv job buffer failed\n"); return false; }
+        std::memcpy(bj.ptr, v.data(), v.size() * job_bytes);
+        mtl::Pipeline pl;
+        const char* fn = fmt == 2 ? "ds4_q8_mv" : (fmt == 1 ? "ds4_mx_mv" : "ds4_bf16_mv");
+        try { pl = g_cx->pipeline(g_lib, fn); } catch (...) { g_cx->free(bj); return false; }
+        mtl::Buffer bWs = bw ? g_cx->wrap((void*) bw, lw) : g_cx->alloc(8);
+        mtl::Buffer bXs = bx ? g_cx->wrap((void*) bx, lx) : g_cx->alloc(8);
+        mtl::Buffer bYs = g_cx->wrap((void*) by, ly);
+        mtl::Buffer bBs = bb ? g_cx->wrap((void*) bb, lb) : g_cx->alloc(8);
+        mtl::Buffer bQs = bq ? g_cx->wrap((void*) bq, lq) : g_cx->alloc(8);
+        mtl::Buffer bDs = bd ? g_cx->wrap((void*) bd, ld6) : g_cx->alloc(8);
+        if (!bYs.handle || !bWs.handle || !bXs.handle || !bBs.handle || !bQs.handle || !bDs.handle) {
+            std::fprintf(stderr, "dsv41 metal: mx_mv could not bind the job's allocations\n");
+            g_cx->free(bj);
             return false;
         }
-        o.w = (const void*) (o.w ? pw - bw : 0);
-        o.x = (const float*) (o.x ? px - bx : 0);
-        o.y = (float*) (py - by);
-        o.bias = o.bias ? (const float*) (pb - bb) : nullptr;
-        o.xq = o.xq ? (const int8_t*) (pq - bq) : nullptr;
-        o.xd = o.xd ? (const float*) (pd - bd) : nullptr;
-        offs.push_back(o);
-    }
-    mtl::Buffer bj = g_cx->alloc((size_t) nj * job_bytes);
-    if (!bj.ptr) { std::fprintf(stderr, "dsv41 metal: mx_mv job buffer failed\n"); return false; }
-    std::memcpy(bj.ptr, offs.data(), (size_t) nj * job_bytes);
-    mtl::Pipeline pl;
-    // fmt 1 = MXFP4, 2 = Q8_0, 0 = BF16 (a dense matrix: the engram's wkv, ds4_gguf.cu:1064)
-    const char* fn = fmt == 2 ? "ds4_q8_mv" : (fmt == 1 ? "ds4_mx_mv" : "ds4_bf16_mv");
-    try { pl = g_cx->pipeline(g_lib, fn); } catch (...) { return false; }
-    mtl::Dispatch d;
-    d.p = &pl;
-    mtl::Buffer bWs = bw ? g_cx->wrap((void*) bw, lw) : g_cx->alloc(8);
-    mtl::Buffer bXs = bx ? g_cx->wrap((void*) bx, lx) : g_cx->alloc(8);
-    mtl::Buffer bYs = g_cx->wrap((void*) by, ly);
-    mtl::Buffer bBs = bb ? g_cx->wrap((void*) bb, lb) : g_cx->alloc(8);
-    mtl::Buffer bQs = bq ? g_cx->wrap((void*) bq, lq) : g_cx->alloc(8);
-    mtl::Buffer bDs = bd ? g_cx->wrap((void*) bd, ld2) : g_cx->alloc(8);
-    if (!bWs.handle || !bXs.handle || !bYs.handle || !bBs.handle || !bQs.handle || !bDs.handle) {
-        std::fprintf(stderr, "dsv41 metal: mx_mv could not bind the job's allocations\n");
+        mtl::Dispatch d;
+        d.p = &pl;
+        d.args = {mtl::Arg::B(bj), mtl::Arg::B(bWs), mtl::Arg::B(bXs), mtl::Arg::B(bYs), mtl::Arg::B(bBs),
+                  mtl::Arg::B(bQs), mtl::Arg::B(bDs)};
+        d.grid[0] = (uint32_t) ((max_n + 7) / 8);
+        d.grid[1] = (uint32_t) v.size();
+        d.grid[2] = 1;
+        d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
+        g_cx->run({d});
         g_cx->free(bj);
-        return false;
     }
-    d.args = {mtl::Arg::B(bj), mtl::Arg::B(bWs), mtl::Arg::B(bXs), mtl::Arg::B(bYs), mtl::Arg::B(bBs),
-              mtl::Arg::B(bQs), mtl::Arg::B(bDs)};
-    d.grid[0] = (uint32_t) ((max_n + 7) / 8);
-    d.grid[1] = (uint32_t) nj;
-    d.grid[2] = 1;
-    d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
-    g_cx->run({d});
-    g_cx->free(bj);
     return true;
 }
 
