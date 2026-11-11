@@ -9682,6 +9682,7 @@ struct Model::Impl {
         if (n_logits <= 0) return true;
         const int t0 = T - n_logits;
         hc_pre_norm(d.h + (size_t) t0 * H * D, d.pre + (size_t) t0 * 8, d.norm_w, D, H, n_logits, g.eps, d.x, d.st);
+        dump_sub(d, "head_in", 1000 + (int) g.nl, (int64_t) T - n_logits, n_logits, d.x, (size_t) n_logits * D * 4);
         return head_share(d, d.mi, d.x, n_logits, err);
     }
 
