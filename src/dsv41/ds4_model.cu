@@ -10711,9 +10711,15 @@ struct Model::Impl {
         CK(cudaMemcpyAsync(d.pre, d.f_pre, (size_t) T * 8 * 4, cudaMemcpyDeviceToDevice, s));
         if (phases && T == 1) {
             const double ph4 = now_ms();
-            ph[0] += ph2 - ph0; ph[1] += ph3 - ph2; ph[2] += ph4 - ph3; if (ph_prev > 0 && ph0 - ph_prev < 5.0) ph[3] += ph0 - ph_prev; ph_prev = ph4; ++ph_n;
+            // ph[3] is everything between one layer call's end and the next one's start - which is where the flush, the copy
+            // back and whatever the host does between layers lands.  It used to be counted only when it was under 5 ms, so a
+            // decoded token whose layer calls were 31 ms of phases but 267 ms of wall time reported the phases and dropped the
+            // 236 ms difference.  ph[5] is the part of it at or above 5 ms: the number that says whether the gap matters.
+            ph[0] += ph2 - ph0; ph[1] += ph3 - ph2; ph[2] += ph4 - ph3;
+            if (ph_prev > 0) { const double gap = ph0 - ph_prev; ph[3] += gap; if (gap >= 5.0) ph[5] += gap; }
+            ph_prev = ph4; ++ph_n;
             static bool reg = false;
-            if (!reg) { reg = true; std::atexit([] { std::fprintf(stderr, "phases per layer call (%ld): route enqueue + shared expert + wait %.3f ms, routing analysis + GPU experts enqueue %.3f ms, CPU lane + combine + hc_post %.3f ms, attention enqueue %.3f ms%s", ph_n, ph[0] / ph_n, ph[1] / ph_n, ph[2] / ph_n, ph[3] / ph_n, "\n"); }); }
+            if (!reg) { reg = true; std::atexit([] { std::fprintf(stderr, "phases per layer call (%ld): route enqueue + shared expert + wait %.3f ms, routing analysis + GPU experts enqueue %.3f ms, CPU lane + combine + hc_post %.3f ms, between layer calls %.3f ms (of it %.3f ms in gaps of 5 ms or more), so %.3f ms a call counted%s", ph_n, ph[0] / ph_n, ph[1] / ph_n, ph[2] / ph_n, ph[3] / ph_n, ph[5] / ph_n, (ph[0] + ph[1] + ph[2] + ph[3]) / ph_n, "\n"); }); }
         }
         // (h_part / h_x are written again only after the next layer's route has synchronized, which follows these)
         return true;
