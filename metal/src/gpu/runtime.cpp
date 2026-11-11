@@ -583,7 +583,14 @@ Error mem_get_info(size_t* free_b, size_t* total_b) {
     *free_b = (size_t) (used < budget ? budget - used : 0);
     return kSuccess;
 }
-Error device_integrated(int* v, int) { *v = 1; return kSuccess; }
+Error device_integrated(int* v, int) {
+    // Apple silicon's GPU shares this process's RAM; a discrete card does not.  Answering 1 unconditionally told the engine
+    // that this Radeon's memory was the host's - harmless while ram_avail() was unknown on macOS (uma_free() then leaves the
+    // device's free alone), and destructive the moment it is not: uma_free() would offer an 8 GiB card 85 GB of a 96 GB
+    // host's RAM and the expert tier would try to place experts there.
+    *v = rt().dev->hasUnifiedMemory() ? 1 : 0;
+    return kSuccess;
+}
 Error device_sm_count(int* v, int) { *v = 0; return fail(kErrorUnsupported); }   // Apple reports no core count
 Error device_clock_khz(int* v, int) { *v = 0; return fail(kErrorUnsupported); }
 Error runtime_version(int* v) { *v = 0; return kSuccess; }
@@ -596,6 +603,7 @@ Error get_device_properties(DeviceProp* p, int dev) {
     std::snprintf(p->name, sizeof p->name, "%s", d->name()->utf8String());
     std::snprintf(p->gcnArchName, sizeof p->gcnArchName, "%s", d->supportsFamily(MTL::GPUFamilyApple10) ? "apple10" : "apple9-or-older");
     p->warpSize = 32;   // the SIMD-group width of every Apple GPU
+    p->integrated = d->hasUnifiedMemory() ? 1 : 0;   // (the same answer device_integrated gives, for the callers that read it here)
     p->totalGlobalMem = (size_t) d->recommendedMaxWorkingSetSize();
     return kSuccess;
 }

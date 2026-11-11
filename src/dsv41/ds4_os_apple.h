@@ -12,6 +12,7 @@
 #if defined(__APPLE__)
 
 #include <fcntl.h>
+#include <mach/mach.h>       // host_statistics64: the free/inactive/speculative page counts ram_avail() adds up
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <unistd.h>

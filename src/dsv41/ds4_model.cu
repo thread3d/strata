@@ -208,6 +208,21 @@ uint64_t ram_avail() {
 #if defined(_WIN32)
     return os::ram_avail();
 #endif
+#if defined(__APPLE__)
+    // No /proc/meminfo on macOS, so this answered "not known" on every run the Metal port ever made - and "not known" is
+    // exactly what keeps --mmap-experts auto from copying the CPU lane's experts into RAM.  The same idea as MemAvailable
+    // lives in the Mach VM statistics: free pages, plus the inactive and speculative pages the kernel will reclaim (the
+    // file-backed ones among them are the page cache the engine has just filled with expert rows).
+    {
+        mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+        vm_statistics64_data_t st{};
+        if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t) &st, &count) == KERN_SUCCESS) {
+            const uint64_t page = (uint64_t) sysconf(_SC_PAGESIZE);
+            return ((uint64_t) st.free_count + (uint64_t) st.inactive_count + (uint64_t) st.speculative_count) * page;
+        }
+        return ~uint64_t{0};
+    }
+#endif
     uint64_t avail = ~uint64_t{0};
     {
         std::istringstream mi(read_file("/proc/meminfo"));
@@ -2200,6 +2215,12 @@ struct Model::Impl {
             }
             CK(cudaMemGetInfo(&d.free0, &d.total));
             d.free0 = uma_free(d.id, d.free0);
+            // What the card offers before anything is placed on it: every expert-placement decision below is a subtraction
+            // from this one number.  On a Metal 2 card it is the working-set budget less what is already allocated, a
+            // much smaller quantity than a CUDA card's VRAM (RX 580: 8.00 GiB budget, 5.86 GB of dense weights).
+            if (o.verbose)
+                std::fprintf(stderr, "ds4: device %d: %.2f GiB free of %.2f GiB (the working-set budget less what is allocated)\n",
+                             (int) d.id, (double) d.free0 / 1073741824.0, (double) d.total / 1073741824.0);
         }
         // the groups' width: o.tp, less while the experts' blocks do not split in it (a member takes n_ff / tp of each
         // expert: the down's inputs in whole blocks - a GGUF's 256-value types split n_ff 2304 in 1, 3 or 9 parts)
@@ -2274,10 +2295,21 @@ struct Model::Impl {
                     continue;
                 (n.find(".ffn.experts.") != std::string::npos ? exp_b : other_b) += (double) kt.second.bytes;
             }
-            for (const Dev& d : devs)
-                room += std::max(0.0, (double) d.free0 - (double) ((size_t) o.reserve_mib << 20) -
-                                          (prompt_par ? 1.5 : 0.4) * (1 << 30)) *
-                        o.vram_experts;
+            for (const Dev& d : devs) {
+                const double allowance = (prompt_par ? 1.5 : 0.4) * (1 << 30);
+                const double r = std::max(0.0, (double) d.free0 - (double) ((size_t) o.reserve_mib << 20) - allowance) *
+                                 o.vram_experts;
+                // The whole decision in one line: a reserve above what is free makes this zero, and zero means the expert
+                // tier is off for every layer (the CPU lane reads them instead).  This is what a --reserve-mib meant for a
+                // 24 GB Linux box does to an 8 GiB card.
+                if (o.verbose)
+                    std::fprintf(stderr,
+                                 "ds4: expert tier, device %d: free0 %.2f GiB - reserve %lld MiB - allowance %.2f GiB "
+                                 "= %.2f GiB of experts (--vram-experts %.2f)\n",
+                                 (int) d.id, (double) d.free0 / 1073741824.0, (long long) o.reserve_mib,
+                                 allowance / 1073741824.0, r / 1073741824.0, o.vram_experts);
+                room += r;
+            }
             file_experts = exp_b - std::max(0.0, room - other_b) + (double) kRamMargin > (double) ram_avail();
         }
         // The default prompt chunk, one rule (ds4_experts_rule.hpp: prefill_chunk_default).  Measured: the chunked pass streams the experts the GPUs
@@ -3279,8 +3311,17 @@ struct Model::Impl {
                 continue;
             (n.find(".ffn.experts.") != std::string::npos ? exp_b : other_b) += (double) kt.second.bytes;
         }
-        for (const Dev& d : devs)
-            room += std::max(0.0, (double) d.free0 - (double) ((size_t) o.reserve_mib << 20) - 1.5 * (1 << 30)) * o.vram_experts;
+        for (const Dev& d : devs) {
+            const double allowance = 1.5 * (1 << 30);
+            const double r = std::max(0.0, (double) d.free0 - (double) ((size_t) o.reserve_mib << 20) - allowance) * o.vram_experts;
+            if (o.verbose)
+                std::fprintf(stderr,
+                             "ds4: expert share, device %d: free0 %.2f GiB - reserve %lld MiB - allowance %.2f GiB "
+                             "= %.2f GiB, dense %.2f GiB, experts %.2f GiB\n",
+                             (int) d.id, (double) d.free0 / 1073741824.0, (long long) o.reserve_mib,
+                             allowance / 1073741824.0, r / 1073741824.0, other_b / 1073741824.0, exp_b / 1073741824.0);
+            room += r;
+        }
         if (exp_out) *exp_out = exp_b;
         if (room_out) *room_out = room;
         if (other_out) *other_out = other_b;
@@ -3364,6 +3405,12 @@ struct Model::Impl {
                         if (rdna4() && share >= 0.5)
                             std::fprintf(stderr, "ds4: attention slab %d rows (automatic: the cards hold %.0f%% of the experts; DS4_ATTN_SLAB=0 keeps %d)\n",
                                          c.A, share * 100.0, base);
+                        else if (o.vram_experts <= 0.0)
+                            // (spare is the 1e18 marker here: the expert tier is off, so no expert room bounds the slab -
+                            // printing it as a measurement is what produced "1000000000.0 GB of VRAM to spare")
+                            std::fprintf(stderr, "ds4: attention slab %d rows (automatic: the expert tier is off (--vram-experts 0), so "
+                                                 "the VRAM the experts would have used does not bound it; DS4_ATTN_SLAB=0 keeps %d)\n",
+                                         c.A, base);
                         else
                             std::fprintf(stderr, "ds4: attention slab %d rows (automatic: %.1f GB of VRAM to spare beyond the experts; DS4_ATTN_SLAB=0 keeps %d)\n",
                                          c.A, spare / 1e9, base);
@@ -4992,23 +5039,28 @@ struct Model::Impl {
         // (auto: none - copies that all fit were measured no faster than the page cache: the CPU lane's rows are
         // compute-bound, ~46 GB/s from either on 2 Xeon sockets, NUMA parts included; a part copied cost decode speed
         // on 64 GB and on 32 GB of RAM)
+        // A limit the OS does not report arrives here as 1e300, and printing that as a number gave this log a
+        // 300-digit integer (macOS queries neither the free RAM nor a commit limit).  Say what it means instead.
+        char can_s[64];
+        if (can >= 1e30) std::snprintf(can_s, sizeof can_s, "unbounded");
+        else             std::snprintf(can_s, sizeof can_s, "%.1f GB", can / 1e9);
         double budget = o.mmap_experts == 0 ? std::min(all, can) : auto_copy_all && all <= can ? all : 0.0;   // (auto: all or none)
         if (const char* v = std::getenv("DS4_COPY_GB")) budget = std::atof(v) * 1e9;
         if (o.mmap_experts < 0 && auto_copy_all && all > can)
-            std::fprintf(stderr, "ds4: the CPU lane's experts (%.1f GB) do not all fit the RAM this process can get now (%.1f GB beside %.0f GB for "
-                                 "the rest): read in place from the model's files (--mmap-experts off copies what fits)\n", all / 1e9, can / 1e9, kRamMargin / 1e9);
+            std::fprintf(stderr, "ds4: the CPU lane's experts (%.1f GB) do not all fit the RAM this process can get now (%s beside %.0f GB for "
+                                 "the rest): read in place from the model's files (--mmap-experts off copies what fits)\n", all / 1e9, can_s, kRamMargin / 1e9);
         if (o.mmap_experts == 0 && all > can)
             std::fprintf(stderr, "ds4: --mmap-experts off: the CPU lane's experts (%.1f GB) do not all fit the RAM this "
-                                 "process can get (%.1f GB beside %.0f GB for the rest) - the most-routed copied, the "
-                                 "others read in place\n", all / 1e9, can / 1e9, kRamMargin / 1e9);
+                                 "process can get (%s beside %.0f GB for the rest) - the most-routed copied, the "
+                                 "others read in place\n", all / 1e9, can_s, kRamMargin / 1e9);
         if (auto_copy_all && budget > 0)
-            std::fprintf(stderr, "ds4: --mmap-experts auto: the CPU lane's experts (%.1f GB) fit the RAM this process can get (%.1f GB beside %.0f GB for "
-                                 "the rest): copied in at load, no demand store (--mmap-experts on keeps them in place)\n", all / 1e9, can / 1e9, kRamMargin / 1e9);
+            std::fprintf(stderr, "ds4: --mmap-experts auto: the CPU lane's experts (%.1f GB) fit the RAM this process can get (%s beside %.0f GB for "
+                                 "the rest): copied in at load, no demand store (--mmap-experts on keeps them in place)\n", all / 1e9, can_s, kRamMargin / 1e9);
         if (budget <= 0) {
             if (o.verbose)
                 std::fprintf(stderr, "ds4: the CPU lane's experts (%.1f GB) stay in place: the RAM this process can get "
-                                     "(%.1f GB beside %.0f GB for the rest) does not hold them all\n",
-                             all / 1e9, can / 1e9, kRamMargin / 1e9);
+                                     "(%s beside %.0f GB for the rest) does not hold them all\n",
+                             all / 1e9, can_s, kRamMargin / 1e9);
             return true;
         }
         // NUMA parts: whole rows of each matrix, so any row count the nodes divide
