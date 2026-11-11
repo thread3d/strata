@@ -1793,9 +1793,12 @@ kernel void ds4_sampler_greedy(device const float* logits [[buffer(0)]], constan
             best = v;
         }
     }
+    // A butterfly over the thread's own 32-lane group: shuffle_xor with offsets of 16 or less never leaves it, while
+    // shuffle_down at lane 16 upwards reads into the NEIGHBOURING group on this card (Metal's simdgroup is 64 lanes), whose lanes
+    // hold an unrelated value - the reduction then reports something that has nothing to do with the row it was given.
     for (uint o = 16u; o > 0u; o >>= 1) {
-        const float ov = simd_shuffle_down(bv, ushort(o));
-        const int oi = simd_shuffle_down(best, ushort(o));
+        const float ov = simd_shuffle_xor(bv, ushort(o));
+        const int oi = simd_shuffle_xor(best, ushort(o));
         if (ov > bv || (ov == bv && oi < best)) {
             bv = ov;
             best = oi;
@@ -1809,9 +1812,9 @@ kernel void ds4_sampler_greedy(device const float* logits [[buffer(0)]], constan
     if (wid == 0u) {
         float wv = sv[lane];
         int wi = si[lane];
-        for (uint o = 16u; o > 0u; o >>= 1) {
-            const float ov = simd_shuffle_down(wv, ushort(o));
-            const int oi = simd_shuffle_down(wi, ushort(o));
+        for (uint o = 16u; o > 0u; o >>= 1) {   // (the same butterfly, inside the one group that is running here)
+            const float ov = simd_shuffle_xor(wv, ushort(o));
+            const int oi = simd_shuffle_xor(wi, ushort(o));
             if (ov > wv || (ov == wv && oi < wi)) {
                 wv = ov;
                 wi = oi;

@@ -10684,9 +10684,13 @@ struct Model::Impl {
                     std::memcpy(&u, &hv[q], 4);
                     for (int b2 = 0; b2 < 4; ++b2) { const uint64_t by = (u >> (8 * b2)) & 0xffu; hs += by; hw += by * (uint64_t) (q + 1); }
                 }
-                std::fprintf(stderr, "DBG tok-row: greedy=%d n_logits=%d gpu(sum=%016llx wsum=%016llx) host(sum=%016llx wsum=%016llx) %s\n",
-                             (int) sp.greedy, n_logits, (unsigned long long) ck[1], (unsigned long long) ck[0], (unsigned long long) hs,
-                             (unsigned long long) hw, (hs == ck[1] && hw == ck[0]) ? "agree" : "DIFFER");
+                // the row's argmax on the host, beside what the sampler answers - the direct question: does the kernel pick what the
+                // row says, and is the row the host sees the row the kernel reads?
+                int harg = -1;
+                if (hv != nullptr) { float mx = -INFINITY; for (int q = 0; q < g.vocab; ++q) if (hv[q] > mx) { mx = hv[q]; harg = q; } }
+                std::fprintf(stderr, "DBG tok-row: greedy=%d n_logits=%d host-argmax=%d hostmax=%g gpu-bytesum=%016llx host-bytesum=%016llx %s\n",
+                             (int) sp.greedy, n_logits, harg, (hv != nullptr ? (double) hv[harg < 0 ? 0 : harg] : 0.0),
+                             (unsigned long long) ck[1], (unsigned long long) hs, (hs == ck[1]) ? "same-bytes" : "DIFFERENT-bytes");
             }
         }
         strata::dsv41k::sample_tokens(d.logits + (size_t) std::max(0, n_logits - 1) * g.vocab, 1, g.vocab, nullptr, 0,
