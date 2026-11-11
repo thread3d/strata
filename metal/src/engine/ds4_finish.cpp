@@ -23,7 +23,11 @@ extern "C" void ds4_metal_flush();
 extern "C" size_t ds4_gpu_alloc_remaining(const void* cpu);
 extern "C" size_t ds4_gpu_alloc_start(const void* cpu, size_t* len);
 extern "C" void* ds4_gpu_buffer_for_cpu(const void* cpu, size_t bytes, size_t* off);
+static thread_local int
+g_layer = -1;   // (the engine calls ds4_set_layer at each layer's start, so diagnostics can name the layer)
 extern "C" void ds4_gpu_sync_all_streams();
+extern "C" void ds4_set_layer(int il) { g_layer = il; }
+extern "C" int ds4_get_layer() { return g_layer; }
 extern "C" unsigned long long ds4_dispatch_seq();
 static unsigned long long g_q8_deduped = 0;
 
@@ -739,6 +743,50 @@ struct HostQ8Spec {
     float* d;
 };
 }  // namespace
+// DS4_SELFCHECK: run one quantisation twice, each dispatch committed and waited, into two separate buffers, and compare.  A difference
+// means the quantiser itself is not deterministic for this input - visible in a single run, without needing two runs to differ.
+bool q8_quant_selfcheck(const float* x, size_t ldx, int rows, int k, void* report) {
+    if (x == nullptr || rows <= 0 || k <= 0) return false;
+    if (!ensure()) return false;
+    void* hx = cpu_for_wrap((void*) x);
+    if (hx == nullptr) return false;
+    const size_t qb = (size_t) rows * (size_t) k, db = (size_t) rows * (size_t) (k / 32) * sizeof(float);
+    mtl::Buffer bq1 = g_cx->alloc(qb), bq2 = g_cx->alloc(qb);
+    mtl::Buffer bd1 = g_cx->alloc(db), bd2 = g_cx->alloc(db);
+    if (!bq1.ptr || !bq2.ptr || !bd1.ptr || !bd2.ptr) return false;
+    mtl::Pipeline pl;
+    try { pl = g_cx->pipeline(g_lib, "ds4_q8_quant"); } catch (...) { return false; }
+    mtl::Buffer bx = wrap_span(hx, (size_t) rows * ldx * sizeof(float));
+    if (!bx.handle) return false;
+    for (int pass = 0; pass < 2; ++pass) {
+        mtl::Dispatch d;
+        d.p = &pl;
+        d.args = {mtl::Arg::B(bx, span_off(hx)), mtl::Arg::V((unsigned long) ldx), mtl::Arg::V((unsigned) rows),
+                  mtl::Arg::V((unsigned) k), mtl::Arg::B(pass == 0 ? bq1 : bq2), mtl::Arg::B(pass == 0 ? bd1 : bd2)};
+        d.grid[0] = (uint32_t) (k / 32);
+        d.grid[1] = (uint32_t) rows;
+        d.grid[2] = 1;
+        d.tg[0] = 32; d.tg[1] = d.tg[2] = 1;
+        g_cx->run({d});
+        g_cx->flush_runs();   // each pass complete before the next, so a difference is not a race between the two
+    }
+    const int8_t* q1 = (const int8_t*) bq1.ptr;
+    const int8_t* q2 = (const int8_t*) bq2.ptr;
+    const float* s1 = (const float*) bd1.ptr;
+    const float* s2 = (const float*) bd2.ptr;
+    size_t ndq = 0, nds = 0;
+    for (size_t i = 0; i < qb; ++i) if (q1[i] != q2[i]) ++ndq;
+    for (size_t i = 0; i < db / sizeof(float); ++i) if (s1[i] != s2[i]) ++nds;
+    if (report != nullptr) {
+        auto* r = (uint32_t*) report;
+        r[0] = (uint32_t) ndq;
+        r[1] = (uint32_t) nds;
+        r[2] = (uint32_t) (qb + db / sizeof(float));
+    }
+    g_cx->free(bq1); g_cx->free(bq2); g_cx->free(bd1); g_cx->free(bd2);
+    return true;
+}
+
 bool q8_quant_multi(const void* specs, int n) {
     if (n <= 0) return true;
     if (!ensure()) return false;
@@ -753,14 +801,24 @@ bool q8_quant_multi(const void* specs, int n) {
     std::vector<HostQ8Spec> specs_copy(sp, sp + n);
     size_t lx = 0, lq = 0, ld = 0;
     const size_t bx0 = span_base(sp[0].x, &lx), bq0 = span_base(sp[0].q, &lq), bd0 = span_base(sp[0].d, &ld);
+    // Every spec of the batch has to live in the SAME three allocations, because the kernel reads each spec's x/q/d as an offset from
+    // the first spec's base and the dispatch binds that base's buffer alone.  The check used to be only "not below the first base",
+    // which lets a spec in a *higher* allocation through: its offset then runs past the bound buffer into whatever is mapped there,
+    // and whether such a mix arises at all depends on where the engine's buffers happen to land - i.e. on the run.  Anything that is
+    // not inside the first spec's allocations takes the per-spec path.
+    bool one_alloc = bx0 != 0 && bq0 != 0 && bd0 != 0;
+    for (int i = 0; one_alloc && i < n; ++i) {
+        size_t a = 0, b = 0, c = 0;
+        if (span_base(sp[i].x, &a) != bx0 || span_base(sp[i].q, &b) != bq0 || span_base(sp[i].d, &c) != bd0) one_alloc = false;
+    }
+    if (!one_alloc) {
+        bool ok = true;
+        for (int k2 = 0; k2 < n; ++k2)
+            ok = q8_quant_rows(sp[k2].x, (size_t) sp[k2].ldx, (int) sp[k2].rows, (int) sp[k2].k, sp[k2].q, sp[k2].d) && ok;
+        return ok;
+    }
     for (int i = 0; i < n; ++i) {
         const uintptr_t px = (uintptr_t) sp[i].x, pq = (uintptr_t) sp[i].q, pd = (uintptr_t) sp[i].d;
-        if (bx0 == 0 || bq0 == 0 || bd0 == 0 || px < bx0 || pq < bq0 || pd < bd0) {   // not one allocation each
-            bool ok = true;
-            for (int k2 = 0; k2 < n; ++k2)
-                ok = q8_quant_rows(sp[k2].x, (size_t) sp[k2].ldx, (int) sp[k2].rows, (int) sp[k2].k, sp[k2].q, sp[k2].d) && ok;
-            return ok;
-        }
         specs_copy[(size_t) i].x = (const float*) (px - bx0);
         specs_copy[(size_t) i].q = (int8_t*) (pq - bq0);
         specs_copy[(size_t) i].d = (float*) (pd - bd0);
@@ -933,10 +991,12 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
                 std::snprintf(wb + 3 * j, 4, "%02x ", hp[2 + j]);
                 std::snprintf(hb + 3 * j, 4, "%02x ", (uint8_t) pr[3 + j]);
             }
+            static long pc = 0;
             std::fprintf(stderr, "DBG probe-bind %s probe_row=%d alive=%.1f\n", fn, probe_row, (double) pr[31]);
             std::fprintf(stderr,
-                         "DBG probe %s row=%d/%d | shader: dw=%g rowoff=%g w=%.17g xd0=%g xq0=%g bytes=[%s] | host: dw=%g bytes=[%s] %s\n",
-                         fn, (int) pr[0], (int) v[0].n, pr[1], pr[2], pr[20], pr[19], pr[11], hb, *(const float*) &hdh,
+                         "DBG probe #%ld layer=%d %s n=%d k=%llu woff=%llu row=%d/%d | shader: dw=%g rowoff=%g w=%.17g xd0=%g xq0=%g bytes=[%s] | host: dw=%g bytes=[%s] %s\n",
+                         ++pc, g_layer, fn, (int) v[0].n, (unsigned long long) v[0].k, (unsigned long long) v[0].w,
+                         (int) pr[0], (int) v[0].n, pr[1], pr[2], pr[20], pr[19], pr[11], hb, *(const float*) &hdh,
                          wb, (wb[0] == hb[0] && wb[1] == hb[1] && wb[2] == hb[2]) ? "same-head" : "DIFFERENT-head");
         }
         g_cx->free(bprobe);

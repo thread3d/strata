@@ -52,6 +52,7 @@ bool moe_win_group_cpu(const void* plan_ptr, void* grp_ptr, void* grp_start, voi
 bool mx_mv(const void* jobs, int nj, int max_n, size_t job_bytes, int fmt);
 bool q8_quant_rows(const float* x, size_t ldx, int rows, int k, int8_t* q, float* d);
 bool dbg_device_checksum(const void* p, size_t bytes, uint64_t out[2]);   // DS4_DBG_CK: the GPU's view of a range
+bool q8_quant_selfcheck(const float* x, size_t ldx, int rows, int k, void* report);   // DS4_SELFCHECK: the same input twice
 
 bool ring_to_ext(const void* ring, void* ext, long long p0, int n, int d, size_t row_bytes);
 bool route_publish(const float* logits, const float* bias, int n, int k, int T, float route_scale, const void* vram, int* idx, float* w, void* plan_ptr, const float* bias_vl, unsigned vl);

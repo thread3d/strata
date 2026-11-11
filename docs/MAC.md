@@ -384,15 +384,37 @@ beside the `matmul2d` one, the bf16 attention gives way to the same format's oth
 model's pages are mapped writable-private (this driver refuses a no-copy buffer over a read-only mapping), and the embedding
 declines its raw-address port where the Metal has no `gpuAddress`.
 
-**It does not compute correct logits here, and it is not safe to run on this card.** The same binary with the same arguments
-produced a finite hidden state (max 0.4277) at one point and exactly zeros an hour later; in three consecutive runs it reset the
-GPU nine times, and it hung this machine five times in total while being ported. Those are the three reasons in the section
-above, and for this engine they are not a matter of one more missing kernel: its kernels take raw pointers, its copies and its
-dispatches run on two queues that the engine orders itself, and both need Metal 3 and a residency set.
+**It computes on this card now**, with the four rules below learned the hard way; it is still not deterministic, and that is the
+open problem, not the arithmetic. On the Mac Pro above it produces real logits (`--dump-logits`: 775 680 floats, max 15.54, no zeros),
+its own kernel-versus-host checks agree (`q8 recompute=0.039644 kernel_y=0.039644`, `iq host=-0.009077 kernel=-0.0090405`,
+`pnorm expected x0=0.0228355 kernel x0=0.0228355`), it decodes tokens, and the attention contributes real values where it once summed
+zeros. No GPU resets in the recent runs (43 since this machine was set up, unchanged).
 
-So `strata_ds4` stops before it loads 138 GB of weights, with the reason, when the Metal under it has no device addresses:
-`STRATA_DS4_ALLOW_UNSTABLE_METAL=1` tries anyway, on a machine the user can power-cycle, and the numbers it prints are not to be
-trusted. `--pack-info` still reads a pack, because it touches no GPU. A Mac with macOS 13 or newer runs the engine as designed.
+Four fixes that any Metal 2 card will need, each measured here:
+
+- **one `mtl::Context` and queue for the whole engine** (the embedding once had its own, unordered against the first layer);
+- **no deferred command buffer** where the Metal has no device addresses - `DS4_FLUSH_EVERY`, the default there;
+- **bind every argument from the allocation that holds it**, never from the 16 KiB page it sits in. A page-based base is a second
+  `MTLBuffer` over the same pages, and on this driver a kernel's write through one is not what the other reads. That alone lost the
+  tail of the embedding's write: the last 8-12 KB of it, so the hidden state differed from run to run;
+- **every struct field that was a pointer is an offset** into an allocation the dispatch binds: the matvec job structs, the Q8
+  quantiser's specs, and the finish struct's `w`, `freqs`, `dst` and `pdst`. A Metal 2 kernel cannot dereference an address, and a
+  pointer and an offset are both 8 bytes, so the engine's own fill code is untouched.
+
+Three rules this driver imposes, each measured:
+
+- **a copy with host memory on one side must be synchronous.** As an asynchronous blit on a stream's queue it is not ordered against
+  the dispatches the engine's own queue runs, and the MoE combine read the CPU lane's part before that copy had landed.
+- **a host read of a buffer the GPU wrote can be stale immediately after the command buffer completes.** A row that read `inf` read
+  `-0.46` two hundred milliseconds later. A readback is therefore not proof of what the GPU computed - which is why the checks in
+  this port read the shader's own report (`DS4_DBG_PROBE`) or a device-side checksum (`DS4_DBG_CK`) when it matters.
+- **a batched marshaller must group its jobs by the allocation each operand lives in.** `q8_quant_multi` bound the first job's three
+  allocations and rejected only pointers *below* them, so a job in a higher allocation was read at an offset past the buffer.
+
+`./setup.sh --unsupported-mac` still refuses to install DeepSeek's engine package here, so the pack has to be fetched and built by hand
+as above. `strata_ds4` still stops before it loads 138 GB of weights when the Metal under it has no device addresses;
+`STRATA_DS4_ALLOW_UNSTABLE_METAL=1` is what the measurements above were taken with. A Mac with macOS 13 or newer runs the engine as
+designed.
 
 `./setup.sh --unsupported-mac` still refuses to install DeepSeek's engine package here for the same reason, so the pack has to be
 fetched and built by hand as above.

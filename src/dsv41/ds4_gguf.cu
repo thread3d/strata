@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Peasant Smith and the Project Maya contributors (MIT; https://github.com/mw00/project-maya, v1.1.17).
 // Ported into Strata (third_party/project-maya/NOTICE.md, LICENSE); changes are in the git history of this file.
 // src/ds4/ds4_gguf.cu - a GGUF's BF16 matrices and MXFP4 experts on the device (see ds4_gguf.cuh).
-#include "ds4_launch.h"   // strata_ds4_launch: <<<>>> on CUDA and HIP, a dispatch on Metal
+#include "ds4_launch.h"
+#if defined(STRATA_METAL)
+extern "C" int ds4_get_layer();   // (the port's layer tag: metal/src/engine/ds4_finish.cpp)
+#endif   // strata_ds4_launch: <<<>>> on CUDA and HIP, a dispatch on Metal
 #include "ds4_gguf.cuh"
 #if defined(STRATA_METAL)
 #include <ds4_metal_host.h>
@@ -1268,6 +1271,39 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
     }
     quant_flush(QI, s);
 #if defined(STRATA_METAL)
+    // DS4_DBG_Q8: the quantiser's output at the moment it is produced - before the next layer's call can rewrite the scratch, which
+    // is what round 4's "the activations hash identically" was actually measuring.  The probe inside ds4_q8_mv reads the same buffer
+    // later and sees different bytes per run, with d.x bit-identical, so this is where to look.
+    // DS4_SELFCHECK: is the quantiser deterministic for this input at all?  One run says so, without needing two runs to differ.
+    if (ds4_dbg("DS4_SELFCHECK") && nj[2] > 0) {
+        static long sc_n = 0;
+        if (sc_n++ < 64) {
+            const BfJob& bq0 = J[2].j[0];
+            uint32_t rep[3] = {0, 0, 0};
+            if (::strata::dsv41::metal_host::q8_quant_selfcheck(bq0.x, (size_t) (bq0.xcs > 0 ? bq0.xcs : (size_t) bq0.k), bq0.ncol,
+                                                                bq0.k, rep))
+                std::fprintf(stderr, "DBG selfcheck quantiser: %u codes of %u differ, %u scales differ\n", rep[0], rep[2], rep[1]);
+        }
+    }
+    if (ds4_dbg("DS4_DBG_Q8") && nj[2] > 0) {
+        ds4_metal_flush();
+        const BfJob& bq0 = J[2].j[0];
+        const int8_t* q0 = (const int8_t*) strata::gpu::host_view((void*) bq0.xq);
+        const float* d0 = (const float*) strata::gpu::host_view((void*) bq0.xd);
+        if (q0 != nullptr && d0 != nullptr) {
+            uint64_t hq = 1469598103934665603ull, hd = 1469598103934665603ull;
+            const size_t qb = (size_t) bq0.ncol * (size_t) bq0.k;
+            const size_t db = (size_t) bq0.ncol * (size_t) (bq0.k / 32);
+            for (size_t i = 0; i < qb; ++i) { hq ^= (uint8_t) q0[i]; hq *= 1099511628211ull; }
+            for (size_t i = 0; i < db; ++i) {
+                uint32_t u;
+                std::memcpy(&u, &d0[i], 4);
+                for (int t = 0; t < 4; ++t) { hd ^= (u >> (8 * t)) & 0xffu; hd *= 1099511628211ull; }
+            }
+            std::fprintf(stderr, "DBG qflush layer=%d ncol=%d k=%d qhash=%016llx dhash=%016llx xq0=%d xd0=%g\n", ds4_get_layer(),
+                         bq0.ncol, bq0.k, (unsigned long long) hq, (unsigned long long) hd, (int) q0[0], (double) d0[0]);
+        }
+    }
     // DS4_DBG_Q8: paint the first Q8 job's output before the matvec, so the sweep can count what the kernel did not write.
     if (ds4_dbg("DS4_DBG_Q8") && nj[2] > 0) {
         const BfJob& b0 = J[2].j[0];

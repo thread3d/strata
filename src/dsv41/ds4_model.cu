@@ -34,6 +34,8 @@
 #if defined(STRATA_METAL)
 // the port's both-queue drain (metal/src/gpu/runtime.cpp): every stream's pending copies committed and waited for
 extern "C" void ds4_gpu_sync_all_streams();
+// the layer a diagnostic belongs to (the port prints it in its probe and bind lines)
+extern "C" void ds4_set_layer(int il);
 #endif
 #if defined(STRATA_USE_HIP)
 #include "wmma_gemm.h"   // strata_pf_gemm_f16_ld: the RDNA3 WMMA dense GEMM (gemm() prefers it over hipBLAS on gfx11; -Isrc/prefill)
@@ -10057,6 +10059,9 @@ struct Model::Impl {
             dump_sub(d, "eg_h", l.il, p0, T, d.h, (size_t) T * H * D * 4);
             if (ds4_dbg("DS4_DBG_EG")) dbg_nf("h_after_gate", l.il, d.h, (size_t) T * H * D);
         }
+#if defined(STRATA_METAL)
+        ds4_set_layer(l.il);
+#endif
         dump_sub(d, "h_in", l.il, p0, T, d.h, (size_t) T * H * D * 4);
         dump_sub(d, "ring_in", l.il, p0, T, l.win, (size_t) g.win * kv_row_bytes(kKvFp8, HD));
         // attention
@@ -10074,6 +10079,30 @@ struct Model::Impl {
         hc_pre_norm(d.h, d.pre, l.attn_norm, D, H, T, g.eps, d.x, s);
         dump_sub(d, "pre_in", l.il, p0, T, d.pre, (size_t) T * 8 * 4);
         dump_sub(d, "attn_x", l.il, p0, T, d.x, (size_t) T * D * 4);
+#if defined(STRATA_METAL)
+        // the same buffer again 200 ms later: if the two records differ, a host read of a GPU-written buffer lags on this
+        // driver and every dump-based bisection before this has to be read with that in mind
+        { const auto t0 = std::chrono::steady_clock::now();
+          while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < 0.2) { } }
+#endif
+        dump_sub(d, "attn_x_late", l.il, p0, T, d.x, (size_t) T * D * 4);
+#if defined(STRATA_METAL)
+        // DS4_DBG_CK=1: the GPU's own view of the activation the quantiser is about to read, beside the host's.  The host's view is
+        // what every dump has been comparing (and it is stable), so if the GPU's view of the same address differs run to run while
+        // the host's does not, that is the difference the quantiser sees.
+        if (ds4_dbg("DS4_DBG_CK")) {
+            const size_t nb = (size_t) T * D * 4;
+            uint64_t ck[2] = {0, 0};
+            if (::strata::dsv41::metal_host::dbg_device_checksum((const void*) d.x, nb, ck)) {
+                const uint8_t* hxp = (const uint8_t*) strata::gpu::host_view((void*) d.x);
+                uint64_t ha = 0, hb = 0;
+                for (size_t q = 0; hxp != nullptr && q < nb; ++q) { const uint64_t v = hxp[q]; ha += v * (uint64_t) (q + 1); hb += v; }
+                std::fprintf(stderr, "DBG ck-x layer=%d p0=%lld host=%016llx,%016llx gpu=%016llx,%016llx %s\n", l.il, (long long) p0,
+                             (unsigned long long) ha, (unsigned long long) hb, (unsigned long long) ck[0],
+                             (unsigned long long) ck[1], (ha == ck[0] && hb == ck[1]) ? "agree" : "DIFFER");
+            }
+        }
+#endif
         {
             x3::MvJob j[4];
             int nj = 0;
