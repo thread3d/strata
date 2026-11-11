@@ -10326,6 +10326,7 @@ struct Model::Impl {
             for (int gi = 0; gi < OG; ++gi)
                 j[gi] = job(l.wo_a[gi], d.o + (size_t) gi * per, d.oa + (size_t) gi * g.o_lora, T, HQ, (size_t) OG * g.o_lora);
             if (!mv_n(d, j, OG, err)) return false;
+            dump_sub(d, "oa", l.il, p0, T, d.oa, (size_t) T * OG * g.o_lora * 4);   // the wo_a intermediate, before wo_b
             if (!mv(d, {job(l.wo_b, d.oa, d.ao, T, (size_t) OG * g.o_lora, D)}, err)) return false;
         } else CK(cudaMemsetAsync(d.ao, 0, (size_t) T * D * sizeof(*d.ao), s));   // (no heads: nothing to add)
         dump_sub(d, "ao", l.il, p0, T, d.ao, (size_t) T * D * 4);
