@@ -2563,6 +2563,10 @@ void markov_add(float* logits, const uint16_t* E, const uint16_t* H, const int* 
     strata_ds4_launch(markov_kernel, cdiv(V, kThreads / 32), kThreads, (size_t) R * sizeof(float), s, logits, E, H, tok, V, R);
 }
 void markov_add_q8(float* logits, const uint16_t* E, const uint8_t* Hq, const int* tok, int V, int R, cudaStream_t s) {
+#if defined(STRATA_METAL)
+    // markov_kernel_q8 on the Metal dispatch (the drafter's quantised Markov bias); the launch below is the fallback
+    if (strata::dsv41::metal_host::markov_add_q8(logits, E, Hq, tok, V, R)) return;
+#endif
     strata_ds4_launch(markov_kernel_q8, cdiv(V, kThreads / 32), kThreads, (size_t) R * sizeof(float), s, logits, E, Hq, tok, V, R);
 }
 void markov_share(float* logits, const uint16_t* H, const uint16_t* erow, int vn, int R, cudaStream_t s) {

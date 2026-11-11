@@ -2362,14 +2362,18 @@ struct Model::Impl {
 
         // layers: roles and the sources they read
 #if defined(STRATA_METAL)
-        // On a Mac the drafter is off unless it is asked for outright: it gave the same answers and no speed-up there, and the head of its
-        // quantised Markov bias has no Metal kernel (the engine stopped with "kernel launch with no Metal dispatch" on the setup test).
+        // On a Mac the drafter is off unless it is asked for outright.  It no longer stops at the Markov bias: that kernel
+        // (ds4_markov_add_q8, the quantised head) has a Metal dispatch now, and with --dspark on the drafter loads and runs.
+        // What it does not do is help - measured on the RX 580 (NEXT.md round 93): 1 draft of 23 accepted (4%), drafting
+        // 876 ms a round and a verify round costing ~6 s, against 2.0 s for a token decoded without it.
         if (o.dspark && g.n_mtp > 0) {
             if (o.dspark_auto) {
                 o.dspark = false;
-                std::fprintf(stderr, "ds4: the DSpark drafter is not supported on a Mac yet, so it is not loaded\n");
+                std::fprintf(stderr, "ds4: the DSpark drafter is not loaded on a Mac: it runs now, but measured here it accepted 1 "
+                                     "draft of 23 at ~6 s a verify round (NEXT.md round 93) - --dspark on loads it anyway\n");
             } else {   // --dspark on / off: loaded as asked
-                std::fprintf(stderr, "ds4: WARNING: the DSpark drafter is not supported on a Mac yet; --dspark on will probably stop at the Markov bias step (kernel launch with no Metal dispatch)\n");
+                std::fprintf(stderr, "ds4: WARNING: --dspark on: the drafter runs (its Markov bias has a Metal kernel now), but it "
+                                     "measured slower than plain decoding on this card - 1 of 23 drafts accepted\n");
             }
         }
 #endif

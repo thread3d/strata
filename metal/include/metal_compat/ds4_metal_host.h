@@ -97,6 +97,7 @@ bool iq_dn(const unsigned long long* plan_ptr, const unsigned long long* grp_ptr
 bool iq_gu(const unsigned long long* plan_ptr, const unsigned long long* grp_ptr, const int* grp_start, const int* grp_ent, const int* n_groups, const size_t* tr, int n_embd, int n_ff, float limit, const int8_t* xq, const float* xd, float* h, int type, int groups);
 bool iq_mv(const void* jobs, int nj);
 bool markov_add(const float* logits, const uint16_t* E, const uint16_t* H, const int* tok, int V, int R);
+bool markov_add_q8(const float* logits, const uint16_t* E, const uint8_t* Hq, const int* tok, int V, int R);
 bool moe_combine(void* acc, const void* y, const int* pos, const float* w_, int T, int k, int r0, int r1, int dim);
 bool moe_sort(const int* idx, int T, int k, const int* vs, int n_vs, int* bounds, int* row_tok, int* pos);
 bool moe_win_group_cpu(const void* plan_ptr, void* grp_ptr, void* grp_start, void* grp_ent, void* n_groups, int T, int k);
