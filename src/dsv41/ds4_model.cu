@@ -10670,6 +10670,25 @@ struct Model::Impl {
         sp.min_p = min_p;
         sp.seed = seed;
         sp.counter = counter;
+        // DS4_DBG_TOK: the row the sampler is about to read, checksummed on the device.  If that checksum is the same every step while
+        // --dump-logits shows a different row each step, the sampler is reading a buffer the decode path no longer updates.
+        if (ds4_dbg("DS4_DBG_TOK")) {
+            uint64_t ck[2] = {0, 0};
+            const float* rowp = d.logits + (size_t) std::max(0, n_logits - 1) * g.vocab;
+            if (::strata::dsv41::metal_host::dbg_device_checksum((const void*) rowp, (size_t) g.vocab * sizeof(float), ck)) {
+                // and the host's own view of the same row: if the two disagree the host sampler is reading stale memory
+                const float* hv = (const float*) strata::gpu::host_view((const void*) rowp);
+                uint64_t hs = 0, hw = 0;
+                for (int q = 0; hv != nullptr && q < g.vocab; ++q) {
+                    uint32_t u;
+                    std::memcpy(&u, &hv[q], 4);
+                    for (int b2 = 0; b2 < 4; ++b2) { const uint64_t by = (u >> (8 * b2)) & 0xffu; hs += by; hw += by * (uint64_t) (q + 1); }
+                }
+                std::fprintf(stderr, "DBG tok-row: greedy=%d n_logits=%d gpu(sum=%016llx wsum=%016llx) host(sum=%016llx wsum=%016llx) %s\n",
+                             (int) sp.greedy, n_logits, (unsigned long long) ck[1], (unsigned long long) ck[0], (unsigned long long) hs,
+                             (unsigned long long) hw, (hs == ck[1] && hw == ck[0]) ? "agree" : "DIFFER");
+            }
+        }
         strata::dsv41k::sample_tokens(d.logits + (size_t) std::max(0, n_logits - 1) * g.vocab, 1, g.vocab, nullptr, 0,
                                        sp, d.tok, d.st);
         int t = -1;
@@ -10678,6 +10697,19 @@ struct Model::Impl {
 #endif
         cudaMemcpyAsync(&t, d.tok, 4, cudaMemcpyDeviceToHost, d.st);
         cudaStreamSynchronize(d.st);
+#if defined(STRATA_METAL)
+        // DS4_DBG_TOK=1: read the sampled token again 200 ms later.  If the two differ the readback was early - the same lag measured
+        // on other buffers - and that alone would repeat the previous token forever (the decode repeats one token while
+        // --dump-logits shows a different argmax at every step).
+        if (ds4_dbg("DS4_DBG_TOK")) {
+            int again = -1;
+            { const auto t0 = std::chrono::steady_clock::now();
+              while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < 0.2) { } }
+            cudaMemcpyAsync(&again, d.tok, 4, cudaMemcpyDeviceToHost, d.st);
+            cudaStreamSynchronize(d.st);
+            std::fprintf(stderr, "DBG tok: first=%d again(200ms)=%d %s\n", t, again, t == again ? "same" : "DIFFERENT");
+        }
+#endif
         return t;
     }
 
