@@ -208,6 +208,21 @@ uint64_t ram_avail() {
 #if defined(_WIN32)
     return os::ram_avail();
 #endif
+#if defined(__APPLE__)
+    // No /proc/meminfo on macOS, so this answered "not known" on every run the Metal port ever made - and "not known" is
+    // exactly what keeps --mmap-experts auto from copying the CPU lane's experts into RAM.  The same idea as MemAvailable
+    // lives in the Mach VM statistics: free pages, plus the inactive and speculative pages the kernel will reclaim (the
+    // file-backed ones among them are the page cache the engine has just filled with expert rows).
+    {
+        mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+        vm_statistics64_data_t st{};
+        if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t) &st, &count) == KERN_SUCCESS) {
+            const uint64_t page = (uint64_t) sysconf(_SC_PAGESIZE);
+            return ((uint64_t) st.free_count + (uint64_t) st.inactive_count + (uint64_t) st.speculative_count) * page;
+        }
+        return ~uint64_t{0};
+    }
+#endif
     uint64_t avail = ~uint64_t{0};
     {
         std::istringstream mi(read_file("/proc/meminfo"));
