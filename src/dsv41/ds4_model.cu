@@ -8106,7 +8106,10 @@ struct Model::Impl {
                 engram_dequant_tok(c.eg_rows + (size_t) s0 * per, per, cols, ns, ehd, c.eg_x, s, (int) eg_fmt[(size_t) l.eg]);
                 x3::rows_f16(c.eg_x, cols * ehd, nullptr, ns, cols * ehd, c.eg_x16, s);
                 if (!gemm(d, c, l.eg_wkv, c.eg_x16, cols * ehd, ns, c.eg_kv, (H + 1) * D, 0.0f, err)) return false;
+                dump_sub(d, "eg_h0", l.il, p0, ns, c.h + (size_t) s0 * H * D, (size_t) ns * H * D * 4);
+                dump_sub(d, "eg_kv", l.il, p0, ns, c.eg_kv, (size_t) ns * (H + 1) * D * 4);
                 engram_gate(c.h + (size_t) s0 * H * D, c.eg_kv, l.eg_w, H, D, ns, g.eps, s);
+                dump_sub(d, "eg_h1", l.il, p0, ns, c.h + (size_t) s0 * H * D, (size_t) ns * H * D * 4);
             }
         }
         prof_mark(d, 4);
@@ -8120,6 +8123,7 @@ struct Model::Impl {
         hc_split(c.mix, l.hca_scale, l.hca_base, H, g.sinkhorn, g.hc_eps, T, c.a_pre, c.a_post, c.a_comb, s);
 #endif
         dump_sub(d, "mix0", l.il, p0, T, c.mix, (size_t) T * 32 * 4);
+        dump_sub(d, "hcp_mix", l.il, p0, T, c.pre, (size_t) T * 8 * 4);   // the mix the norm is actually given
         hc_pre_norm(c.h, c.pre, l.attn_norm, D, H, T, g.eps, c.x, s);
         dump_sub(d, "a_mix", l.il, p0, T, c.mix, (size_t) T * 32 * 4);
         dump_sub(d, "a_pre", l.il, p0, T, c.a_pre, (size_t) T * 8 * 4);
@@ -10076,6 +10080,7 @@ struct Model::Impl {
         dump_sub(d, "a_pre", l.il, p0, T, d.a_pre, (size_t) T * 8 * 4);
         dump_sub(d, "a_post", l.il, p0, T, d.a_post, (size_t) T * 8 * 4);
         dump_sub(d, "a_comb", l.il, p0, T, d.a_comb, (size_t) T * 64 * 4);
+        dump_sub(d, "hcp_mix_win", l.il, p0, T, d.pre, (size_t) T * 8 * 4);   // (the window path: where a T=1 run goes)
         hc_pre_norm(d.h, d.pre, l.attn_norm, D, H, T, g.eps, d.x, s);
         dump_sub(d, "pre_in", l.il, p0, T, d.pre, (size_t) T * 8 * 4);
         dump_sub(d, "attn_x", l.il, p0, T, d.x, (size_t) T * D * 4);
@@ -10146,7 +10151,7 @@ struct Model::Impl {
         fk.dst_stride = HD;
         finish(d.kvr, T, HD, HD, fk, s);
         if (!l.mtp) ext_to_ring(d.ext, l.win, p0, g.win, T, HD, s, spec_win ? l.ring_bak : nullptr);
-        dump_sub(d, "kv_win", l.il, p0, T, d.ext + (size_t) g.win * HD, (size_t) T * HD * 4);
+        dump_sub(d, "kv_win", l.il, p0, T, d.ext + (size_t) g.win * HD, (size_t) T * HD * 2);   // BF16: two bytes a value (was 4: reading it as f32 made the row look permuted)
         dump_sub(d, "ext", l.il, p0, T, d.ext, ((size_t) g.win + T) * HD * 2);   // (BF16 rows: the ring's, then this window's)
         AttnRows ar;
         for (int t = 0; t < T; ++t) {
@@ -10337,6 +10342,7 @@ struct Model::Impl {
         hc_mix_split(d.h, l.hcf_fn, H * D, (2 + H) * H, T, g.eps, d.mix, d.hccnt, l.hcf_scale, l.hcf_base, H, g.sinkhorn, g.hc_eps,
                      d.f_pre, d.f_post, d.f_comb, s);
 #endif
+        dump_sub(d, "hcp_mix_ffn_win", l.il, p0, T, d.a_pre, (size_t) T * 8 * 4);
         hc_pre_norm(d.h, d.a_pre, l.ffn_norm, D, H, T, g.eps, d.x, s);
         dump_sub(d, "f_pre", l.il, p0, T, d.f_pre, (size_t) T * 8 * 4);
         dump_sub(d, "f_post", l.il, p0, T, d.f_post, (size_t) T * 8 * 4);
