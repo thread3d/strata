@@ -24,6 +24,7 @@ extern "C" int ds4_get_layer();   // (the port's layer tag: metal/src/engine/ds4
 #include <algorithm>
 #include <cstdlib>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -1344,10 +1345,23 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
         // quantisation?  A row that does not is one the kernel computed from different bytes than the host sees - the state the
         // layer-4 q projection's ~757 bad rows are in (nan and 1e37-scale values, the same ones in every bad run).
         {
+            // Two tiers, because a bare relative test cannot tell a defect from arithmetic.  The host sums the row in double
+            // and the kernel sums it in float, so a row whose terms *cancel* puts `acc` near zero, where float summation
+            // rounding alone makes `rel` large while nothing is wrong (this file's own history: a "1 of 1280, rel 0.0132" line
+            // on values of ~1e-7, round 2 of NEXT.md).  No fixed fraction of the terms can separate the two, because how much a
+            // row can drift is a property of *that row's* partial sums - so tier 2 replays the kernel's own summation for the
+            // row (lane kb = lane, lane+32, ...; one fma a block; the 32-lane butterfly) and asks whether the kernel's answer
+            // differs from the host's by more than eight times the error that replay itself shows, plus a few rounding steps at
+            // the terms' own magnitude.  A defect that matters moves the value by something comparable to the terms; a
+            // cancellation artefact moves it by exactly its own summation error.
+            constexpr double kFloatEps = 1.1920928955078125e-07;   // FLT_EPSILON: one rounding step at the terms' magnitude
             int nbad = 0, firstbad = -1;
-            double worst = 0.0, worsth = 0.0, worstk = 0.0;
+            int nmat = 0, firstmat = -1;
+            double worst = 0.0, worsth = 0.0, worstk = 0.0, worstmag = 0.0, worstabs = 0.0, worstserr = 0.0;
             for (int r = 0; r < b.n; ++r) {
-                double acc = 0.0;
+                double acc = 0.0, mag = 0.0;
+                float flane[32];
+                for (int q = 0; q < 32; ++q) flane[q] = 0.0f;
                 for (int kb = 0; kb < b.k / 32; ++kb) {
                     const uint8_t* p = w + (size_t) r * b.ld + (size_t) kb * 34;
                     uint16_t dh;
@@ -1355,15 +1369,31 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
                     const float dw = __half2float(*(const __half*) &dh);
                     int sum = 0;
                     for (int j = 0; j < 32; ++j) sum += (int) (int8_t) p[2 + j] * (int) xq[kb * 32 + j];
-                    acc += (double) dw * xd[kb] * sum;
+                    const double term = (double) dw * xd[kb] * sum;
+                    acc += term;
+                    mag += std::fabs(term);
+                    // the kernel's own order: block kb belongs to lane kb % 32, one fused multiply-add each
+                    float& a = flane[kb % 32];
+                    a = std::fma(dw * xd[kb], (float) sum, a);
                 }
+                float fsum[32];
+                for (int q = 0; q < 32; ++q) fsum[q] = flane[q];
+                for (int off = 16; off > 0; off >>= 1) {                 // the butterfly: simd_shuffle_xor 16,8,4,2,1
+                    float next[32];
+                    for (int q = 0; q < 32; ++q) next[q] = fsum[q] + fsum[q ^ off];
+                    for (int q = 0; q < 32; ++q) fsum[q] = next[q];
+                }
+                const double serr = std::fabs((double) fsum[0] - acc);   // what float summation costs this row, measured
                 const double kv = y[(size_t) r];
-                const double rel = std::fabs(acc - kv) / (std::fabs(acc) + 1e-9);
+                const double diff = std::fabs(acc - kv);
+                const double rel = diff / (std::fabs(acc) + 1e-9);
                 if (rel > 1e-3) {
                     ++nbad;
                     if (firstbad < 0) firstbad = r;
+                    if (diff > 8.0 * serr + 16.0 * kFloatEps * (mag / (double) (b.k / 32))) {   // 8x the row's own summation error,
+                        ++nmat; if (firstmat < 0) firstmat = r; }                // plus rounding at one term's magnitude
                 }
-                if (rel > worst) { worst = rel; worsth = acc; worstk = kv; }
+                if (rel > worst) { worst = rel; worsth = acc; worstk = kv; worstmag = mag; worstabs = diff; worstserr = serr; }
             }
             int nleft = 0;
             for (int r = 0; r < b.n; ++r) if (y[(size_t) r] == -12345.0f) ++nleft;
@@ -1413,9 +1443,13 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
             }
             static long swp = 0;
             std::fprintf(stderr,
-                         "DBG q8 sweep #%ld job0 col0: %d of %d rows miss the host recompute (rel>1e-3), first=%d, worst rel=%.3g "
-                         "host=%.6g kernel=%.6g | again(200ms)=%.6g | w=%p ld=%zu xcs=%zu alpha=%g\n",
-                         ++swp, nbad, b.n, firstbad, worst, worsth, worstk, again, (const void*) b.w, b.ld, b.xcs, b.alpha);
+                         "DBG q8 sweep #%ld job0 col0: %d of %d rows miss the host recompute (rel>1e-3), of those %d material "
+                         "(|d|>8*serr+16*eps*mean|t|), first=%d mat=%d, worst rel=%.3g host=%.6g kernel=%.6g |d|=%.6g "
+                         "sum|t|=%.6g serr=%.6g material=%s | again(200ms)=%.6g | w=%p ld=%zu xcs=%zu alpha=%g\n",
+                         ++swp, nbad, b.n, nmat, firstbad, firstmat, worst, worsth, worstk, worstabs, worstmag, worstserr,
+                         worstabs > 8.0 * worstserr + 16.0 * kFloatEps * (worstmag / (double) (b.k / 32)) ? "YES" : "no", again,
+                         (const void*) b.w, b.ld,
+                         b.xcs, b.alpha);
         }
     }
 #endif
