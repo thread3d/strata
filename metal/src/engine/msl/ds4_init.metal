@@ -133,7 +133,7 @@ static inline float ds4_e2m1_rt(float v) {   // E2M1 magnitudes 0 .5 1 1.5 2 3 4
 kernel void ds4_finish(device float* x [[buffer(0)]], constant long& stride [[buffer(1)]],
                        constant uint& len [[buffer(2)]], constant Ds4Finish& f [[buffer(3)]],
                        device const uchar* WF [[buffer(4)]], device const uchar* FR [[buffer(5)]],
-                       device uchar* DS [[buffer(6)]], device uchar* PD [[buffer(7)]],
+                       device uchar* DS [[buffer(6)]], device uchar* PD [[buffer(7)]], device float* DBGN [[buffer(8)]],
                        uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],
                        ushort w_ [[simdgroup_index_in_threadgroup]], uint b [[threadgroup_position_in_grid]]) {
     const ushort w = sg32(tid, w_); const ushort lane_ = lane32(tid, lane__);   // the tile's own 32-lane group (the runtime's prologue)
@@ -160,6 +160,14 @@ kernel void ds4_finish(device float* x [[buffer(0)]], constant long& stride [[bu
             if (j >= nj) break;
             const uint e = tid + j * 256u;
             if (e < len) r[j] = r[j] * inv * fw[e];
+        }
+    }
+    // DS4_DBG_FIN: the normed value, before the rotation and the format rounding - what outside comparisons cannot reconstruct
+    if (b == 0u) {
+        for (uint j = 0; j < 32u; ++j) {
+            if (j >= nj) break;
+            const uint e = tid + j * 256u;
+            if (e < 64u && e < len) DBGN[e] = r[j];
         }
     }
     if (f.rd > 0) {

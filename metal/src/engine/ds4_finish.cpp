@@ -277,14 +277,15 @@ bool finish(float* x, int n_vec, int len, long long stride, const FinishIn& f) {
     // one dispatch, one threadgroup a vector (the kernel's blockIdx.x is threadgroup_position_in_grid)
     mtl::Dispatch d;
     d.p = &pl;
+    mtl::Buffer bdbg = g_cx->alloc(64 * sizeof(float));   // DS4_DBG_FIN: the kernel's post-norm values (buffer 8)
     d.args = {mtl::Arg::B(bx, span_off(hx)), mtl::Arg::V((long) stride), mtl::Arg::V((unsigned) len), mtl::Arg::V(gf),
-              mtl::Arg::B(bw), mtl::Arg::B(bq), mtl::Arg::B(bdst), mtl::Arg::B(bpd)};
+              mtl::Arg::B(bw), mtl::Arg::B(bq), mtl::Arg::B(bdst), mtl::Arg::B(bpd), mtl::Arg::B(bdbg)};
     d.grid[0] = (uint32_t) n_vec;
     d.grid[1] = d.grid[2] = 1;
     d.tg[0] = 256;
     d.tg[1] = d.tg[2] = 1;
     g_cx->run({d});
-    g_cx->free(bdum);
+    g_cx->free(bdum);   // (bdbg stays alive: the DS4_DBG_FIN block below reads it)
     // The fp8-rounding finishes (the KV rows, the attention output) are read stale by the next dispatch when it shares their
     // command buffer: end the buffer after them (committed, not waited for: the queue orders the buffers).
     // (it once ended the command buffer after every fp8-rounding finish, 2 a layer, against a stale read; each extra buffer costs the GPU ~0.3 ms idle, a third of a decode token.
@@ -297,6 +298,14 @@ bool finish(float* x, int n_vec, int len, long long stride, const FinishIn& f) {
         static long fin_calls = 0;
         if (fin_calls < 12) {
             g_cx->flush_runs();
+            {   // what the kernel computed after its norm stage, before rotation and rounding, for row 0
+                const float* nb = (const float*) bdbg.ptr;
+                std::fprintf(stderr, "DBG finnorm len=%u rd=%d quant=%d pos=%d first8=[", (unsigned) len, (int) f.rd, (int) f.quant,
+                             (int) f.pos);
+                for (int q = 0; q < 8; ++q) std::fprintf(stderr, "%s%.7g", q ? ", " : "", (double) nb[q]);
+                std::fprintf(stderr, "]\n");
+            }
+            g_cx->free(bdbg);
             const uint16_t* d0 = (const uint16_t*) f.dst;
             const float* w0 = (const float*) f.w;
             const float* q0 = (const float*) f.freqs;
