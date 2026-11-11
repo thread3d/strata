@@ -2200,6 +2200,12 @@ struct Model::Impl {
             }
             CK(cudaMemGetInfo(&d.free0, &d.total));
             d.free0 = uma_free(d.id, d.free0);
+            // What the card offers before anything is placed on it: every expert-placement decision below is a subtraction
+            // from this one number.  On a Metal 2 card it is the working-set budget less what is already allocated, a
+            // much smaller quantity than a CUDA card's VRAM (RX 580: 8.00 GiB budget, 5.86 GB of dense weights).
+            if (o.verbose)
+                std::fprintf(stderr, "ds4: device %d: %.2f GiB free of %.2f GiB (the working-set budget less what is allocated)\n",
+                             (int) d.id, (double) d.free0 / 1073741824.0, (double) d.total / 1073741824.0);
         }
         // the groups' width: o.tp, less while the experts' blocks do not split in it (a member takes n_ff / tp of each
         // expert: the down's inputs in whole blocks - a GGUF's 256-value types split n_ff 2304 in 1, 3 or 9 parts)
@@ -2274,10 +2280,21 @@ struct Model::Impl {
                     continue;
                 (n.find(".ffn.experts.") != std::string::npos ? exp_b : other_b) += (double) kt.second.bytes;
             }
-            for (const Dev& d : devs)
-                room += std::max(0.0, (double) d.free0 - (double) ((size_t) o.reserve_mib << 20) -
-                                          (prompt_par ? 1.5 : 0.4) * (1 << 30)) *
-                        o.vram_experts;
+            for (const Dev& d : devs) {
+                const double allowance = (prompt_par ? 1.5 : 0.4) * (1 << 30);
+                const double r = std::max(0.0, (double) d.free0 - (double) ((size_t) o.reserve_mib << 20) - allowance) *
+                                 o.vram_experts;
+                // The whole decision in one line: a reserve above what is free makes this zero, and zero means the expert
+                // tier is off for every layer (the CPU lane reads them instead).  This is what a --reserve-mib meant for a
+                // 24 GB Linux box does to an 8 GiB card.
+                if (o.verbose)
+                    std::fprintf(stderr,
+                                 "ds4: expert tier, device %d: free0 %.2f GiB - reserve %lld MiB - allowance %.2f GiB "
+                                 "= %.2f GiB of experts (--vram-experts %.2f)\n",
+                                 (int) d.id, (double) d.free0 / 1073741824.0, (long long) o.reserve_mib,
+                                 allowance / 1073741824.0, r / 1073741824.0, o.vram_experts);
+                room += r;
+            }
             file_experts = exp_b - std::max(0.0, room - other_b) + (double) kRamMargin > (double) ram_avail();
         }
         // The default prompt chunk, one rule (ds4_experts_rule.hpp: prefill_chunk_default).  Measured: the chunked pass streams the experts the GPUs
@@ -3279,8 +3296,17 @@ struct Model::Impl {
                 continue;
             (n.find(".ffn.experts.") != std::string::npos ? exp_b : other_b) += (double) kt.second.bytes;
         }
-        for (const Dev& d : devs)
-            room += std::max(0.0, (double) d.free0 - (double) ((size_t) o.reserve_mib << 20) - 1.5 * (1 << 30)) * o.vram_experts;
+        for (const Dev& d : devs) {
+            const double allowance = 1.5 * (1 << 30);
+            const double r = std::max(0.0, (double) d.free0 - (double) ((size_t) o.reserve_mib << 20) - allowance) * o.vram_experts;
+            if (o.verbose)
+                std::fprintf(stderr,
+                             "ds4: expert share, device %d: free0 %.2f GiB - reserve %lld MiB - allowance %.2f GiB "
+                             "= %.2f GiB, dense %.2f GiB, experts %.2f GiB\n",
+                             (int) d.id, (double) d.free0 / 1073741824.0, (long long) o.reserve_mib,
+                             allowance / 1073741824.0, r / 1073741824.0, other_b / 1073741824.0, exp_b / 1073741824.0);
+            room += r;
+        }
         if (exp_out) *exp_out = exp_b;
         if (room_out) *room_out = room;
         if (other_out) *other_out = other_b;
