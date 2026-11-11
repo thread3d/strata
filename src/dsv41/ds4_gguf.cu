@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Peasant Smith and the Project Maya contributors (MIT; https://github.com/mw00/project-maya, v1.1.17).
 // Ported into Strata (third_party/project-maya/NOTICE.md, LICENSE); changes are in the git history of this file.
 // src/ds4/ds4_gguf.cu - a GGUF's BF16 matrices and MXFP4 experts on the device (see ds4_gguf.cuh).
-#include "ds4_launch.h"   // strata_ds4_launch: <<<>>> on CUDA and HIP, a dispatch on Metal
+#include "ds4_launch.h"
+#if defined(STRATA_METAL)
+extern "C" int ds4_get_layer();   // (the port's layer tag: metal/src/engine/ds4_finish.cpp)
+#endif   // strata_ds4_launch: <<<>>> on CUDA and HIP, a dispatch on Metal
 #include "ds4_gguf.cuh"
 #if defined(STRATA_METAL)
 #include <ds4_metal_host.h>
@@ -1283,7 +1286,6 @@ bool mv(const x3::MvJob* jobs, int n, cudaStream_t s) {
         }
     }
     if (ds4_dbg("DS4_DBG_Q8") && nj[2] > 0) {
-        extern int ds4_get_layer();
         ds4_metal_flush();
         const BfJob& bq0 = J[2].j[0];
         const int8_t* q0 = (const int8_t*) strata::gpu::host_view((void*) bq0.xq);
