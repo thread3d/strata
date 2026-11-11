@@ -284,8 +284,24 @@ static bool ctx_queue_ops() {   // DS4_STREAM_COPIES=1: the old way (a copy on a
 }
 
 #endif
+// The shared-event waits are the runtime's *second* kind of host wait - a copy's completion, a stream sync, a readback's
+// staging blit - and they spin without a counter.  That is why a decoded token's time could not be closed: the measured
+// command-buffer waits were only part of the decode and nothing else was accounted for.  Counted and timed here, and
+// printed at exit beside the command-buffer line.
+static std::atomic<uint64_t> g_ev_wait_ns{0}, g_ev_wait_n{0};
+static std::atomic<int> g_ev_reg{0};
+static void report_ev_waits() {
+    if (g_ev_wait_n.load() == 0) return;
+    std::fprintf(stderr, "mtl: shared-event waits %llu times, %.1f ms (%.3f ms a wait)\n",
+                 (unsigned long long) g_ev_wait_n.load(), g_ev_wait_ns.load() / 1e6,
+                 g_ev_wait_ns.load() / 1e6 / (double) g_ev_wait_n.load());
+}
 Error wait_value(MTL::SharedEvent* ev, uint64_t v) {
+    if (g_ev_reg.exchange(1) == 0) std::atexit(report_ev_waits);
+    const auto t0 = std::chrono::steady_clock::now();
     while (ev->signaledValue() < v) std::this_thread::yield();
+    g_ev_wait_ns += (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
+    ++g_ev_wait_n;
     ++rt().stats.host_syncs;
     return kSuccess;
 }
