@@ -2688,6 +2688,41 @@ kernel void ds4_markov_add(constant Ds4MarkovJob& j [[buffer(0)]], uint tg [[thr
     if (lane == 0u) j.logits[v] += a;
 }
 
+// the same bias with the head quantised to Q8_0 blocks of 32 (34 B: an F16 d and 32 int8): half the bytes read for the same
+// sums.  A lane's 8 values sit inside one block (8 divides 32), so a lane reads one d and 8 codes; the sums are the same
+// terms, in the block's own order, with the quantisation's error the only difference (ds4_kernels.cu:1389 markov_kernel_q8).
+struct Ds4MarkovJobQ8 {
+    device float* logits;       // [V]: += the bias
+    device const ushort* E;     // [vocab][R] BF16
+    device const uchar* Hq;     // [vocab][R/32][34] Q8_0
+    device const int* tok;      // the previous token (one int)
+    int V, R;
+};
+
+kernel void ds4_markov_add_q8(constant Ds4MarkovJobQ8& j [[buffer(0)]], uint tg [[threadgroup_position_in_grid]],
+                              uint tid [[thread_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
+    const ushort lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    threadgroup float er[1024];   // (R <= 1024: the host wrapper refuses more)
+    const device ushort* erow = j.E + (size_t) (*j.tok) * (size_t) j.R;
+    for (int i = int(tid); i < j.R; i += 256) er[i] = ds4_bf16f(erow[i]);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    const int v = int(tg) * 8 + int(tid >> 5);
+    if (v >= j.V) return;
+    const device uchar* hr = j.Hq + (size_t) v * (size_t) (j.R / 32) * 34u;
+    float a = 0.0f;
+    for (int c = int(lane) * 8; c < j.R; c += 256) {
+        const device uchar* blk = hr + (size_t) (c >> 5) * 34u;
+        const float d = float(as_type<half>(*(const device ushort*) blk));
+        const device char* q = (const device char*) (blk + 2 + (c & 31));
+        float t = 0.0f;
+#pragma unroll
+        for (int i = 0; i < 8; ++i) t += float(q[i]) * er[c + i];
+        a += d * t;
+    }
+    a = ds4_warp_sum(a);
+    if (lane == 0u) j.logits[v] += a;
+}
+
 // a threadgroup a token: the logistic of the head's sum over x and the token's E row
 kernel void ds4_confidence(constant Ds4ConfJob& j [[buffer(0)]], uint tg [[threadgroup_position_in_grid]],
                            uint tid [[thread_index_in_threadgroup]], ushort lane__ [[thread_index_in_simdgroup]],

@@ -2208,6 +2208,15 @@ struct MarkovJob {
 };
 static_assert(sizeof(MarkovJob) == 40, "Ds4MarkovJob's layout");
 
+struct MarkovJobQ8 {   // mirrors ds4_init.metal's Ds4MarkovJobQ8 (the head quantised to Q8_0)
+    void* logits;
+    const void* E;
+    const void* Hq;
+    const void* tok;
+    int V, R;
+};
+static_assert(sizeof(MarkovJobQ8) == 40, "Ds4MarkovJobQ8's layout");
+
 struct ConfJob {
     const void* x;
     const void* E;
@@ -2238,6 +2247,39 @@ bool markov_add(const float* logits, const uint16_t* E, const uint16_t* H, const
     std::memcpy(bj.ptr, &j, sizeof(j));
     mtl::Pipeline pl;
     try { pl = g_cx->pipeline(g_lib, "ds4_markov_add"); } catch (...) { g_cx->free(bj); return false; }
+    mtl::Dispatch d;
+    d.p = &pl;
+    d.args = {mtl::Arg::B(bj)};
+    d.grid[0] = (uint32_t) ((V + 7) / 8);
+    d.grid[1] = d.grid[2] = 1;
+    d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
+    g_cx->run({d});
+    g_cx->free(bj);
+    return true;
+}
+
+// The same bias with the head's rows quantised to Q8_0 (34 B a 32-value block).  The drafter needs this one: its head is
+// quantised, and without a Metal kernel here the drafter could not run on this card at all (ds4_model.cu disables it with
+// "the head of its quantised Markov bias has no Metal kernel").
+bool markov_add_q8(const float* logits, const uint16_t* E, const uint8_t* Hq, const int* tok, int V, int R) {
+    if (logits == nullptr || E == nullptr || Hq == nullptr || tok == nullptr) return false;
+    if (V <= 0 || R <= 0 || R > 1024 || (R & 31) != 0) return false;   // (the staged E row holds 1024 floats; Q8_0 rows are 32-value blocks)
+    if (!ensure()) return false;
+    MarkovJobQ8 j{};
+    j.logits = const_cast<float*>(logits);
+    j.E = E;
+    j.Hq = Hq;
+    j.tok = tok;
+    j.V = V;
+    j.R = R;
+    mtl::Buffer bj = g_cx->alloc(sizeof(j));
+    if (!bj.ptr) {
+        std::fprintf(stderr, "dsv41 metal: markov_add_q8 job buffer failed\n");
+        return false;
+    }
+    std::memcpy(bj.ptr, &j, sizeof(j));
+    mtl::Pipeline pl;
+    try { pl = g_cx->pipeline(g_lib, "ds4_markov_add_q8"); } catch (...) { g_cx->free(bj); return false; }
     mtl::Dispatch d;
     d.p = &pl;
     d.args = {mtl::Arg::B(bj)};
