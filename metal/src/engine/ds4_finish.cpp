@@ -989,7 +989,11 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
         d.grid[2] = 1;
         d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
         g_cx->run({d});
-        if (probe_row >= 0 && probe_row < (int) v[0].n) {
+        // the guard is against the WIDEST job of the group, not v[0]: for a group whose first job is a smaller matrix the old check
+        // silently skipped the print while the shader had correctly reported (row 1055 of the q projection, round 75)
+        int probe_max_n = 0;
+        for (const auto& jj : v) probe_max_n = std::max(probe_max_n, (int) jj.n);
+        if (probe_row >= 0 && probe_row < probe_max_n) {
             g_cx->flush_runs();
             const float* pr = (const float*) bprobe.ptr;
             const size_t hoff = (size_t) (uintptr_t) v[0].w + (size_t) probe_row * (size_t) v[0].ld;
