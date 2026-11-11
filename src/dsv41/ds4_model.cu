@@ -1662,6 +1662,42 @@ struct Model::Impl {
         m.ld = (int) gg::type_row_bytes(ggt, k);
         return true;
     }
+    // A group of the same shape's GGML K-quant matrices in ONE allocation.  The port groups a batch of matvec jobs by the
+    // allocation each job's weights start in, so eight separately allocated matrices are eight dispatches - and every
+    // dispatch costs ~0.7 ms of GPU timeline on this card whatever it computes (NEXT.md round 92).  The attention output
+    // projection is applied as eight such matrices a layer, to the same operand at consecutive offsets, so one block turns
+    // eight dispatches into one with no change to any kernel: each job still reads its own rows, at its own offset.
+    bool mat_gg_together(Dev& d, const std::vector<const Tensor*>& ts, x3::Mat* outs, std::string& err, size_t* acct) {
+        if (ts.empty()) return false;
+        const Tensor& t0 = *ts[0];
+        const int ggt = gg_type_of(t0.dtype);
+        if (ggt <= 0 || t0.shape.size() != 2 || t0.shape[1] % 256 != 0) return false;
+        const int n = (int) t0.shape[0], k = (int) t0.shape[1];
+        const size_t rb = gg::type_row_bytes(ggt, k), one = (size_t) n * rb;
+        for (const Tensor* t : ts)   // all alike before anything is allocated
+            if (t == nullptr || t->dtype != t0.dtype || t->shape.size() != 2 || (int) t->shape[0] != n ||
+                (int) t->shape[1] != k || t->bytes != one)
+                return false;
+        uint8_t* dp = nullptr;
+        if (!dalloc(d, dp, one * ts.size(), err, acct)) return false;
+        cudaSetDevice(d.id);
+        for (size_t i = 0; i < ts.size(); ++i) {
+            std::vector<uint8_t> w(one);
+            if (!pk.read(*ts[i], w.data())) {
+                err = "read failed in a grouped matrix";
+                return false;
+            }
+            CK(cudaMemcpy(dp + i * one, w.data(), one, cudaMemcpyHostToDevice));
+            outs[i] = x3::Mat{};
+            outs[i].fmt = gg::kFmtGG;
+            outs[i].K = ggt;
+            outs[i].raw = dp + i * one;
+            outs[i].k = k;
+            outs[i].n = n;
+            outs[i].ld = (int) rb;
+        }
+        return true;
+    }
     // a GGUF's BF16 or Q8_0 matrix ([out][in]) onto the device, as mat() takes an EXL3 one: whole, or part `part` of its
     // columns (outputs: a range of its rows) or of its rows (inputs: a range of each row, whole Q8_0 blocks) - a
     // standalone [n][k] matrix
@@ -4378,8 +4414,19 @@ struct Model::Impl {
                       mat(d, P + "ffn.shared_experts.w3", l.s3, err, acct, mi, nm, true, l.il % nm);
             if (!ok) return false;
             l.sink += (size_t) l.ah0;
-            for (int gi = 0; gi < l.ogn; ++gi)
-                if (!mat(d, A + "wo_a.slice." + std::to_string(l.og0 + gi), l.wo_a[gi], err, acct)) return false;
+            {
+                // the output projection's slices in one allocation where the pack's are all the same K-quant shape (see
+                // mat_gg_together: eight allocations were eight dispatches a layer; one block is one)
+                std::vector<const Tensor*> wts;
+                for (int gi = 0; gi < l.ogn; ++gi) wts.push_back(pk.get(A + "wo_a.slice." + std::to_string(l.og0 + gi) + ".weight"));
+                bool grouped = !wts.empty();
+                for (const Tensor* t : wts) grouped = grouped && t != nullptr && gg_type_of(t->dtype) > 0;
+                if (grouped && mat_gg_together(d, wts, l.wo_a, err, acct)) {
+                    // (one allocation, eight matrices: the port binds them as one group)
+                } else
+                    for (int gi = 0; gi < l.ogn; ++gi)
+                        if (!mat(d, A + "wo_a.slice." + std::to_string(l.og0 + gi), l.wo_a[gi], err, acct)) return false;
+            }
             if (l.kv_src) {
                 const std::string C = A + "compressor.";
                 if (!mat(d, C + "wkv", l.c_wkv, err, acct) || !f32(d, C + "norm.weight", l.c_norm, err, acct)) return false;
