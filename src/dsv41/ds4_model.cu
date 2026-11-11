@@ -9682,6 +9682,7 @@ struct Model::Impl {
         if (n_logits <= 0) return true;
         const int t0 = T - n_logits;
         hc_pre_norm(d.h + (size_t) t0 * H * D, d.pre + (size_t) t0 * 8, d.norm_w, D, H, n_logits, g.eps, d.x, d.st);
+        dump_sub(d, "head_in", 1000 + (int) g.nl, (int64_t) T - n_logits, n_logits, d.x, (size_t) n_logits * D * 4);
         return head_share(d, d.mi, d.x, n_logits, err);
     }
 
@@ -10325,6 +10326,7 @@ struct Model::Impl {
             for (int gi = 0; gi < OG; ++gi)
                 j[gi] = job(l.wo_a[gi], d.o + (size_t) gi * per, d.oa + (size_t) gi * g.o_lora, T, HQ, (size_t) OG * g.o_lora);
             if (!mv_n(d, j, OG, err)) return false;
+            dump_sub(d, "oa", l.il, p0, T, d.oa, (size_t) T * OG * g.o_lora * 4);   // the wo_a intermediate, before wo_b
             if (!mv(d, {job(l.wo_b, d.oa, d.ao, T, (size_t) OG * g.o_lora, D)}, err)) return false;
         } else CK(cudaMemsetAsync(d.ao, 0, (size_t) T * D * sizeof(*d.ao), s));   // (no heads: nothing to add)
         dump_sub(d, "ao", l.il, p0, T, d.ao, (size_t) T * D * 4);

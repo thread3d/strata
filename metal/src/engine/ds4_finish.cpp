@@ -920,7 +920,10 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
         c.w = (const void*) (o.w ? (uintptr_t) o.w - bw : 0);
         c.x = (const float*) (o.x ? (uintptr_t) o.x - bx : 0);
         c.y = (float*) ((uintptr_t) o.y - by);
-        c.bias = o.bias ? (const float*) ((uintptr_t) o.bias - bb) : nullptr;
+        // a null bias must become the kNoBias sentinel, not 0: 0 is a valid offset into the dummy buffer bound for "unused", so the
+        // kernel would add that buffer element to the row - which is exactly what made one row of every q projection wrong by a
+        // constant (row 1055, -7, rounds 68-82)
+        c.bias = o.bias ? (const float*) ((uintptr_t) o.bias - bb) : (const float*) (uintptr_t) ~(uintptr_t) 0;   // kNoBias, spelled out: not in scope here
         c.xq = o.xq ? (const int8_t*) ((uintptr_t) o.xq - bq) : nullptr;
         c.xd = o.xd ? (const float*) ((uintptr_t) o.xd - bd) : nullptr;
         groups[Bases{bw, bx, by, bb, bq, bd}].push_back(c);
@@ -973,13 +976,14 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
                 const long long wneed = (long long) ((size_t) j0.n * (size_t) j0.ld);
                 std::fprintf(stderr,
                              "DBG mxmv %s fmt=%d jobs=%zu max_n=%d grid0=%u | job0 n=%d k=%llu ld=%llu ncol=%d | wremain=%lld "
-                             "wneed=%lld wfit=%s | xremain=%lld yremain=%lld ycs=%llu xcs=%llu\n",
+                             "wneed=%lld wfit=%s | xremain=%lld yremain=%lld ycs=%llu xcs=%llu bias=%llu(%s)\n",
                              fn, fmt, v.size(), max_n, (unsigned) ((max_n + 7) / 8), (int) j0.n, (unsigned long long) j0.k,
                              (unsigned long long) j0.ld, (int) j0.ncol, wrem, wneed,
                              (wrem < 0 || wrem >= wneed) ? "yes" : "NO",
                              bx ? (long long) (lx - (size_t) (uintptr_t) j0.x) : -1LL,
                              (long long) (ly - (size_t) (uintptr_t) j0.y), (unsigned long long) j0.ycs,
-                             (unsigned long long) j0.xcs);
+                             (unsigned long long) j0.xcs, (unsigned long long) (uintptr_t) j0.bias,
+                             (uintptr_t) j0.bias == ~(uintptr_t) 0 ? "noBias" : "HAS-A-BIAS");
                 for (size_t q = 1; q < v.size() && q < 4; ++q)
                     std::fprintf(stderr, "          job%zu n=%d k=%llu\n", q, (int) v[q].n, (unsigned long long) v[q].k);
             }
@@ -989,7 +993,11 @@ bool mx_mv(const void* jobs_in, int nj_in, int max_n, size_t job_bytes, int fmt)
         d.grid[2] = 1;
         d.tg[0] = 256; d.tg[1] = d.tg[2] = 1;
         g_cx->run({d});
-        if (probe_row >= 0 && probe_row < (int) v[0].n) {
+        // the guard is against the WIDEST job of the group, not v[0]: for a group whose first job is a smaller matrix the old check
+        // silently skipped the print while the shader had correctly reported (row 1055 of the q projection, round 75)
+        int probe_max_n = 0;
+        for (const auto& jj : v) probe_max_n = std::max(probe_max_n, (int) jj.n);
+        if (probe_row >= 0 && probe_row < probe_max_n) {
             g_cx->flush_runs();
             const float* pr = (const float*) bprobe.ptr;
             const size_t hoff = (size_t) (uintptr_t) v[0].w + (size_t) probe_row * (size_t) v[0].ld;
