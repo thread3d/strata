@@ -10138,10 +10138,15 @@ struct Model::Impl {
         dump_sub(d, "pre_in", l.il, p0, T, d.pre, (size_t) T * 8 * 4);
         dump_sub(d, "attn_x", l.il, p0, T, d.x, (size_t) T * D * 4);
 #if defined(STRATA_METAL)
-        // the same buffer again 200 ms later: if the two records differ, a host read of a GPU-written buffer lags on this
-        // driver and every dump-based bisection before this has to be read with that in mind
-        { const auto t0 = std::chrono::steady_clock::now();
-          while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < 0.2) { } }
+        // The same buffer again 200 ms later: if the two records differ, a host read of a GPU-written buffer lags on this
+        // driver, and every dump-based bisection before this has to be read with that in mind.  This wait was unconditional
+        // - 40 layers x 200 ms is 8 of a decoded token's 10 seconds, waiting for nothing in any run that is not dumping
+        // (measured: the between-layer gap was 205.4 ms a layer with the CPU lane at 9.8 ms and the GPU idle 87.8% of the
+        // time).  It is now taken only when that record is actually being written, which is what the 200 ms is for.
+        if (dump_s_on(l.il) && dump_s_name("attn_x_late")) {
+            const auto t0 = std::chrono::steady_clock::now();
+            while (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < 0.2) { }
+        }
 #endif
         dump_sub(d, "attn_x_late", l.il, p0, T, d.x, (size_t) T * D * 4);
 #if defined(STRATA_METAL)

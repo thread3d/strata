@@ -1067,9 +1067,19 @@ static std::deque<std::string> g_recent;   // the last dispatches encoded (print
 static std::string recent_str() { std::string r; for (auto& n : g_recent) r += n + " "; return r; }
 static double g_gpu_ms = 0.0;
 static std::atomic<uint64_t> g_gpu_busy_us{0};   // DS4_GPU_TOTAL: the GPU time of every committed command buffer
+// ...and the time the GPU sat idle *between* them: start of one buffer against the end of the one before.  GPUEndTime -
+// GPUStartTime does not include that, so the idle gaps are invisible to every other counter in this file.
+static std::atomic<uint64_t> g_gpu_gap_us{0};
+static double g_gpu_last_end = 0.0;
 static void add_busy_handler(id<MTLCommandBuffer> cb) {
     static const bool on = std::getenv("DS4_GPU_TOTAL") != nullptr;
-    if (on) [cb addCompletedHandler:^(id<MTLCommandBuffer> c) { const double d = c.GPUEndTime - c.GPUStartTime; if (d > 0) g_gpu_busy_us += (uint64_t) (d * 1e6); }];
+    if (on) [cb addCompletedHandler:^(id<MTLCommandBuffer> c) {
+        const double d = c.GPUEndTime - c.GPUStartTime;
+        if (d > 0) g_gpu_busy_us += (uint64_t) (d * 1e6);
+        const double st = c.GPUStartTime, en = c.GPUEndTime;
+        if (g_gpu_last_end > 0.0 && st > g_gpu_last_end) g_gpu_gap_us += (uint64_t) ((st - g_gpu_last_end) * 1e6);
+        if (en > g_gpu_last_end) g_gpu_last_end = en;
+    }];
 }   // GPU time of every committed command buffer, summed
 static std::atomic<uint64_t> g_wait_ns{0}, g_enc_ns{0}, g_wait_n{0};   // host time: waiting on command buffers; encoding dispatches
 // (the difference between this and g_enc_ns is what the *caller* did around the encode: binding, wrapping, looking up
@@ -1080,7 +1090,10 @@ static std::string g_prof_last;
 static std::atomic<uint64_t> g_cb_count{0};
 static bool g_count_reg = false;
 static void ds4_report_counts() {
-    if (g_gpu_busy_us.load()) std::fprintf(stderr, "mtl: GPU busy (every command buffer) %.1f ms\n", g_gpu_busy_us.load() / 1000.0);
+    if (g_gpu_busy_us.load())
+        std::fprintf(stderr, "mtl: GPU busy (every command buffer) %.1f ms, idle between them %.1f ms (%.1f%% of the sum)\n",
+                     g_gpu_busy_us.load() / 1000.0, g_gpu_gap_us.load() / 1000.0,
+                     100.0 * (double) g_gpu_gap_us.load() / (double) std::max<uint64_t>(1, g_gpu_busy_us.load() + g_gpu_gap_us.load()));
     std::fprintf(stderr, "mtl: %.1f ms GPU, %llu dispatches, %llu command buffers\n", g_gpu_ms,
                  (unsigned long long) g_disp_count.load(), (unsigned long long) g_cb_count.load());
     std::fprintf(stderr, "mtl: host waited %.1f ms for the GPU in %llu waits; encoding the dispatches took %.1f ms; "
