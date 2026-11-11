@@ -10151,7 +10151,7 @@ struct Model::Impl {
         fk.dst_stride = HD;
         finish(d.kvr, T, HD, HD, fk, s);
         if (!l.mtp) ext_to_ring(d.ext, l.win, p0, g.win, T, HD, s, spec_win ? l.ring_bak : nullptr);
-        dump_sub(d, "kv_win", l.il, p0, T, d.ext + (size_t) g.win * HD, (size_t) T * HD * 4);
+        dump_sub(d, "kv_win", l.il, p0, T, d.ext + (size_t) g.win * HD, (size_t) T * HD * 2);   // BF16: two bytes a value (was 4: reading it as f32 made the row look permuted)
         dump_sub(d, "ext", l.il, p0, T, d.ext, ((size_t) g.win + T) * HD * 2);   // (BF16 rows: the ring's, then this window's)
         AttnRows ar;
         for (int t = 0; t < T; ++t) {
