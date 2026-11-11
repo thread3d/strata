@@ -3390,6 +3390,12 @@ struct Model::Impl {
                         if (rdna4() && share >= 0.5)
                             std::fprintf(stderr, "ds4: attention slab %d rows (automatic: the cards hold %.0f%% of the experts; DS4_ATTN_SLAB=0 keeps %d)\n",
                                          c.A, share * 100.0, base);
+                        else if (o.vram_experts <= 0.0)
+                            // (spare is the 1e18 marker here: the expert tier is off, so no expert room bounds the slab -
+                            // printing it as a measurement is what produced "1000000000.0 GB of VRAM to spare")
+                            std::fprintf(stderr, "ds4: attention slab %d rows (automatic: the expert tier is off (--vram-experts 0), so "
+                                                 "the VRAM the experts would have used does not bound it; DS4_ATTN_SLAB=0 keeps %d)\n",
+                                         c.A, base);
                         else
                             std::fprintf(stderr, "ds4: attention slab %d rows (automatic: %.1f GB of VRAM to spare beyond the experts; DS4_ATTN_SLAB=0 keeps %d)\n",
                                          c.A, spare / 1e9, base);
@@ -5018,23 +5024,28 @@ struct Model::Impl {
         // (auto: none - copies that all fit were measured no faster than the page cache: the CPU lane's rows are
         // compute-bound, ~46 GB/s from either on 2 Xeon sockets, NUMA parts included; a part copied cost decode speed
         // on 64 GB and on 32 GB of RAM)
+        // A limit the OS does not report arrives here as 1e300, and printing that as a number gave this log a
+        // 300-digit integer (macOS queries neither the free RAM nor a commit limit).  Say what it means instead.
+        char can_s[64];
+        if (can >= 1e30) std::snprintf(can_s, sizeof can_s, "unbounded");
+        else             std::snprintf(can_s, sizeof can_s, "%.1f GB", can / 1e9);
         double budget = o.mmap_experts == 0 ? std::min(all, can) : auto_copy_all && all <= can ? all : 0.0;   // (auto: all or none)
         if (const char* v = std::getenv("DS4_COPY_GB")) budget = std::atof(v) * 1e9;
         if (o.mmap_experts < 0 && auto_copy_all && all > can)
-            std::fprintf(stderr, "ds4: the CPU lane's experts (%.1f GB) do not all fit the RAM this process can get now (%.1f GB beside %.0f GB for "
-                                 "the rest): read in place from the model's files (--mmap-experts off copies what fits)\n", all / 1e9, can / 1e9, kRamMargin / 1e9);
+            std::fprintf(stderr, "ds4: the CPU lane's experts (%.1f GB) do not all fit the RAM this process can get now (%s beside %.0f GB for "
+                                 "the rest): read in place from the model's files (--mmap-experts off copies what fits)\n", all / 1e9, can_s, kRamMargin / 1e9);
         if (o.mmap_experts == 0 && all > can)
             std::fprintf(stderr, "ds4: --mmap-experts off: the CPU lane's experts (%.1f GB) do not all fit the RAM this "
-                                 "process can get (%.1f GB beside %.0f GB for the rest) - the most-routed copied, the "
-                                 "others read in place\n", all / 1e9, can / 1e9, kRamMargin / 1e9);
+                                 "process can get (%s beside %.0f GB for the rest) - the most-routed copied, the "
+                                 "others read in place\n", all / 1e9, can_s, kRamMargin / 1e9);
         if (auto_copy_all && budget > 0)
-            std::fprintf(stderr, "ds4: --mmap-experts auto: the CPU lane's experts (%.1f GB) fit the RAM this process can get (%.1f GB beside %.0f GB for "
-                                 "the rest): copied in at load, no demand store (--mmap-experts on keeps them in place)\n", all / 1e9, can / 1e9, kRamMargin / 1e9);
+            std::fprintf(stderr, "ds4: --mmap-experts auto: the CPU lane's experts (%.1f GB) fit the RAM this process can get (%s beside %.0f GB for "
+                                 "the rest): copied in at load, no demand store (--mmap-experts on keeps them in place)\n", all / 1e9, can_s, kRamMargin / 1e9);
         if (budget <= 0) {
             if (o.verbose)
                 std::fprintf(stderr, "ds4: the CPU lane's experts (%.1f GB) stay in place: the RAM this process can get "
-                                     "(%.1f GB beside %.0f GB for the rest) does not hold them all\n",
-                             all / 1e9, can / 1e9, kRamMargin / 1e9);
+                                     "(%s beside %.0f GB for the rest) does not hold them all\n",
+                             all / 1e9, can_s, kRamMargin / 1e9);
             return true;
         }
         // NUMA parts: whole rows of each matrix, so any row count the nodes divide
