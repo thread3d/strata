@@ -38,6 +38,9 @@
 
 namespace mtl {
 
+// Host-time counters for the dispatch path (printed by ds4_report_counts at exit).
+static std::atomic<uint64_t> g_run_ns{0}, g_run_n{0};   // inside Context::run, and how many calls
+
 // The GPU to use.  MTLCreateSystemDefaultDevice() is nil in a session with no window server of its own - an ssh login on an
 // Intel Mac, where the display's card is the default device only in a console session - and the GPUs are still there: take
 // what MTLCopyAllDevices() reports, preferring a discrete card over a low-power one.  Wherever a default device exists this is
@@ -1069,6 +1072,8 @@ static void add_busy_handler(id<MTLCommandBuffer> cb) {
     if (on) [cb addCompletedHandler:^(id<MTLCommandBuffer> c) { const double d = c.GPUEndTime - c.GPUStartTime; if (d > 0) g_gpu_busy_us += (uint64_t) (d * 1e6); }];
 }   // GPU time of every committed command buffer, summed
 static std::atomic<uint64_t> g_wait_ns{0}, g_enc_ns{0}, g_wait_n{0};   // host time: waiting on command buffers; encoding dispatches
+// (the difference between this and g_enc_ns is what the *caller* did around the encode: binding, wrapping, looking up
+// allocations - the host work a dispatch costs that no other counter covers)
 static std::mutex g_prof_mu;
 static std::unordered_map<std::string, std::pair<double, uint64_t>> g_prof;   // DS4_PROF: kernel -> (GPU us, dispatches)
 static std::string g_prof_last;
@@ -1078,7 +1083,12 @@ static void ds4_report_counts() {
     if (g_gpu_busy_us.load()) std::fprintf(stderr, "mtl: GPU busy (every command buffer) %.1f ms\n", g_gpu_busy_us.load() / 1000.0);
     std::fprintf(stderr, "mtl: %.1f ms GPU, %llu dispatches, %llu command buffers\n", g_gpu_ms,
                  (unsigned long long) g_disp_count.load(), (unsigned long long) g_cb_count.load());
-    std::fprintf(stderr, "mtl: host waited %.1f ms for the GPU in %llu waits; encoding the dispatches took %.1f ms\n", g_wait_ns.load() / 1e6, (unsigned long long) g_wait_n.load(), g_enc_ns.load() / 1e6);
+    std::fprintf(stderr, "mtl: host waited %.1f ms for the GPU in %llu waits; encoding the dispatches took %.1f ms; "
+                         "calling run() took %.1f ms in %llu calls (%.3f ms a call, of which %.3f ms is the encode)\n",
+                 g_wait_ns.load() / 1e6, (unsigned long long) g_wait_n.load(), g_enc_ns.load() / 1e6,
+                 g_run_ns.load() / 1e6, (unsigned long long) g_run_n.load(),
+                 g_run_n.load() ? g_run_ns.load() / 1e6 / (double) g_run_n.load() : 0.0,
+                 g_run_n.load() ? g_enc_ns.load() / 1e6 / (double) g_run_n.load() : 0.0);
     if (g_t_pipe.load() || g_t_args.load() || g_t_disp.load())
         std::fprintf(stderr, "mtl: of the encoding: pipeline %.1f ms, arguments %.1f ms, dispatch %.1f ms\n",
                      g_t_pipe.load() / 1e6, g_t_args.load() / 1e6, g_t_disp.load() / 1e6);
@@ -1209,11 +1219,19 @@ void Context::flush_runs() {
 #endif
 }
 
+namespace { struct RunTimer {
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    ~RunTimer() {
+        g_run_ns += (uint64_t) std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
+        ++g_run_n;
+    }
+}; }
 double Context::run(const std::vector<Dispatch>& ds, int reps, bool concurrent, bool barrier_between) {
 #if defined(STRATA_DS4_RUNTIME)
     std::lock_guard<std::recursive_mutex> lk_(impl_->mu);
 #endif
     @autoreleasepool {
+        RunTimer _run_timer;   // (every return path, including the deferred one, is counted)
 #if defined(STRATA_DS4_RUNTIME)
         if (ds.size() == 1 && reps == 1 && !barrier_between) {
             { static const std::string skipk = std::getenv("DS4_SKIP_K") ? std::string(",") + std::getenv("DS4_SKIP_K") + "," : std::string();   // debugging: drop these kernels (timing only)
