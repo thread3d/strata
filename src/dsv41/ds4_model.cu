@@ -8123,6 +8123,7 @@ struct Model::Impl {
         hc_split(c.mix, l.hca_scale, l.hca_base, H, g.sinkhorn, g.hc_eps, T, c.a_pre, c.a_post, c.a_comb, s);
 #endif
         dump_sub(d, "mix0", l.il, p0, T, c.mix, (size_t) T * 32 * 4);
+        dump_sub(d, "hcp_mix", l.il, p0, T, c.pre, (size_t) T * 8 * 4);   // the mix the norm is actually given
         hc_pre_norm(c.h, c.pre, l.attn_norm, D, H, T, g.eps, c.x, s);
         dump_sub(d, "a_mix", l.il, p0, T, c.mix, (size_t) T * 32 * 4);
         dump_sub(d, "a_pre", l.il, p0, T, c.a_pre, (size_t) T * 8 * 4);
