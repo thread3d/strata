@@ -1,21 +1,24 @@
 // metal/tests/dsu_job.metal - test-only helpers appended to ds4_iq.metal / moe_mm.metal in dsu_parity.cpp.
-// dsu_mkjob writes a Ds4MvJob whose pointers are inside the one buffer it was given (so everything the real kernel
-// dereferences is a bound, resident buffer): mem + offsets.
+// dsu_mkjob writes a Ds4MvJob whose five fields are OFFSETS into the allocations the dispatch binds - the convention
+// ds4_iq.metal documents and the engine marshals ("a Metal 2 kernel cannot dereference an address"), with all five of
+// them the one buffer here, bound five times.  Writing addresses instead only worked while the unbound bases happened to
+// be null, which tests a path the engine never takes; and on macOS 26 the Metal compiler rejects the pointer-to-ulong
+// assignment the old form needed, so the program did not build at all.
 #ifdef DSU_MKJOB
 kernel void dsu_mkjob(device uchar* mem [[buffer(0)]], constant ulong* o [[buffer(1)]], constant int* a [[buffer(2)]]) {
     // o: job, w, xq, xd, y offsets; a: type, k, n, ncol, ld
     device Ds4MvJob& j = *(device Ds4MvJob*) (mem + o[0]);
-    j.w = mem + o[1];
+    j.w = o[1];
     j.ld = ulong(a[4]);
     j.type = a[0];
     j.k = a[1];
     j.n = a[2];
     j.ncol = a[3];
-    j.xq = (device const char*) (mem + o[2]);
-    j.xd = (device const float*) (mem + o[3]);
-    j.y = (device float*) (mem + o[4]);
+    j.xq = o[2];
+    j.xd = o[3];
+    j.y = o[4];
     j.ycs = ulong(a[2]);
-    j.bias = nullptr;
+    j.bias = kNoBias;
     j.alpha = 1.0f;
 }
 #endif

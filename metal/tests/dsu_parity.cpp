@@ -67,7 +67,10 @@ int main(int argc, char** argv) {
             mtl::Dispatch d0;
             d0.p = &mk; d0.args = {mtl::Arg::B(mem), mtl::Arg::B(offs), mtl::Arg::B(args)}; d0.grid[0] = 1; d0.tg[0] = 1;
             mtl::Dispatch d1;
-            d1.p = &pk; d1.args = {mtl::Arg::B(mem, 0)}; d1.grid[0] = (n + 7) / 8; d1.grid[1] = 1; d1.tg[0] = 256;
+            // the five allocations the job's offsets are relative to: all of them this one buffer (ds4_job.metal)
+            d1.p = &pk; d1.args = {mtl::Arg::B(mem, 0), mtl::Arg::B(mem), mtl::Arg::B(mem), mtl::Arg::B(mem),
+                                   mtl::Arg::B(mem), mtl::Arg::B(mem)};
+            d1.grid[0] = (n + 7) / 8; d1.grid[1] = 1; d1.tg[0] = 256;
             cx.run({d0});
             std::vector<mtl::Dispatch> ds(20, d1);
             cx.warm(ds, 0.3);
@@ -104,7 +107,10 @@ int main(int argc, char** argv) {
             mtl::Dispatch d0;
             d0.p = &mk; d0.args = {mtl::Arg::B(mem), mtl::Arg::B(offs), mtl::Arg::B(args)}; d0.grid[0] = 1; d0.tg[0] = 1;
             mtl::Dispatch d1;
-            d1.p = &pk; d1.args = {mtl::Arg::B(mem, o_job)}; d1.grid[0] = (n + 7) / 8; d1.grid[1] = 1; d1.tg[0] = 256;
+            // the five allocations the job's offsets are relative to: all of them this one buffer (ds4_job.metal)
+            d1.p = &pk; d1.args = {mtl::Arg::B(mem, o_job), mtl::Arg::B(mem), mtl::Arg::B(mem), mtl::Arg::B(mem),
+                                   mtl::Arg::B(mem), mtl::Arg::B(mem)};
+            d1.grid[0] = (n + 7) / 8; d1.grid[1] = 1; d1.tg[0] = 256;
             cx.run({d0, d1});
             std::vector<float> wf((size_t)n * k);
             ref::dequant(cs.type, w.data(), wf.data(), wf.size());
