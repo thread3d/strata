@@ -2463,15 +2463,23 @@ struct Model::Impl {
                     }
                     // two or more RDNA4 cards holding at least half of the experts (the 4 x R9700 class): Faster by default too
                     const bool multi_rdna4 = rdna4() && devs.size() >= 2 && gpu_expert_share() >= 0.5;
-                    const int n = experts_test_override(experts_per_word(o.experts, vram_all, l.k_exp, integrated, multi_rdna4, defaults_026()), l.k_exp);
+                    const bool overridden = std::getenv("DS4_TOPK") != nullptr;   // (a test: it may go past the model's count)
+                    const int n = experts_test_override(experts_per_word(o.experts, vram_all, l.k_exp, integrated, multi_rdna4, defaults_026()), kPicks);
+                    const int model_k = l.k_exp;
                     experts_used = n;
-                    if (n < l.k_exp)
+                    // The model's own count is the ceiling for a user - it routes 6 of 384 and mixing more is a deviation - but
+                    // a DS4_TOPK test may ask for more, up to kPicks, which is the widest any pick buffer is (d.ridx, d.rw,
+                    // h_idx, h_w, kWin*kPicks).  Before this the override was undone here (`min(l.k_exp, experts_used)` with
+                    // l.k_exp already the model's 6), so DS4_TOPK=8 reported 8 and then routed 6.
+                    if (n < model_k)
                         std::fprintf(stderr, "ds4: experts per word: %d (%s; full quality: --experts %d)\n", n,
-                                     o.experts >= 1 ? "as asked" : multi_rdna4 ? "faster mode: the cards hold most of the experts" : "faster mode", l.k_exp);
+                                     o.experts >= 1 ? "as asked" : multi_rdna4 ? "faster mode: the cards hold most of the experts" : "faster mode", model_k);
+                    else if (overridden && n > model_k)
+                        std::fprintf(stderr, "ds4: experts per word: %d (DS4_TOPK test override; the model routes %d, the buffers hold %d)\n", n, model_k, kPicks);
                     else if (o.experts >= 1)
                         std::fprintf(stderr, "ds4: experts per word: %d (full quality)\n", n);
                 }
-                l.k_exp = std::min(l.k_exp, experts_used);
+                l.k_exp = std::getenv("DS4_TOPK") != nullptr ? std::min(kPicks, experts_used) : std::min(l.k_exp, experts_used);
             }
             l.ratio = g.ratios[(size_t) il];
             if (l.mtp) {   // window attention only: no compressor, indexer or Engram
