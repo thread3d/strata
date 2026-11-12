@@ -21,6 +21,7 @@
 
 #include <sys/sysctl.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -36,9 +37,6 @@
 #include <mutex>
 #endif
 #include <thread>
-#if defined(STRATA_DS4_RUNTIME)
-#include <algorithm>
-#endif
 #include <vector>
 
 namespace strata::gpu {
@@ -76,6 +74,7 @@ struct Op {
     uint8_t args[256];
     size_t arg_bytes = 0;
     std::vector<uint8_t> big_args;
+    std::vector<MTL::Buffer*> res;   // the allocations this dispatch's raw pointers name (see declare_buffers)
     metal::Grid groups, threads;
     size_t tg_bytes = 0;
     void* dst = nullptr;
@@ -205,6 +204,42 @@ const Alloc* find(const void* p, size_t* off) {
         if ((uintptr_t) p < ic->first + al.bytes) { *off = (uintptr_t) p - ic->first; return &al; }
     }
     return nullptr;
+}
+
+// Does this device need every dispatch's buffers declared to it?
+//
+// The design above puts all buffers in one MTLResidencySet so that a kernel may take raw gpuAddress pointers - the engine
+// passes a struct of pointers, which the driver never sees as a resource.  Measured on an AMD Radeon Pro Vega II on macOS
+// 26.6.2: -[MTLDevice newResidencySetWithDescriptor:error:] returns nil, and Metal's validation layer gives the reason,
+// "device does not support residency sets".  There the set is no mechanism at all, and a buffer's first dispatch through
+// a raw pointer reads pages the driver never made resident: 65470 wrong of 65536 elements (metal/tests/runtime_hello.cpp,
+// and the same count through three of its four steps).  Declaring it on the encoder that uses it fixes that: with
+// [enc useResource:usage:] before the dispatch the same test is wrong in 0 of 65536.  A buffer declared once stayed right
+// for 20 later command buffers, but this declares per dispatch anyway, which is what Apple documents for an untracked
+// resource: the price is encode time only, 0.340-0.362 ms against 0.313-0.316 ms for a 1000-dispatch window in that test
+// (about 35 ns a dispatch), with nothing added to a commit or a wait.
+//
+// Where the set does exist - every Apple Silicon Mac - nothing here runs, so that path is unchanged.
+bool declare_buffers() {
+    static const bool off = std::getenv("STRATA_METAL_NO_DECLARE") != nullptr;   // testing: turn the fallback off
+    // (also true before macOS 15, where there is no residency set to create, and the declaration is what keeps a raw pointer valid)
+    return !off && rt().rs == nullptr;
+}
+
+// The allocations that a dispatch's argument block names: every 8-byte word in it that falls inside one of them.  The
+// engine hands a kernel a struct of pointers - a gpuAddress, or a host allocation's CPU address - so this is the only
+// place the driver can be told what the dispatch reads and writes.  A word that is not an address matches no allocation;
+// one that merely looks like one adds a needless, harmless declaration.
+void allocs_in_args(const void* args, size_t n, std::vector<MTL::Buffer*>& out) {
+    const uint8_t* p = (const uint8_t*) args;
+    for (size_t i = 0; i + sizeof(uint64_t) <= n; i += sizeof(uint64_t)) {
+        uint64_t w;
+        std::memcpy(&w, p + i, sizeof w);
+        size_t off = 0;
+        const Alloc* a = find((const void*) (uintptr_t) w, &off);
+        if (!a || !a->buf) continue;
+        if (std::find(out.begin(), out.end(), a->buf) == out.end()) out.push_back(a->buf);
+    }
 }
 
 #if defined(STRATA_DS4_RUNTIME)
@@ -429,6 +464,8 @@ Error encode_dispatch(StreamImpl* s, const Op& o) {
 #endif
     MTL::ComputeCommandEncoder* e = encoder(s);
     e->setComputePipelineState(o.pipe);
+    // A device without residency sets: declare what this dispatch's raw pointers name, on this encoder, before it runs.
+    for (MTL::Buffer* b : o.res) e->useResource(b, MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
     if (o.big_args.empty()) e->setBytes(o.args, o.arg_bytes, 0);
     else e->setBytes(o.big_args.data(), o.big_args.size(), 0);
     if (o.tg_bytes) e->setThreadgroupMemoryLength(o.tg_bytes, 0);
@@ -947,6 +984,7 @@ Error dispatch(Stream st, MTL::ComputePipelineState* p, const void* args, size_t
     o.groups = groups;
     o.threads = threads;
     o.tg_bytes = tg_bytes;
+    if (declare_buffers() && args && arg_bytes) allocs_in_args(args, arg_bytes, o.res);
     if (s->rec) { s->rec->ops.push_back(std::move(o)); return kSuccess; }
     return encode_dispatch(s, o);
 }
