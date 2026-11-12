@@ -154,11 +154,15 @@ inline int staging_ring_mb(double share, double room_bytes, int n_dev, bool inte
     return (int) streamed;
 }
 
-// DS4_TOPK=N (a test, not for users): over the flag and the rule; returns the count to use
-inline int experts_test_override(int chosen, int model_k) {
+// DS4_TOPK=N (a test, not for users): over the flag and the rule; returns the count to use.
+// It goes up to `cap` - the most the kernels can hold (kPicks, 8) - rather than only to the model's own count, so the cost
+// of 7 and 8 experts can be measured at all: every pick buffer is kPicks wide (d.ridx, d.rw, h_idx, h_w, the window's
+// kWin * kPicks scratch), so 8 is safe and 9 would write past them.  The user-facing --experts still stops at the model's
+// count on purpose (6 for this model): more experts than the model routes is a deviation, not a setting.
+inline int experts_test_override(int chosen, int cap) {
     if (const char* v = std::getenv("DS4_TOPK")) {
         const int n = std::atoi(v);
-        if (n >= 1 && n <= model_k) return n;
+        if (n >= 1 && n <= cap) return n;
     }
     return chosen;
 }
