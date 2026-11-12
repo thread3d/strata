@@ -6,5 +6,5 @@
 # torch==2.9.1" there (#3474); from Python 3.14 on, 2.14.1 (+cpu wheels cp310-cp315 on Linux and Windows). Older Pythons keep 2.9.1.
 torch==2.9.1; python_version < "3.14"
 torch==2.14.1; python_version >= "3.14"
-transformers==4.57.6
+transformers==5.10.1
 safetensors==0.7.0
