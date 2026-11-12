@@ -1667,6 +1667,22 @@ struct Model::Impl {
     // dispatch costs ~0.7 ms of GPU timeline on this card whatever it computes (NEXT.md round 92).  The attention output
     // projection is applied as eight such matrices a layer, to the same operand at consecutive offsets, so one block turns
     // eight dispatches into one with no change to any kernel: each job still reads its own rows, at its own offset.
+    // the shared expert's gate (w1) and up (w3): one allocation, so the pair's two jobs share every base and the marshaler
+    // sends them as one group (with sg and su in one allocation, the outputs' base matches too)
+    bool shared_gate_up(Dev& d, const std::string& P, Layer& l, std::string& err, size_t* acct, int mi, int nm) {
+        if (nm == 1) {
+            std::vector<const Tensor*> ts{pk.get(P + "ffn.shared_experts.w1.weight"),
+                                          pk.get(P + "ffn.shared_experts.w3.weight")};
+            x3::Mat pair[2];
+            if (ts[0] != nullptr && ts[1] != nullptr && mat_gg_together(d, ts, pair, err, acct)) {
+                l.s1 = pair[0];
+                l.s3 = pair[1];
+                return true;
+            }
+        }
+        return mat(d, P + "ffn.shared_experts.w1", l.s1, err, acct, mi, nm, true, l.il % nm) &&
+               mat(d, P + "ffn.shared_experts.w3", l.s3, err, acct, mi, nm, true, l.il % nm);
+    }
     bool mat_gg_together(Dev& d, const std::vector<const Tensor*>& ts, x3::Mat* outs, std::string& err, size_t* acct) {
         if (ts.empty()) return false;
         const Tensor& t0 = *ts[0];
@@ -2728,7 +2744,11 @@ struct Model::Impl {
                       dalloc(d, d.rw, W * kPicks, err) &&
                       dalloc(d, d.ridx, W * kPicks, err) && dalloc(d, d.ridx_a, 2 * kPicks, err) && dalloc(d, d.rw_a, 2 * kPicks, err) &&
                       dalloc(d, d.moe_out, W * D, err) &&
-                      dalloc(d, d.sg, W * g.ff, err) && dalloc(d, d.su, W * g.ff, err) && dalloc(d, d.sh, W * g.ff, err) &&
+                      // sg and su in ONE allocation: the shared expert's two matvecs write them and the port groups a batch
+                      // of matvec jobs by the allocation each job's output starts in (Bases{bw, bx, by, ...}), so one block
+                      // makes the pair a single group - one dispatch instead of two, at ~0.71 ms of GPU timeline each
+                      dalloc(d, d.sg, 2 * W * g.ff, err) && (d.su = d.sg + (size_t) W * g.ff, true) &&
+                      dalloc(d, d.sh, W * g.ff, err) &&
                       dalloc(d, d.sh_out, W * D, err) && dalloc(d, d.cpu_part, W * D, err) &&
                       dalloc(d, d.freqs_win, 64, err) && dalloc(d, d.freqs_comp, 64, err) &&
                       dalloc(d, d.topk, W * topk_stride(), err) && dalloc(d, d.cand, W * cand_stride(), err) &&
@@ -4409,9 +4429,8 @@ struct Model::Impl {
                       f32(d, P + "ffn.gate.bias", l.gate_bias, err, acct, (size_t) l.n_exp) &&
                       (l.mtp || img_tok < 0 || pk.get(P + "ffn.gate.bias_vl") == nullptr ||
                        f32(d, P + "ffn.gate.bias_vl", l.gate_bias_vl, err, acct, (size_t) l.n_exp)) &&
-                      mat(d, P + "ffn.shared_experts.w1", l.s1, err, acct, mi, nm, true, l.il % nm) &&
                       mat(d, P + "ffn.shared_experts.w2", l.s2, err, acct, mi, nm, false, l.il % nm) &&
-                      mat(d, P + "ffn.shared_experts.w3", l.s3, err, acct, mi, nm, true, l.il % nm);
+                      shared_gate_up(d, P, l, err, acct, mi, nm);
             if (!ok) return false;
             l.sink += (size_t) l.ah0;
             {
