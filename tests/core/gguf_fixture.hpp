@@ -56,6 +56,16 @@ struct Tensor {
 
 inline uint8_t pattern(uint8_t seed, uint64_t i) { return (uint8_t) ((seed * 131u + i * 7u + i / 4093u) & 0xffu); }
 
+/// A Q8_0 block's bytes with a real scale and small codes: [fp16 d][32 int8].  A byte pattern would give an arbitrary fp16 scale -
+/// NaN and denormal ones included - which is fine for a loader test and poison for an arithmetic one: a matrix of such blocks
+/// multiplies to 0 or NaN, and a test comparing two paths over it compares nothing.  The scale is a fixed fp16 (0x3000 = 0.125) and
+/// the code of value i within the block is ((seed + i) % 7) - 3, so every block is a valid, small, non-degenerate Q8_0 block.
+inline void q8_0_block(uint8_t seed, uint8_t* out) {
+    out[0] = 0x00;
+    out[1] = 0x30;
+    for (int j = 0; j < 32; ++j) out[2 + j] = (uint8_t) (int8_t) (((int) seed + j) % 7 - 3);
+}
+
 /// The split keys llama.cpp's gguf-split writes (u16 split.no / split.count, i32 split.tensors.count).
 inline std::vector<Kv> split_keys(uint64_t no, uint64_t count, uint64_t tensors) {
     return {u16("split.no", no), u16("split.count", count), i32("split.tensors.count", tensors)};
@@ -118,7 +128,15 @@ inline Written write(const std::filesystem::path& path, const std::vector<Kv>& k
     b.resize((size_t) w.data_start, 0);
     for (size_t i = 0; i < ts.size(); ++i) {
         b.resize((size_t) (w.data_start + w.offsets[i]), 0);
-        for (uint64_t j = 0; j < bytes[i]; ++j) b.push_back(pattern(ts[i].seed, j));
+        if (ts[i].type == 8) {   // Q8_0: real blocks, so a test that MULTIPLIES with them gets numbers and not poison
+            for (uint64_t blk = 0; blk < bytes[i] / 34; ++blk) {
+                uint8_t q[34];
+                q8_0_block((uint8_t) (ts[i].seed + blk), q);
+                b.insert(b.end(), q, q + 34);
+            }
+        } else {
+            for (uint64_t j = 0; j < bytes[i]; ++j) b.push_back(pattern(ts[i].seed, j));
+        }
     }
     if (cut > b.size()) cut = b.size();
     b.resize(b.size() - (size_t) cut);
