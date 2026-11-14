@@ -2390,6 +2390,25 @@ struct Model::Impl {
         if (const char* v = std::getenv("DS4_CHUNK_MIN")) chunk_min = std::max(1, std::atoi(v));
         if (chunk > 0) {
             chunk = std::min(kMaxChunk, std::max(dc != nullptr ? 16 : 256, chunk / 16 * 16));
+#if defined(STRATA_METAL)
+            // The Metal port caps the chunk at 256 tokens when the user did not ask for one.  Measured on the RX 580:
+            // a default chunk of 4096 on a 512-token prompt made the driver time the command buffer out - "mtl: deferred
+            // command buffer failed: Caused GPU Timeout Error (IOAF code 2)" - and the run still exited 0 with corrupted
+            // tokens, so the failure was silent.  At 256 the same prompt runs with zero timeouts and deterministic output,
+            // and 15 runs over 128..1024-token prompts were all clean.
+            //
+            // NOT 128: the clamp just above floors the chunk at 256, so every "chunk of 128" measured this session actually
+            // ran at 256 (which is why the round-104 runs at 128 and 256 timed identically).  A real 128 - what this cap
+            // produced before it was corrected - is BELOW anything that has been tested and hits a live bug: the router
+            // returned expert 2147483647 at layer 30 on a 512-token prompt and the engine stopped with rc=1.
+            const int kMetalChunkMax = 256;
+            if (o.prefill_chunk < 0 && dc == nullptr && chunk > kMetalChunkMax) {
+                std::fprintf(stderr, "ds4: prompts in chunks of %d tokens on this Metal runtime (the driver times a command\n"
+                                     "     buffer out above that; --prefill-chunk N changes it; the rule asked for %d)\n",
+                             kMetalChunkMax, chunk);
+                chunk = kMetalChunkMax;
+            }
+#endif
             eg_cap = (size_t) chunk;
             tap_cap = std::max(kWin, 128);
         } else   // (only as asked for: --prefill-chunk 0, or --tp 1 with --threads off)
