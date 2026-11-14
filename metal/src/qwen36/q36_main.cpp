@@ -661,8 +661,12 @@ int main(int argc, char** argv) {
                 ref::dequant(L.o.type(), L.o.data(*m.file), r0.data(), (size_t) QH);
                 for (float t : r0) wmax = std::max(wmax, (double) std::fabs(t));
             }
-            std::printf("  [diag] |v|max %.3g |gate|max %.3g |yin|max %.3g |o row0|max %.3g  (o type %d, QH %d)\n", vmax, gmax, ymax,
-                        wmax, (int) L.o.type(), QH);
+            double hmax = 0.0;
+            for (double t : h) hmax = std::max(hmax, std::fabs(t));
+            std::printf("  [diag] |h|max %.3g |v|max %.3g |gate|max %.3g |yin|max %.3g |o row0|max %.3g\n", hmax, vmax, gmax, ymax, wmax);
+            std::printf("  [diag] q ok=%d type=%d bytes=%llu | v ok=%d type=%d bytes=%llu | o ok=%d QH=%d\n", (int) L.q.ok(),
+                        (int) L.q.type(), (unsigned long long) (L.q.ok() ? L.q.bytes() : 0), (int) L.v.ok(), (int) L.v.type(),
+                        (unsigned long long) (L.v.ok() ? L.v.bytes() : 0), (int) L.o.ok(), QH);
         }
         std::printf("attn layer %d host mixer y[0..3]:", check_attn);
         for (int r = 0; r < 4; ++r) {

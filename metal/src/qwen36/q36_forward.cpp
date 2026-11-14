@@ -210,8 +210,11 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
             f.attn.vring = f.vring[i];
         }
         if (!layer_forward(cx, f.lk, f.dk, f.dense, w, io, f.layer, f.x, i == 0, err)) return false;
-        if (i == 0) {   // Q36_DUMP_X: the residual after layer 0, so a host reference can compare the whole layer
-            if (const char* xp = std::getenv("Q36_DUMP_X")) {
+        {   // Q36_DUMP_X after Q36_DUMP_LAYER (default 0): the residual a host reference compares a layer's output with
+            const char* lp = std::getenv("Q36_DUMP_LAYER");
+            const size_t want = lp != nullptr ? (size_t) std::atoi(lp) : 0;
+            const char* xp = std::getenv("Q36_DUMP_X");
+            if (i == want && xp != nullptr) {
                 if (FILE* fx = std::fopen(xp, "wb")) {
                     std::fwrite(f.x.ptr, 4, (size_t) N, fx);
                     std::fclose(fx);
