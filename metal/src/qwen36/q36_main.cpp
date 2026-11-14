@@ -530,7 +530,14 @@ int main(int argc, char** argv) {
             const int FF = (int) m.g.n_ff;
             const size_t gu_row = ref::row_bytes(L0.gate_exps.type(), N), d_row = ref::row_bytes(L0.down_exps.type(), FF);
             const size_t gsz = (size_t) FF * gu_row, dsz = (size_t) N * d_row;
-            std::printf("gdn layer %d host router top-8:", gdn_layer);
+            {
+            // the HOST's state after the first step, head 0: S[i][j] = d[j] * k[i], so S[0][0] = d[0] * k[0]
+            const int S_ = S;
+            const double b0 = 1.0 / (1.0 + std::exp(-be[0]));
+            const double d0 = (cv[(size_t) (2 * HK * S_ + 0)] - 0.0) * b0;
+            std::printf("gdn layer %d host state[0][0] = %.6g  (d %.6g x k %.6g)\n", gdn_layer, d0 * kk[0], d0, kk[0]);
+        }
+        std::printf("gdn layer %d host router top-8:", gdn_layer);
             for (int k = 0; k < (int) m.top_k; ++k) std::printf(" %d", ord[(size_t) k]);
             std::printf("\n");
             std::vector<float> wr((size_t) N), wa((size_t) FF);

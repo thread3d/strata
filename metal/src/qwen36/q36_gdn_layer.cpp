@@ -2,6 +2,7 @@
 #include "q36_gdn_layer.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace strata::qwen36 {
@@ -96,6 +97,12 @@ bool gdn_forward(mtl::Context& cx, GdnKernels& k, DenseKernels& dk, DenseScratch
     std::memcpy(hist.ptr, s.hist_out.ptr, 4 * (size_t) sh.channels() * 3);
 
     // 3. the output projection
+    if (const char* sp = std::getenv("Q36_DUMP_S")) {   // the state AFTER this step: the only check that touches the carried state
+        if (FILE* fs = std::fopen(sp, "wb")) {
+            std::fwrite(state.ptr, 4, 4 * (size_t) sh.h_v * sh.state * sh.state, fs);
+            std::fclose(fs);
+        }
+    }
     if (!dense_gemv(cx, dk, w.out, s.y, s.out, ds, err)) return false;
     return true;
 }
