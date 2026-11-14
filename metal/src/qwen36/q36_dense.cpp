@@ -97,7 +97,7 @@ bool dense_prep(mtl::Context& cx, DenseKernels& k, const mtl::Buffer& x, DenseSc
 }
 
 bool dense_gemv(mtl::Context& cx, DenseKernels& k, const DenseMatrix& W, const mtl::Buffer& x, mtl::Buffer& y,
-                DenseScratch& s, std::string& err) {
+                DenseScratch& s, std::string& err, int y_stride) {
     if (!dense_init(cx, k, err)) return false;
     if (W.buf == nullptr || W.n_in <= 0 || W.n_out <= 0) {
         err = "a dense matrix with no buffer or no shape";
@@ -129,7 +129,8 @@ bool dense_gemv(mtl::Context& cx, DenseKernels& k, const DenseMatrix& W, const m
     // gemv's arguments, in its own order: W, the prepared plane this format reads, the sums, y, and the shape
     struct GemvArgs {
         uint32_t n_in, n_out, n_tok, row_bytes, x_stride, y_stride;
-    } a{n_in, n_out, 1, (uint32_t) rb, n_in, n_out};
+    } a{n_in, n_out, 1, (uint32_t) rb, n_in,
+        (uint32_t) (y_stride > 0 ? y_stride : (int) n_out)};
     mtl::Dispatch d;
     d.p = &p;
     d.args = {mtl::Arg::B(*W.buf, W.off), mtl::Arg::B(s.xp, plane * (size_t) xkind(W.type)),

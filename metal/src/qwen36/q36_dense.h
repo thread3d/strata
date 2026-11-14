@@ -52,6 +52,6 @@ bool dense_prep(mtl::Context& cx, DenseKernels& k, const mtl::Buffer& x, DenseSc
 /// on each call (Metal caches compiled functions; the host map is the only cost) and refused by name when the kernel does
 /// not exist - which is the failure a caller can act on, unlike a silently empty dispatch.
 bool dense_gemv(mtl::Context& cx, DenseKernels& k, const DenseMatrix& W, const mtl::Buffer& x, mtl::Buffer& y,
-                DenseScratch& s, std::string& err);
+                DenseScratch& s, std::string& err, int y_stride = 0);
 
 }  // namespace strata::qwen36
