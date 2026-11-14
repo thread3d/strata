@@ -1,3 +1,9 @@
+// The output gate: DELTA-NET families want sigmoid(z), qwen35moe wants silu(z) - fused_gdn.hpp carries both
+// (fused_gdn_step_norm_silu) and names this family.  Declared at FILE SCOPE, before any guard, because the step body needs it in
+// every variant this file compiles into.
+constant bool GDN_SILU_C [[function_constant(26)]];
+constant bool gdn_silu = is_function_constant_defined(GDN_SILU_C) && GDN_SILU_C;
+
 // metal/kernels/gdn.metal - one GDN (gated delta-net) layer's recurrence for a window of tokens, fused end to end:
 //
 //   conv (4 taps, history [channels][3] oldest first) -> SiLU, on q (16 heads), k (16), v (48 heads) of 128
@@ -165,7 +171,8 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
             const float tot = (part[0] + part[1]) + (part[2] + part[3]);
             const float rs = rsqrt(tot / float(S) + a.eps);
             const float zz = z[tr * hv * S + h * S + j];
-            const float yv = ((rs * o) * gamma[j]) * (1.0f / (1.0f + exp(-zz)));
+            const float sg = 1.0f / (1.0f + exp(-zz));
+            const float yv = ((rs * o) * gamma[j]) * (gdn_silu ? zz * sg : sg);
             y[tr * hv * S + h * S + j] = yv;
             if (a.plane) {
                 const float q2s[8] = {1.0f, 0.25f, 0.0625f, 0.015625f, 0.00390625f, 0.0009765625f, 0.000244140625f,

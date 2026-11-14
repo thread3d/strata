@@ -18,7 +18,7 @@ bool gdn_init(mtl::Context& cx, GdnKernels& k, std::string& err) {
     if (k.step.handle == nullptr) {
         try {
             // function constant 2 is the token count the specialization is cut for (gdn_parity's convention), 1 here
-            k.step = cx.pipeline(k.lib, "gdn_step", mtl::Constants().i(2, 1));
+            k.step = cx.pipeline(k.lib, "gdn_step", mtl::Constants().i(2, 1).b(26, true));   // 26: the SiLU output gate
         } catch (const std::exception& e) {
             err = std::string("no gdn_step kernel: ") + e.what();
             return false;

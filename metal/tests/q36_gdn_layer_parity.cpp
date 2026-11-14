@@ -175,7 +175,8 @@ void run_case(mtl::Context& cx, strata::qwen36::GdnKernels& k, int T, int pos_un
             const double rs = 1.0 / std::sqrt(ss / S + (double) sh.eps);
             for (int jj = 0; jj < S; ++jj) {
                 const double zz = z[(size_t) (h * S + jj)];
-                yv[(size_t) (h * S + jj)] = o[(size_t) jj] * rs * (double) gm[(size_t) jj] / (1.0 + std::exp(-zz));
+                const double sg = 1.0 / (1.0 + std::exp(-zz));
+                yv[(size_t) (h * S + jj)] = o[(size_t) jj] * rs * (double) gm[(size_t) jj] * zz * sg;   // silu(z)
             }
         }
         std::vector<float> yf((size_t) ZV);
