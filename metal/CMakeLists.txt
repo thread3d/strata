@@ -43,7 +43,8 @@ file(GLOB STRATA_METAL_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests
 list(REMOVE_ITEM STRATA_METAL_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_hello.cpp
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/dsu_ref_vs_ggml.cpp            # (needs ggml: below)
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_model_check.cpp            # (the Qwen3.6 checks: their own targets, below)
-                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_upload_check.cpp)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_upload_check.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_dense_parity.cpp)   # (drives strata_q36_model: its own target)
 foreach(src ${STRATA_METAL_TESTS})
   get_filename_component(t ${src} NAME_WE)
   add_executable(${t} ${src})
@@ -54,7 +55,7 @@ endforeach()
 # src/qwen36 is the engine's host side - reading the file, deciding what stays resident and what streams, and refusing
 # what this port cannot take - kept separate from the kernels and from the device runtime, so it builds and is tested
 # with no GPU at all (q36_model_check drives it on tiny synthetic files).
-add_library(strata_q36_model STATIC src/qwen36/q36_model.cpp src/qwen36/q36_device.cpp)
+add_library(strata_q36_model STATIC src/qwen36/q36_model.cpp src/qwen36/q36_device.cpp src/qwen36/q36_dense.cpp)
 target_link_libraries(strata_q36_model PUBLIC mtl_rt)   # the device half (q36_device.cpp) uploads into mtl::Buffer
 target_include_directories(strata_q36_model PUBLIC src ${STRATA_ROOT}/include)
 target_compile_options(strata_q36_model PRIVATE -Wno-unused-parameter)
@@ -68,6 +69,9 @@ add_test(NAME q36_model_check COMMAND q36_model_check)
 add_test(NAME q36_attn_parity COMMAND q36_attn_parity)
 add_test(NAME q36_glue_parity COMMAND q36_glue_parity)
 add_test(NAME q36_rope_parity COMMAND q36_rope_parity)
+add_executable(q36_dense_parity tests/q36_dense_parity.cpp)
+target_link_libraries(q36_dense_parity PRIVATE strata_q36_model)
+add_test(NAME q36_dense_parity COMMAND q36_dense_parity)
 add_executable(q36_upload_check tests/q36_upload_check.cpp)
 target_include_directories(q36_upload_check PRIVATE ${STRATA_ROOT}/tests/core)
 target_link_libraries(q36_upload_check PRIVATE strata_q36_model)
