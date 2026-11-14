@@ -64,3 +64,12 @@ kernel void q36_swiglu(device const float* gate [[buffer(0)]], device const floa
     const float g = gate[gid];
     h[gid] = g / (1.0f + exp(-g)) * up[gid];
 }
+
+// The plain residual add - x += y, no norm - which a layer needs twice without a following norm: the MoE's output goes back into
+// the residual, and the norm that follows belongs to the NEXT layer (whose q36_add_rms fuses it with its own mixer).  Written
+// out rather than folded into q36_add_rms because folding it meant computing a norm nobody reads.
+kernel void q36_add(device float* x [[buffer(0)]], device const float* y [[buffer(1)]], constant uint& n [[buffer(2)]],
+                    uint gid [[thread_position_in_grid]]) {
+    if (gid >= n) return;
+    x[gid] += y[gid];
+}

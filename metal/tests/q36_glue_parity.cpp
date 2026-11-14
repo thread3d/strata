@@ -88,6 +88,32 @@ void run_case(mtl::Context& cx, const Case& c) {
     }
 }
 
+// q36_add: the plain residual add (no norm), bit for bit - it is the step that carries the MoE's output back into the residual.
+void add_case(mtl::Context& cx, int n) {
+    std::vector<float> x((size_t) n), y((size_t) n);
+    for (int i = 0; i < n; ++i) {
+        x[(size_t) i] = 0.8f * std::sin(0.021f * (float) i);
+        y[(size_t) i] = 0.6f * std::cos(0.013f * (float) i + 0.4f);
+    }
+    mtl::Buffer bx = cx.alloc(4 * (size_t) n), by = cx.alloc(4 * (size_t) n);
+    std::memcpy(bx.ptr, x.data(), 4 * (size_t) n);
+    std::memcpy(by.ptr, y.data(), 4 * (size_t) n);
+    mtl::Pipeline p = cx.pipeline(cx.compile({"../src/qwen36/msl/q36_glue.metal"}, "", false), "q36_add");
+    mtl::Dispatch d;
+    d.p = &p;
+    d.args = {mtl::Arg::B(bx), mtl::Arg::B(by), mtl::Arg::V((unsigned) n)};
+    d.tg[0] = 64;
+    d.grid[0] = (uint32_t) ((n + 63) / 64);
+    cx.run({d});
+    const float* got = (const float*) bx.ptr;
+    size_t bad = 0;
+    for (int i = 0; i < n; ++i)
+        if (got[(size_t) i] != x[(size_t) i] + y[(size_t) i]) ++bad;
+    char nm[96];
+    std::snprintf(nm, sizeof nm, "q36_add %d values (bit for bit)", n);
+    report(nm, bad == 0 ? 0.0 : 1.0, 0.0);
+}
+
 }  // namespace
 
 int main() {
@@ -97,6 +123,8 @@ int main() {
     for (const Case& c : {Case{2048, 1, true}, Case{2048, 3, true}, Case{100, 2, true}, Case{2048, 1, false},
                           Case{64, 4, false}})
         run_case(cx, c);
+    add_case(cx, 2048);
+    add_case(cx, 1000);
     std::printf("%s\n", g_fail ? "FAILURES" : "ALL PASS");
     return g_fail ? 1 : 0;
 }
