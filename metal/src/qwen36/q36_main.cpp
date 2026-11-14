@@ -74,6 +74,7 @@ int main(int argc, char** argv) {
     int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
     std::string h_file, logits_file;
     int show_token = -1, check_gdn = -1, gdn_layer = 0, check_attn = -1;
+    std::string check_gemv;
     std::string x_file;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -97,6 +98,7 @@ int main(int argc, char** argv) {
     else if (a == "--gdn-layer") gdn_layer = (int) std::atoi(next().c_str());
     else if (a == "--x-file") x_file = next();
     else if (a == "--check-attn") check_attn = (int) std::atoi(next().c_str());
+    else if (a == "--check-gemv") check_gemv = next();
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -715,6 +717,52 @@ int main(int argc, char** argv) {
             std::printf(" %g", acc);
         }
         std::printf("\n");
+        return 0;
+    }
+
+    if (!check_gemv.empty()) {
+        // ONE DISPATCH: dense_gemv on a real tensor of the pack against a host double dot, with h from --h-file.  If they agree, the
+        // attention layer's wiring is wrong (it passes a different row as h); if they disagree, dense_gemv/dense_prep has a defect that the
+        // parity tests share because their references go through the same path.
+        if (h_file.empty()) { std::printf("--check-gemv needs --h-file\\n"); return 1; }
+        const strata::qwen36::Layer& L = m.layers[(size_t) gdn_layer];
+        const strata::qwen36::TensorRef* T = check_gemv == "q" ? &L.q : check_gemv == "v" ? &L.v : check_gemv == "k" ? &L.k
+                                                            : check_gemv == "o" ? &L.o : check_gemv == "qkv" ? &L.qkv : nullptr;
+        if (T == nullptr || !T->ok()) { std::printf("--check-gemv: no tensor %s\\n", check_gemv.c_str()); return 1; }
+        const int N = (int) m.g.n_embd;
+        const int NOUT = (int) (T->t->shape.size() > 1 ? T->t->shape[1] : 1);
+        std::vector<float> hf((size_t) N);
+        FILE* fh = std::fopen(h_file.c_str(), "rb");
+        if (fh == nullptr || std::fread(hf.data(), 4, (size_t) N, fh) != (size_t) N) { std::printf("--check-gemv: bad h file\\n"); return 1; }
+        std::fclose(fh);
+        strata::qwen36::DenseKernels dk;
+        strata::qwen36::DenseScratch ds;
+        std::string e2;
+        if (!strata::qwen36::dense_init(cx, dk, e2)) { std::printf("dense_init: %s\\n", e2.c_str()); return 1; }
+        strata::qwen36::DeviceModel d2;
+        if (!strata::qwen36::upload_dense(cx, m, d2, e2)) { std::printf("upload: %s\\n", e2.c_str()); return 1; }
+        strata::qwen36::DenseMatrix M;
+        const strata::qwen36::DeviceLayer& D = d2.layers[(size_t) gdn_layer];
+        const mtl::Buffer* tb = check_gemv == "q" ? &D.q : check_gemv == "v" ? &D.v : check_gemv == "k" ? &D.k : check_gemv == "o" ? &D.o : &D.qkv;
+        M = strata::qwen36::bind(*T, *tb);
+        mtl::Buffer bh = cx.alloc(4 * (size_t) N), by = cx.alloc(4 * (size_t) NOUT);
+        std::memcpy(bh.ptr, hf.data(), 4 * (size_t) N);
+        if (!strata::qwen36::dense_gemv(cx, dk, M, bh, by, ds, e2)) { std::printf("dense_gemv: %s\\n", e2.c_str()); return 1; }
+        const float* y = (const float*) by.ptr;
+        std::vector<float> row((size_t) N);
+        ref::dequant(T->type(), T->data(*m.file), row.data(), (size_t) N);
+        double host0 = 0.0;
+        for (int i = 0; i < N; ++i) host0 += (double) row[(size_t) i] * (double) hf[(size_t) i];
+        double nrm = 0.0, dnm = 0.0;
+        for (int r = 0; r < NOUT; ++r) {
+            ref::dequant(T->type(), T->data(*m.file) + (size_t) r * ref::row_bytes(T->type(), N), row.data(), (size_t) N);
+            double acc = 0.0;
+            for (int i = 0; i < N; ++i) acc += (double) row[(size_t) i] * (double) hf[(size_t) i];
+            nrm += (acc - (double) y[r]) * (acc - (double) y[r]);
+            dnm += acc * acc;
+        }
+        std::printf("gemv layer %d tensor %s: engine y[0] %.6g | host row0 %.6g | rel L2 over %d outputs %.3e\\n", gdn_layer,
+                    check_gemv.c_str(), (double) y[0], host0, NOUT, dnm > 0 ? std::sqrt(nrm / dnm) : std::sqrt(nrm));
         return 0;
     }
 
