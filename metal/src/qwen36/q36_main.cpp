@@ -233,9 +233,15 @@ int main(int argc, char** argv) {
         // this is a magnitude question, not a parity one.)
         const strata::qwen36::Layer& L0 = m.layers[0];
         const int N = (int) m.g.n_embd, FF = (int) m.g.n_ff;
+        // NOTE: dequantise into FLOAT storage and widen afterwards.  The first version declared these as vectors of double and
+        // handed `(float*) x.data()` to ref::dequant, so the floats were written into the first half of a double array and read back as
+        // doubles - which produced "gate max 1.4e-12" out of perfectly good weights (max |w| 0.033) and cost a round chasing a defect
+        // that was in this check, not in the engine.
+        std::vector<float> xf((size_t) N), pf((size_t) N);
         std::vector<double> x((size_t) N), h((size_t) N), pn((size_t) N);
-        ref::dequant(m.embed.type(), m.embed.data(*m.file) + (size_t) 760 * ref::row_bytes(m.embed.type(), N), (float*) x.data(), (size_t) N);
-        ref::dequant(L0.post_norm.type(), L0.post_norm.data(*m.file), (float*) pn.data(), (size_t) N);
+        ref::dequant(m.embed.type(), m.embed.data(*m.file) + (size_t) 760 * ref::row_bytes(m.embed.type(), N), xf.data(), (size_t) N);
+        ref::dequant(L0.post_norm.type(), L0.post_norm.data(*m.file), pf.data(), (size_t) N);
+        for (int i = 0; i < N; ++i) { x[(size_t) i] = (double) xf[(size_t) i]; pn[(size_t) i] = (double) pf[(size_t) i]; }
         double ss = 0.0;
         for (int i = 0; i < N; ++i) ss += x[(size_t) i] * x[(size_t) i];
         const double rs = 1.0 / std::sqrt(ss / (double) N + (double) m.eps);
@@ -279,8 +285,24 @@ int main(int argc, char** argv) {
             ymax = std::max(ymax, std::fabs(acc));
         }
         for (int i = 0; i < FF; ++i) gmax = std::max(gmax, std::fabs(gate[(size_t) i]));
-        std::printf("expert %d of layer 0 on the host: gate max %g, up-vs-gate ok, down max %g (y[0..3] %g %g %g %g)\n", check_expert,
-                    gmax, ymax, y[0], y[1], y[2], y[3]);
+        std::printf("expert %d of layer 0 on the host: gate max %g, down max %g (y[0..3] %g %g %g %g)\n", check_expert, gmax, ymax,
+                    y[0], y[1], y[2], y[3]);
+        // WHAT the reader sees: the type it decodes with, the tensor's declared size against the stride's arithmetic, and the first
+        // block of two experts - a denormal scale here means the wrong bytes, not small weights.
+        const char* tn = L0.gate_exps.ok() ? L0.gate_exps.t->type_name() : nullptr;
+        std::printf("  gate_exps: type %s (%d), tensor bytes %llu, arithmetic %llu = n_expert %lld * n_ff %lld * gu_row %zu, down bytes %llu\n",
+                    tn ? tn : "?", (int) L0.gate_exps.type(), (unsigned long long) L0.gate_exps.bytes(),
+                    (unsigned long long) ((uint64_t) m.g.n_expert * gsz), (long long) m.g.n_expert, (long long) FF, gu_row,
+                    (unsigned long long) L0.down_exps.bytes());
+        for (int e2 : {0, check_expert}) {
+            const uint8_t* q = src + (size_t) e2 * gsz;
+            std::vector<float> first((size_t) 32);
+            ref::dequant(L0.gate_exps.type(), q, first.data(), first.size());
+            double fmax = 0.0;
+            for (float v : first) fmax = std::max(fmax, (double) std::fabs(v));
+            std::printf("  expert %d block 0: bytes %02x %02x %02x %02x ... %02x | scale-as-halves %g | max |w| of the 32 = %g\n", e2, q[0],
+                        q[1], q[2], q[3], q[33], (double) (q[0] | (q[1] << 8)), fmax);
+        }
         return 0;
     }
 
