@@ -189,8 +189,12 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
     if (std::getenv("Q36_TRACE")) {   // what the experts produced, in BOTH modes: the pool's answer must be the resident answer
         const float* ye = (const float*) s.ye.ptr;
         const int* pl = (const int*) s.plan.ptr;
-        std::printf("Q36_TRACE ye[%s] entry0=%d: %g %g %g %g | plan[TOKENT+0..2]=%d %d %d\n", arena ? "arena" : "resident",
-                    pl[532], (double) ye[0], (double) ye[1], (double) ye[2], (double) ye[3], pl[532], pl[533], pl[534]);
+        const float* wt = (const float*) s.wts.ptr;
+        double wsum = 0.0;
+        for (int k = 0; k < sh.top_k; ++k) wsum += (double) wt[k];
+        std::printf("Q36_TRACE ye[%s] entry0=%d: %g %g %g %g | weights %g %g %g (sum %.4f) | plan[TOKENT+0..2]=%d %d %d\n",
+                    arena ? "arena" : "resident", pl[532], (double) ye[0], (double) ye[1], (double) ye[2], (double) ye[3],
+                    (double) wt[0], (double) wt[1], (double) wt[2], wsum, pl[532], pl[533], pl[534]);
         std::fflush(stdout);
     }
 
