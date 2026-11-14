@@ -1,76 +1,74 @@
-# WIP: the GDN's SiLU output gate (round 64, reverted in round 63's tree)
+# The GDN step against the reference: what the diff found, and the two "fixes" that were wrong
 
-The defect is confirmed (NEXT.md round 63): qwen35moe needs `y = rms(o) * gamma * silu(z)` and `metal/kernels/gdn.metal` implements
-`sigmoid(z)`. The change was attempted and reverted because it did not compile; this file is what the next attempt needs.
+`metal/kernels/gdn.metal` is shared with the DeltaNet families, and Qwen3.6-35B-A3B (qwen35moe) differs from them in the step's output gate.  This
+document records the operator-by-operator diff of the kernel against `src/qwen35/q36ref.cu`'s statement of the family's step, and - more usefully -
+the two changes that diff produced which were NOT defects, and how that was finally established.
 
-## What was tried
+## The gate: `silu(z)`, not `sigmoid(z)` - right, and landed
 
-1. `metal/kernels/gdn.metal`, near the top:
-       constant bool GDN_SILU_C [[function_constant(26)]];
-       constant bool gdn_silu = is_function_constant_defined(GDN_SILU_C) && GDN_SILU_C;
-2. the gate line (gdn.metal:~168):
-       const float sg = 1.0f / (1.0f + exp(-zz));
-       const float yv = ((rs * o) * gamma[j]) * (gdn_silu ? zz * sg : sg);
-3. `q36_gdn_layer.cpp`: `k.step = cx.pipeline(k.lib, "gdn_step", mtl::Constants().i(2, 1).b(26, true));`
-4. `q36_gdn_layer_parity.cpp`'s reference: `... * zz * sg` instead of `... / (1.0 + exp(-zz))`.
+The family's step ends `o = rms(o) * ssm_norm * silu(z)`; the kernel implemented the DeltaNet `sigmoid(z)`.  Three sources agreed
+(llama.cpp's `ggml_silu` in `build_norm_gated`, this repository's `include/strata/kernels/fused_gdn.hpp:35` which names qwen35moe for
+`fused_gdn_step_norm_silu`, and `q36ref.cu`), so the kernel gained a **function constant 26**, undefined by default - every other caller of
+`gdn.metal` keeps the semantics it was built with - and `q36_gdn_layer.cpp` asks for it:
 
-## Why it failed
+    constant bool GDN_SILU_C [[function_constant(26)]];      // file scope: the first attempt put it beside XH16, inside a guard,
+    constant bool gdn_silu = is_function_constant_defined(GDN_SILU_C) && GDN_SILU_C;   // and the step body could not see it
+    const float sg = 1.0f / (1.0f + exp(-zz));
+    const float yv = ((rs * o) * gamma[j]) * (gdn_silu ? zz * sg : sg);
 
-The pipeline compile said `use of undeclared identifier 'gdn_silu'` - **the file has the gate line MORE THAN ONCE** (a second variant -
-the `XH16`/plane path, or a second `gdn_step_t` body), and the replacement hit every occurrence while the `constant bool` declaration only
-exists once, in a scope the later body does not see. `grep -c "1.0f + exp(-zz)" metal/kernels/gdn.metal` gives the count; the fix is to
-put the declaration where every use can see it (file scope, outside any `#if`), or to declare it again in the second region.
+Verified by the layer's parity test against a silu reference (4.85e-07), and by the whole-model comparison below.
 
-## The discipline that must come with the fix
+## ADDENDUM (round 65): a "second defect" that was NOT a defect - withdrawn
 
-`gdn_parity` must gain a **silu case** (it currently tests the sigmoid step, which is why upstream's test never caught this), and
-`q36_gdn_layer_parity`'s reference must use silu - which step 4 above did. Then `metal/tests/q36_real_compare.sh PACK` answers whether the
-output becomes text.
-
-Tree is green at the revert; nothing of this is committed.
-
-## ADDENDUM (round 65): a second GDN defect, found the same way
-
-`metal/kernels/gdn.metal:132-144` applies the `1/sqrt(S)` scale to BOTH q and k:
-
-    const float nv = (rs * cv) * scale;
-    if (tid < 128) qs[tid] = nv;  else ks[tid - 128] = nv;
-
-`q36ref.cu:220-221` applies it to the query only:
+`gdn.metal` applies the `1/sqrt(S)` scale to **both** q and k, where `q36ref.cu:220-221`'s prose puts it on the query only:
 
     q[i] = qi / sqrtf(qn + eps) / sqrtf((float) D);
     k[i] = ki / sqrtf(kn + eps);
 
-Fix: `else ks[tid - 128] = rs * cv;` (no `scale`), plus a `gdn_parity` case that pins k's scale and a reference in
-`q36_gdn_layer_parity` to match. Settle the disagreement against llama.cpp (`ggml_l2_norm` and the delta-net graph in `qwen3next.cpp`)
-before landing, exactly as the silu question was settled.
+On that reading the port switched the key's scale off (function constant 27) and, two rounds later, the output's scale too (constant 28).
+**Both were wrong.**  The comparison that settles it is llama.cpp's, not the prose's:
 
+    with 27 and 28 both off:   layer 0  cos 0.3355   ||ours|| 5.017  vs ||llama|| 1.172
+    with the kernel's defaults: layer 0  cos 0.9999   ||ours|| 1.174  vs ||llama|| 1.172
+                                layer 5  cos 1.0000
+                                layer 10 cos 1.0000
 
-## STATE AFTER ROUND 67: three defects fixed, the step's core verified, the conv still to diff
+The kernel was right in both places all along, and each "fix" made the model wronger.  The measurements that would have shown it in one run
+(`tools/qwen35/q36_llama_dump.cpp` and `Q36_DUMP_LAYERS`, compared per layer) took fifty rounds to reach.
 
-Landed (function constants, undefined by default, so no other family changes):
-    26  silu(z) output gate                     (round 64)
-    27  the key is normed, not scaled           (round 66)
-    28  the scale lands once (on q), not twice   (round 67)
-All three verified: `q36_gdn_layer_parity` 4.85e-07, state 2.34e-07, `ctest -R q36_` 17/17.
+### The one change that was right
 
-Verified as matching the reference by reading, not by measurement:
-    the decay `exp(softplus(alpha + dt) * ssm_a)`                 kernel line ~130   == q36ref:224
-    `beta = sigmoid(beta)`                                        ~131                == :226
-    `S = g*S + k*delta`, `delta = (v - g*(S k))*b`                ~160                == :231-236
-    `o = rms(o) * gamma * silu(z)`                                ~168-171            == :249
-    the conv is 4 taps with a 3-deep history, silu'd              header comment      == :200-209
+| constant | change | verdict |
+|---|---|---|
+| 26 `GDN_SILU_C` | the output gate is `silu(z)`, not the DeltaNet `sigmoid(z)` | **right** |
+| 27 `GDN_KSCALE_C` | "the key is normed, not scaled" | **wrong - withdrawn** |
+| 28 `GDN_OSCALE_C` | "the scale lands once, on q" | **wrong - withdrawn** |
 
-STILL TO DIFF (in the order worth doing):
-    1. ~~the CONV's tap order~~ CHECKED (round 69): the kernel uses `{hst[0], hst[1], hst[2], in}` - current input on
-       tap 3, history 0..2 oldest first, depth 3 - which is exactly q36ref.cu's `w[c*K + K-1]` / `w[c*K + k]` / `state[k]`
-       rotation.  No defect.
-    2. ~~the conv history's depth~~ CHECKED (round 69): 3 on both sides.
-    3. the attention layer (the other 10 of 40): rms(.) * q_norm/k_norm, NEOX over the first 64, GQA 16/2,
-       `y = W_o (softmax(q k^T / 16) v * sigmoid(gate))` - and the gate: q36ref says SIGMOID for attention (contrast
-       with the GDN's silu, which is what made round 63 hard to see).
-    4. the MoE's `top-8, renormalised` (verified on the real pack: weights sum 1.0000) and the shared expert's
-       `sigmoid(w_shexp_gate . h2)`.
+`q36_gdn_layer.cpp` sets **only constant 26**.  27 and 28 are left at the kernel's defaults, which is what the model wants; the constants still
+exist, so a future family that does need the DeltaNet form can ask for it.
 
-The method that found three defects in three rounds: read q36ref.cu's header (eight lines), read the kernel, and compare
-OPERATOR BY OPERATOR - then fix behind a function constant with the reference changed to match, so the fix is measured.
+### What the operator-by-operator diff did establish (all still true)
+
+    the decay `exp(softplus(alpha + dt) * ssm_a)`            kernel ~130   == q36ref:224
+    `beta = sigmoid(beta)`                                   ~131           == :226
+    `S = g*S + k*delta`, `delta = (v - g*(S k))*b`           ~160           == :231-236
+    `o = rms(o) * gamma * silu(z)`                           ~168-171       == :249
+    the conv: 4 taps, history 3 deep, oldest first, current input on tap 3     == :200-209
+    q and k L2-normed, both scaled by 1/sqrt(D); the output rms-normed and silu-gated
+
+and separately verified on the real pack, each by its own measurement:
+
+* the **embedding** row, bit-exact against the file;
+* the **output projection**, worst rel 4.6e-07 on a 248,320-row real matrix;
+* every **dense binding** of a layer, including its norms, byte-exact;
+* the **router's** top-8, renormalised so the weights sum to 1.0000;
+* the **carried GDN state** after a step, six digits against a double reference;
+* the **attention layer**'s projections and output (the factor of 16 that looked like a defect was the host's misplaced scale);
+* the **per-layer buffers**: every layer has its own state, history and ring, and the kinds are `l % 4 == 3`, as the reference states.
+
+### The lesson this document is here to record
+
+Every parity test in this port passed while the model was wrong, because **each test's reference was written by the same hand that misread the
+prose** - so both sides agreed.  A self-consistent check cannot find a shared misreading.  What can is a comparison against an authority that
+shares no reading with the port: for this family, llama.cpp's own dumped layer outputs, which is `tools/qwen35/q36_llama_dump.cpp` in this
+repository and was there from the start.
