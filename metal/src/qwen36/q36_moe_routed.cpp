@@ -186,6 +186,14 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
     dd.ind_off = (size_t) P_IDN * 4;
     cx.run({dg, dd});
 
+    if (std::getenv("Q36_TRACE")) {   // what the experts produced, in BOTH modes: the pool's answer must be the resident answer
+        const float* ye = (const float*) s.ye.ptr;
+        const int* pl = (const int*) s.plan.ptr;
+        std::printf("Q36_TRACE ye[%s] entry0=%d: %g %g %g %g | plan[TOKENT+0..2]=%d %d %d\n", arena ? "arena" : "resident",
+                    pl[532], (double) ye[0], (double) ye[1], (double) ye[2], (double) ye[3], pl[532], pl[533], pl[534]);
+        std::fflush(stdout);
+    }
+
     // 4. the combine: the routed picks, plus sigmoid(sg) times the shared expert
     struct GlueArgs {
         uint32_t n, n_tok, n_embd, topk;
