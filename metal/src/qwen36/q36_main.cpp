@@ -73,7 +73,8 @@ int main(int argc, char** argv) {
     std::string prompt_text;
     int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
     std::string h_file, logits_file;
-    int show_token = -1, check_gdn = -1;
+    int show_token = -1, check_gdn = -1, gdn_layer = 0;
+    std::string x_file;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -93,6 +94,8 @@ int main(int argc, char** argv) {
     else if (a == "--dump-logits") logits_file = next();
     else if (a == "--show-token") show_token = (int) std::atoi(next().c_str());
     else if (a == "--check-gdn") check_gdn = (int) std::atoi(next().c_str());
+    else if (a == "--gdn-layer") gdn_layer = (int) std::atoi(next().c_str());
+    else if (a == "--x-file") x_file = next();
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -399,12 +402,20 @@ int main(int argc, char** argv) {
         // model right".  At token `check_gdn` with a zero state and a zero conv history the delta rule is a single step, so the whole
         // GDN is computable here in a page: the conv's last tap, the L2 norms, `d = v*b`, `S = d k^T`, `o = S q` (which collapses to
         // `o[j] = d[j] * sum_i k[i]q[i]`), the siLU-gated rms, and ssm_out.
-        const strata::qwen36::Layer& L0 = m.layers[0];
+        const strata::qwen36::Layer& L0 = m.layers[(size_t) gdn_layer];
         const int N = (int) m.g.n_embd, HK = (int) m.g.ssm_k_heads, HV = (int) m.g.ssm_v_heads,
                   S = (int) m.g.ssm_state_size, C = (2 * HK + HV) * S, ZV = HV * S;
         std::vector<float> f((size_t) std::max(N, std::max(C, ZV)));
         std::vector<double> x((size_t) N);
-        ref::dequant(m.embed.type(), m.embed.data(*m.file) + (size_t) check_gdn * ref::row_bytes(m.embed.type(), N), f.data(), (size_t) N);
+        if (x_file.empty()) {
+            ref::dequant(m.embed.type(), m.embed.data(*m.file) + (size_t) check_gdn * ref::row_bytes(m.embed.type(), N), f.data(), (size_t) N);
+        } else {
+            // the engine's own row from a previous layer: this is how a layer other than 0 is checked, with the residual it really saw
+            FILE* fx = std::fopen(x_file.c_str(), "rb");
+            if (fx == nullptr) { std::printf("--x-file: cannot read %s\n", x_file.c_str()); return 1; }
+            if (std::fread(f.data(), 4, (size_t) N, fx) != (size_t) N) { std::printf("--x-file: short\n"); std::fclose(fx); return 1; }
+            std::fclose(fx);
+        }
         for (int i = 0; i < N; ++i) x[(size_t) i] = (double) f[(size_t) i];
         ref::dequant(L0.attn_norm.type(), L0.attn_norm.data(*m.file), f.data(), (size_t) N);
         double ss = 0.0;
@@ -516,7 +527,7 @@ int main(int argc, char** argv) {
             const int FF = (int) m.g.n_ff;
             const size_t gu_row = ref::row_bytes(L0.gate_exps.type(), N), d_row = ref::row_bytes(L0.down_exps.type(), FF);
             const size_t gsz = (size_t) FF * gu_row, dsz = (size_t) N * d_row;
-            std::printf("gdn layer 0 host router top-8:");
+            std::printf("gdn layer %d host router top-8:", gdn_layer);
             for (int k = 0; k < (int) m.top_k; ++k) std::printf(" %d", ord[(size_t) k]);
             std::printf("\n");
             std::vector<float> wr((size_t) N), wa((size_t) FF);
@@ -573,13 +584,13 @@ int main(int argc, char** argv) {
                 const double gs = 1.0 / (1.0 + std::exp(-sgate));
                 for (int r = 0; r < N; ++r) moe[(size_t) r] += gs * sh[(size_t) r];
             }
-            std::printf("gdn layer 0 host x_out[0..3]:");
+            std::printf("gdn layer %d host x_out[0..3]:", gdn_layer);
             for (int r = 0; r < 4; ++r) std::printf(" %g", xm[(size_t) r] + moe[(size_t) r]);
             std::printf("  (moe[0..3]:");
             for (int r = 0; r < 4; ++r) std::printf(" %g", moe[(size_t) r]);
             std::printf(")\n");
         }
-        std::printf("gdn layer 0 host mixer (token %d):", check_gdn);
+        std::printf("gdn layer %d host mixer (token %d):", gdn_layer, check_gdn);
         for (int r = 0; r < 4; ++r) {
             ref::dequant(L0.ssm_out.type(), L0.ssm_out.data(*m.file) + (size_t) r * rb2, row2.data(), (size_t) ZV);
             double acc = 0.0;
