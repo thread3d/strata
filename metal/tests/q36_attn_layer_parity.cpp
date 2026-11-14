@@ -16,7 +16,9 @@
 
 namespace {
 int g_fail = 0;
-constexpr int N = 512;      // the hidden width (a small one: the head shape below is the family's own)
+// N is the PACK's hidden width (2048), not a small one: the layer's four projections are gemvs whose tile choice depends on n_in, and the
+// value projection's output is narrow (512) - a shape a 512-wide hidden does not exercise the same way.
+constexpr int N = 2048;
 constexpr int QH = 16, KVH = 2, QD = 256;
 
 void report(const std::string& what, double err, double tol) {
