@@ -129,7 +129,21 @@ int main() {
             std::printf("forward_token (streamed): %s\n", err.c_str());
             return 1;
         }
-        check(true, "and a token completes through the pool (the answer is not yet the resident answer - round 34)");
+        // Now that the fixture's Q8_0 tensors are VALID blocks rather than byte noise, the two paths can be compared: the experts
+        // carry real numbers, so a disagreement is the code and not the data.
+        strata::qwen36::Forward fr;
+        if (!strata::qwen36::forward_init(cx, m, d, cap, (uint64_t) 1 << 32, fr, err) ||
+            !strata::qwen36::forward_token(cx, m, d, fr, token, 0, 1, err)) {
+            std::printf("resident run: %s\n", err.c_str());
+            return 1;
+        }
+        size_t xd = 0, ld = 0;
+        for (int i = 0; i < (int) m.g.n_embd; ++i)
+            if (((const float*) fr.x.ptr)[i] != ((const float*) fs.x.ptr)[i]) ++xd;
+        for (int i = 0; i < (int) m.g.n_vocab; ++i)
+            if (((const float*) fr.logits.ptr)[i] != ((const float*) fs.logits.ptr)[i]) ++ld;
+        check(xd == 0, "the streamed residual is the resident residual, bit for bit (" + std::to_string(xd) + " differ)");
+        check(ld == 0, "and so are the logits (" + std::to_string(ld) + " differ)");
     }
 
     std::printf("    resident: %.1f MiB of state, rings, slots and scratch for %zu layers at a %d-row window\n",
