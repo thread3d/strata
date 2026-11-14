@@ -64,7 +64,8 @@ int main() {
     {
         const uint32_t* map = st.smap.as<uint32_t>();
         std::vector<uint8_t> want((size_t) b.blob);
-        bool all = map[3] == 0 && map[1] == 1 && map[2] == 2;
+        bool all = map[3] == strata::qwen36::slot_word(st, 0) && map[1] == strata::qwen36::slot_word(st, 1) &&
+                   map[2] == strata::qwen36::slot_word(st, 2);
         for (int r = 0; r < 3 && all; ++r) {
             const int e = ids[(size_t) r];
             if (!strata::qwen36::pack(b, e, L.gate_exps.data(*m.file), L.up_exps.data(*m.file), L.down_exps.data(*m.file),
@@ -84,7 +85,9 @@ int main() {
     check(n2 == 1, "a second fill loads only what is not already in a slot (only 0 is new)");
     {
         const uint32_t* map = st.smap.as<uint32_t>();
-        check(map[2] == 2 && map[0] == 0 && map[1] == 1, "the map points each loaded expert at its own slot");
+        check(map[2] == strata::qwen36::slot_word(st, 2) && map[0] == strata::qwen36::slot_word(st, 0) &&
+                  map[1] == strata::qwen36::slot_word(st, 1),
+          "the map points each loaded expert at its own slot (an arena word: slot * stride / 16384)");
         std::vector<uint8_t> want((size_t) b.blob);
         bool all = strata::qwen36::pack(b, 0, L.gate_exps.data(*m.file), L.up_exps.data(*m.file),
                                         L.down_exps.data(*m.file), want.data(), err) &&
@@ -143,7 +146,7 @@ int main() {
                                (err.empty() ? std::string() : ": " + err) + ")");
         const uint32_t* pm = pool.smap.as<uint32_t>();
         bool mapped = true;
-        for (int e = 0; e < 8; ++e) mapped = mapped && pm[e] == (uint32_t) e;
+        for (int e = 0; e < 8; ++e) mapped = mapped && pm[e] == strata::qwen36::slot_word(pool, e);
         check(mapped, "and the map points each of them at its own slot");
     }
 

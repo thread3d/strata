@@ -10,7 +10,8 @@ bool stream_init(mtl::Context& cx, ExpertStream& s, const ExpertBlob& b, int n_s
         err = "a stream needs slots, experts and a blob shape";
         return false;
     }
-    s.slots = cx.alloc((size_t) b.slots(n_slot));
+    s.stride = slot_stride(b);
+    s.slots = cx.alloc((size_t) (s.stride * (uint64_t) n_slot));
     s.smap = cx.alloc(4 * (size_t) n_expert);
     if (s.slots.ptr == nullptr || s.smap.ptr == nullptr) {
         err = "the device refused the expert pool";
@@ -56,7 +57,7 @@ int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vect
         if (!pack(s.blob, e, L.gate_exps.data(*m.file), L.up_exps.data(*m.file), L.down_exps.data(*m.file),
                   slot_ptr(s, slot), err))
             return 0;
-        map[e] = (uint32_t) slot;
+        map[e] = slot_word(s, slot);
         ++slot;
         ++loaded;
     }

@@ -24,9 +24,10 @@
 namespace strata::qwen36 {
 
 struct ExpertStream {
-    mtl::Buffer slots;    // n_slot blobs, back to back
-    mtl::Buffer smap;     // n_expert uint32: the slot an expert is in, or kNotLoaded
+    mtl::Buffer slots;    // n_slot blobs, back to back at `stride` bytes each
+    mtl::Buffer smap;     // n_expert uint32: the arena word for the slot an expert is in, or kNotLoaded
     ExpertBlob blob{};
+    uint64_t stride = 0;  // one slot's stride: blob.blob rounded UP to the arena's 16 KiB granule
     int n_slot = 0;
     int n_expert = 0;
 };
@@ -46,7 +47,16 @@ int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vect
 /// they were found, which is the order stream_load fills slots in.
 void stream_ids(const mtl::Buffer& ids, int n_tok, int top_k, std::vector<int>& out);
 
-/// The host address of slot `i` (a slot is `blob.blob` bytes).
-inline uint8_t* slot_ptr(ExpertStream& s, int i) { return s.slots.as<uint8_t>() + (size_t) i * s.blob.blob; }
+/// One slot's stride: the blob rounded up to the arena's granule.  moe.metal's arena_slot() encodes a slot as
+/// (buffer << 28) | (byte offset / 16384), so a slot that is not a whole number of 16 KiB granules cannot be addressed - the
+/// real pack's blob (3,342,336 bytes for n_embd 2048 / n_ff 512 at Q8_0) is exactly 204 granules, and anything else is padded here.
+inline constexpr uint64_t kArenaGranule = 16384;
+inline uint64_t slot_stride(const ExpertBlob& b) { return (b.blob + kArenaGranule - 1) / kArenaGranule * kArenaGranule; }
+
+/// The arena word for slot `i` in a pool that lives in one buffer: chunk 0, offset i * stride / 16384.
+inline uint32_t slot_word(const ExpertStream& s, int i) { return (uint32_t) ((uint64_t) i * s.stride / kArenaGranule); }
+
+/// The host address of slot `i`.
+inline uint8_t* slot_ptr(ExpertStream& s, int i) { return s.slots.as<uint8_t>() + (size_t) i * s.stride; }
 
 }  // namespace strata::qwen36
