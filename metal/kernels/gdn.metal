@@ -1,6 +1,11 @@
 // The output gate: DELTA-NET families want sigmoid(z), qwen35moe wants silu(z) - fused_gdn.hpp carries both
 // (fused_gdn_step_norm_silu) and names this family.  Declared at FILE SCOPE, before any guard, because the step body needs it in
 // every variant this file compiles into.
+// The KEY's scale: DeltaNet norms q and k and multiplies BOTH by 1/sqrt(D); qwen35moe scales the QUERY only
+// (q36ref.cu:220-221, and llama.cpp passes kq_scale into the delta-net builder, which applies it to q).  Undefined = the DeltaNet form,
+// so every existing caller keeps its semantics; qwen35moe sets it false.
+constant bool GDN_KSCALE_C [[function_constant(27)]];
+constant bool gdn_kscale = !is_function_constant_defined(GDN_KSCALE_C) || GDN_KSCALE_C;
 constant bool GDN_SILU_C [[function_constant(26)]];
 constant bool gdn_silu = is_function_constant_defined(GDN_SILU_C) && GDN_SILU_C;
 
@@ -138,7 +143,7 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
             const float rs = rsqrt(tot / float(S) + a.eps / float(S));
             const float nv = (rs * cv) * scale;
             if (tid < 128) qs[tid] = nv;
-            else ks[tid - 128] = nv;
+            else ks[tid - 128] = gdn_kscale ? nv : (rs * cv);   // the key: scaled for DeltaNet, normed only for qwen35moe
         } else if (tid < 384) {
             vs[tid - 256] = cv;
         }
