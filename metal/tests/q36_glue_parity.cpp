@@ -88,48 +88,6 @@ void run_case(mtl::Context& cx, const Case& c) {
     }
 }
 
-// q36_gdn_ab: the GDN's alpha and beta from the two projections, against the double reference of k_gdn_ab's own rule.
-void gdn_ab_case(mtl::Context& cx, int n) {
-    std::vector<float> wa((size_t) n), wb((size_t) n), dt((size_t) n), sa((size_t) n);
-    for (int i = 0; i < n; ++i) {
-        wa[(size_t) i] = 6.0f * std::sin(0.017f * (float) i + 0.4f);    // logits wide enough to reach the softplus branch
-        wb[(size_t) i] = 3.0f * std::cos(0.011f * (float) i + 1.1f);
-        dt[(size_t) i] = 0.5f * std::sin(0.007f * (float) i);
-        sa[(size_t) i] = -0.2f - 0.3f * std::fabs(std::sin(0.003f * (float) i));
-    }
-    mtl::Buffer bwa = cx.alloc(4 * (size_t) n), bwb = cx.alloc(4 * (size_t) n), bdt = cx.alloc(4 * (size_t) n),
-                bsa = cx.alloc(4 * (size_t) n), bal = cx.alloc(4 * (size_t) n), bbe = cx.alloc(4 * (size_t) n);
-    std::memcpy(bwa.ptr, wa.data(), 4 * (size_t) n);
-    std::memcpy(bwb.ptr, wb.data(), 4 * (size_t) n);
-    std::memcpy(bdt.ptr, dt.data(), 4 * (size_t) n);
-    std::memcpy(bsa.ptr, sa.data(), 4 * (size_t) n);
-    mtl::Pipeline p = cx.pipeline(cx.compile({"../src/qwen36/msl/q36_glue.metal"}, "", false), "q36_gdn_ab");
-    mtl::Dispatch d;
-    d.p = &p;
-    d.args = {mtl::Arg::B(bwa), mtl::Arg::B(bwb), mtl::Arg::B(bdt), mtl::Arg::B(bsa), mtl::Arg::B(bal), mtl::Arg::B(bbe),
-              mtl::Arg::V((unsigned) n)};
-    d.tg[0] = 64;
-    d.grid[0] = (uint32_t) ((n + 63) / 64);
-    cx.run({d});
-    const float* ga = (const float*) bal.ptr;
-    const float* gb = (const float*) bbe.ptr;
-    double an = 0.0, ad = 0.0, bn = 0.0, bd = 0.0;
-    for (int i = 0; i < n; ++i) {
-        const double x = (double) wa[(size_t) i] + (double) dt[(size_t) i];
-        const double sp = x > 20.0 ? x : std::log1p(std::exp(x));
-        const double ra = sp * (double) sa[(size_t) i];
-        const double rb = 1.0 / (1.0 + std::exp(-(double) wb[(size_t) i]));
-        const double ea = (double) ga[(size_t) i] - ra, eb = (double) gb[(size_t) i] - rb;
-        an += ea * ea; ad += ra * ra;
-        bn += eb * eb; bd += rb * rb;
-    }
-    char nm[96];
-    std::snprintf(nm, sizeof nm, "q36_gdn_ab %d rows: alpha", n);
-    report(nm, ad > 0 ? std::sqrt(an / ad) : std::sqrt(an), 2e-6);
-    std::snprintf(nm, sizeof nm, "q36_gdn_ab %d rows: beta", n);
-    report(nm, bd > 0 ? std::sqrt(bn / bd) : std::sqrt(bn), 2e-6);
-}
-
 }  // namespace
 
 int main() {
@@ -139,9 +97,6 @@ int main() {
     for (const Case& c : {Case{2048, 1, true}, Case{2048, 3, true}, Case{100, 2, true}, Case{2048, 1, false},
                           Case{64, 4, false}})
         run_case(cx, c);
-    // the GDN's gates: 32 V heads for this family (and a count that is not a whole number of threadgroups)
-    gdn_ab_case(cx, 32);
-    gdn_ab_case(cx, 100);
     std::printf("%s\n", g_fail ? "FAILURES" : "ALL PASS");
     return g_fail ? 1 : 0;
 }

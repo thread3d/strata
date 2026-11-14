@@ -53,22 +53,3 @@ kernel void q36_add_rms(device float* x [[buffer(0)]], device const float* y [[b
     for (uint i = tid; i < n; i += nth) hr[i] = xr[i] * inv * w[i];
 }
 
-// The GDN's decay and update gate, from the two projections the layer runs anyway: q36_engine.cu's k_gdn_ab, whose rule is
-// two lines (there read off its body):
-//
-//     alpha[j] = softplus(W_alpha[j] . x + dt_bias[j]) * ssm_a[j]
-//     beta[j]  = sigmoid (W_beta [j] . x)
-//
-// gdn_step_t takes both ready-made - it does not compute them - so they are this kernel's job.  softplus is written with the
-// large-argument branch (log(1 + e^x) -> x) because an exponential of a large logit saturates to inf and the decay it stands
-// for is then wrong, not merely imprecise; the CUDA engine's k_gdn_ab uses the same branch.
-kernel void q36_gdn_ab(device const float* wa [[buffer(0)]], device const float* wb [[buffer(1)]],
-                       device const float* dt [[buffer(2)]], device const float* ssm_a [[buffer(3)]],
-                       device float* alpha [[buffer(4)]], device float* beta [[buffer(5)]],
-                       constant uint& n [[buffer(6)]], uint gid [[thread_position_in_grid]]) {
-    if (gid >= n) return;
-    const float x = wa[gid] + dt[gid];
-    const float sp = x > 20.0f ? x : log(1.0f + exp(x));
-    alpha[gid] = sp * ssm_a[gid];
-    beta[gid] = 1.0f / (1.0f + exp(-wb[gid]));
-}
