@@ -10,6 +10,7 @@
 #include "q36_model.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -68,7 +69,7 @@ int main(int argc, char** argv) {
     double budget_gib = 2.0;
     bool describe = false, no_stream = false, text = false;
     std::string prompt_text;
-    int check_embed = -1;
+    int check_embed = -1, check_output = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
     else if (a == "--text") text = true;
     else if (a == "--prompt") prompt_text = next();
     else if (a == "--check-embed") check_embed = (int) std::atoi(next().c_str());
+    else if (a == "--check-output") check_output = (int) std::atoi(next().c_str());
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -145,6 +147,39 @@ int main(int argc, char** argv) {
                     (double) got[2], (double) want[0], (double) want[1], (double) want[2],
                     den > 0 ? std::sqrt(num / den) : std::sqrt(num));
         return 0;
+    }
+
+    if (check_output > 0) {
+        // The OUTPUT projection, checked against the file: logits[k] must be the dot of the final normed row with the file's row k of
+        // output.weight.  That verifies the matrix's orientation and its vocabulary-row indexing on a real 248,320-row matrix - the
+        // one thing no synthetic test has ever done - given the h this engine produced.
+        if (!strata::qwen36::forward_token(cx, m, d, f, 760, 0, 1, err)) {
+            std::printf("forward: %s\n", err.c_str());
+            return 1;
+        }
+        const float* h = (const float*) f.xh.ptr;
+        const float* lg = (const float*) f.logits.ptr;
+        const size_t rb = ref::row_bytes(m.output.type(), (int) m.g.n_embd);
+        std::vector<float> row((size_t) m.g.n_embd);
+        int worst = 0;
+        double worst_rel = 0.0;
+        for (int k = 0; k < check_output; ++k) {
+            ref::dequant(m.output.type(), m.output.data(*m.file) + (size_t) k * rb, row.data(), row.size());
+            double d = 0.0, nn = 0.0;
+            for (int i = 0; i < (int) m.g.n_embd; ++i) {
+                d += (double) row[(size_t) i] * (double) h[i];
+                nn += (double) row[(size_t) i] * (double) row[(size_t) i];
+            }
+            const double rel = std::fabs(d - (double) lg[k]) / (std::fabs(d) + 1e-9);
+            if (rel > worst_rel) { worst_rel = rel; worst = k; }
+        }
+        // and where the engine's own best logit sits, to say whether the head is at least self-consistent
+        int best = 0;
+        for (int k = 1; k < (int) m.g.n_vocab; ++k)
+            if (lg[k] > lg[best]) best = k;
+        std::printf("output projection: %d rows checked, worst rel %.3e at row %d; engine argmax %d (logit %g, h[0] %g)\n", check_output,
+                    worst_rel, worst, best, (double) lg[best], (double) h[0]);
+        return worst_rel < 2e-5 ? 0 : 1;
     }
 
     std::vector<uint32_t> prompt = parse_ids(tokens_s.c_str());
