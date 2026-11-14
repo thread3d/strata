@@ -59,6 +59,11 @@ target_compile_options(strata_q36_model PRIVATE -Wno-unused-parameter)
 add_executable(q36_model_check tests/q36_model_check.cpp)
 target_include_directories(q36_model_check PRIVATE ${STRATA_ROOT}/tests/core)
 target_link_libraries(q36_model_check PRIVATE strata_q36_model)
+# both halves of the Qwen3.6 work so far are checks the build can run: the host half with no GPU, the attention kernel
+# against its double reference.  (q36_attn_parity comes from the tests glob above, which links mtl_rt.)
+enable_testing()
+add_test(NAME q36_model_check COMMAND q36_model_check)
+add_test(NAME q36_attn_parity COMMAND q36_attn_parity)
 
 # ---- the device runtime and the engine (mac-design) ---------------------------------------------------------------
 set(METAL_CPP_DIR "" CACHE PATH "metal-cpp headers (https://developer.apple.com/metal/cpp/), e.g. metal-cpp_26")
