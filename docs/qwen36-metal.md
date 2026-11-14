@@ -476,3 +476,26 @@ A chat run of "The capital of France is" ends, at 200 tokens:
   implemented, so MTP is unused.
 * **other quantisations** - the pack must be Q8_0 for the dense half (the expert kernels take IQ3_S, IQ4_XS, Q2_0 and Q3_K..Q6_K through
   `native_expert`); the gate refuses by name rather than mis-reading.
+
+### Building it
+
+    cmake -S metal -B build-metal -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja \
+          -DMETAL_CPP_DIR=$HOME/projects/metal-cpp/metal-cpp \
+          -DSTRATA_GGML_DIR=$HOME/projects/llama.cpp
+    ninja -C build-metal strata-q36-metal
+    ctest --test-dir build-metal -R q36_          # 17 checks, no pack needed (they build their own tiny GGUFs)
+
+The engine needs: macOS with Metal 2 (this port is developed on 11.7.11 and an AMD RX 580, where `maxBufferLength` is 3.5 GB and the
+simdgroup width is 64 rather than 32 - the kernels handle both), `metal-cpp`, and a llama.cpp checkout for the shared `ggml` quantisation
+tables.  No CUDA, no Python.
+
+To compare against llama.cpp (the tool that found the defect):
+
+    clang++ -O2 -std=c++17 -o ~/q36_llama_dump tools/qwen35/q36_llama_dump.cpp \
+        -I ~/projects/llama.cpp/include -I ~/projects/llama.cpp/ggml/include \
+        -L ~/projects/llama.cpp/build/bin -lllama -lggml -lggml-base
+    DYLD_LIBRARY_PATH=~/projects/llama.cpp/build/bin ~/q36_llama_dump --model PACK --tokens 760 --n 1 --dump-layers /tmp/ref.layers
+
+and ours writes the same format with `Q36_DUMP_LAYERS=/tmp/ours.layers strata-q36-metal --model PACK --tokens 760 --n 1`.  Both files are flat
+float32, `(positions, 40, 2048)`; the per-layer cosine between them is the number in the table above.
