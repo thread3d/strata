@@ -70,6 +70,17 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
     // caught - the residual doubled a layer, rms went to inf and everything downstream was NaN.)
     (void) from_embedding;
     if (!join(cx, lk, x, nullptr, *w.attn_norm, w.attn_norm_off, s.h, n, eps, false, err)) return false;
+    {   // Q36_DUMP_H2: the normed row this layer's mixer read, for Q36_DUMP_LAYER - the calibration input a host reference needs
+        const char* lp = std::getenv("Q36_DUMP_LAYER");
+        const size_t want = lp != nullptr ? (size_t) std::atoi(lp) : 0;
+        const char* hp = std::getenv("Q36_DUMP_H2");
+        if (hp != nullptr && io.layer_index == want) {
+            if (FILE* fh = std::fopen(hp, "wb")) {
+                std::fwrite(s.h.ptr, 4, (size_t) n, fh);
+                std::fclose(fh);
+            }
+        }
+    }   // BEFORE the mixer: attn_forward takes h by non-const reference and clobbers it
 
     // 2. the mixer, its output read from the part's own scratch
     if (w.attention) {
@@ -81,17 +92,6 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
             return false;
     }
     const mtl::Buffer& mix = w.attention ? io.attn_scratch->y : io.gdn_scratch->out;
-    {   // Q36_DUMP_H2: the normed row this layer's mixer read, for Q36_DUMP_LAYER - the calibration input a host reference needs
-        const char* lp = std::getenv("Q36_DUMP_LAYER");
-        const size_t want = lp != nullptr ? (size_t) std::atoi(lp) : 0;
-        const char* hp = std::getenv("Q36_DUMP_H2");
-        if (hp != nullptr && io.layer_index == want) {
-            if (FILE* fh = std::fopen(hp, "wb")) {
-                std::fwrite(s.h.ptr, 4, (size_t) n, fh);
-                std::fclose(fh);
-            }
-        }
-    }
     if (std::getenv("Q36_TRACE")) {
         auto scan = [](const mtl::Buffer& b, int n, const char* what) {
             const float* v = (const float*) b.ptr;
