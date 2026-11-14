@@ -72,6 +72,7 @@ int main(int argc, char** argv) {
     bool describe = false, no_stream = false, text = false;
     std::string prompt_text;
     int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
+    std::string h_file;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -87,6 +88,7 @@ int main(int argc, char** argv) {
     else if (a == "--check-output") check_output = (int) std::atoi(next().c_str());
     else if (a == "--check-bind") check_bind = (int) std::atoi(next().c_str());
     else if (a == "--check-expert") check_expert = (int) std::atoi(next().c_str());
+    else if (a == "--h-file") h_file = next();
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -246,6 +248,18 @@ int main(int argc, char** argv) {
         for (int i = 0; i < N; ++i) ss += x[(size_t) i] * x[(size_t) i];
         const double rs = 1.0 / std::sqrt(ss / (double) N + (double) m.eps);
         for (int i = 0; i < N; ++i) h[(size_t) i] = x[(size_t) i] * rs * pn[(size_t) i];
+        if (!h_file.empty()) {
+            // THE ENGINE'S OWN ROW: the stand-in above is within a thousandth of it, and a thousandth is enough to swap a rank-8 pick.
+            // With the row the block really read, the host's answer and the engine's are the same question.
+            FILE* fh = std::fopen(h_file.c_str(), "rb");
+            if (fh == nullptr) { std::printf("--h-file: cannot read %s\n", h_file.c_str()); return 1; }
+            std::vector<float> hf((size_t) N);
+            const size_t got = std::fread(hf.data(), 4, (size_t) N, fh);
+            std::fclose(fh);
+            if (got != (size_t) N) { std::printf("--h-file: %zu of %d floats\n", got, N); return 1; }
+            for (int i = 0; i < N; ++i) h[(size_t) i] = (double) hf[(size_t) i];
+            std::printf("  (h taken from %s)\n", h_file.c_str());
+        }
         const size_t gu_row = ref::row_bytes(L0.gate_exps.type(), N);
         const size_t d_row = ref::row_bytes(L0.down_exps.type(), FF);
         const size_t gsz = (size_t) FF * gu_row, dsz = (size_t) N * d_row;

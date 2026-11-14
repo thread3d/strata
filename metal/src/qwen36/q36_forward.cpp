@@ -210,6 +210,14 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
             f.attn.vring = f.vring[i];
         }
         if (!layer_forward(cx, f.lk, f.dk, f.dense, w, io, f.layer, f.x, i == 0, err)) return false;
+        if (i == 0) {   // Q36_DUMP_H: the row layer 0's MoE actually read, so a host reference can use the same `h`
+            if (const char* hp = std::getenv("Q36_DUMP_H")) {
+                if (FILE* fh = std::fopen(hp, "wb")) {
+                    std::fwrite(f.layer.h.ptr, 4, (size_t) N, fh);
+                    std::fclose(fh);
+                }
+            }
+        }
         // Q36_TRACE=1: the residual after each layer, with the count of non-finite values - the trace that found the
         // round-27 defect (a norm weight read from a fixture byte pattern), and cheap enough to keep
         if (std::getenv("Q36_TRACE")) {
