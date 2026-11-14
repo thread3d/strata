@@ -73,6 +73,7 @@ int main(int argc, char** argv) {
     std::string prompt_text;
     int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
     std::string h_file, logits_file;
+    int show_token = -1;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -90,6 +91,7 @@ int main(int argc, char** argv) {
     else if (a == "--check-expert") check_expert = (int) std::atoi(next().c_str());
     else if (a == "--h-file") h_file = next();
     else if (a == "--dump-logits") logits_file = next();
+    else if (a == "--show-token") show_token = (int) std::atoi(next().c_str());
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -377,6 +379,17 @@ int main(int argc, char** argv) {
         }
         std::fclose(fh);
         std::printf("wrote %zu logit rows of %lld floats to %s\n", pr.size(), (long long) m.g.n_vocab, logits_file.c_str());
+        return 0;
+    }
+
+    if (show_token >= 0) {   // the RAW vocabulary string of an id - what a control token's text actually is
+        strata::keep_all_meta_arrays() = true;
+        const strata::MetaValue* tv = m.file->meta().get("tokenizer.ggml.tokens");
+        if (tv == nullptr || (size_t) show_token >= tv->items.size()) {
+            std::printf("no token %d (%zu kept)\n", show_token, tv ? tv->items.size() : 0);
+            return 1;
+        }
+        std::printf("token %d = \"%s\"\n", show_token, tv->items[(size_t) show_token].s.c_str());
         return 0;
     }
 
