@@ -162,7 +162,7 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
         }
     }
     if (std::getenv("Q36_TRACE_QG")) { std::printf("  qg[0] after attention = %.6g\n", (double) ((const float*) s.qg.ptr)[0]); std::fflush(stdout); }
-    if (const char* ap = std::getenv("Q36_DUMP_A")) {   // the attention's own output, before the o projection: the discriminator
+    if (const char* ap = std::getenv("Q36_DUMP_A"); ap != nullptr && dump_this) {   // the attention's own output, before the o projection: the discriminator
         if (FILE* fa = std::fopen(ap, "wb")) {
             std::fwrite(s.a.ptr, 4, hq, fa);
             std::fclose(fa);
