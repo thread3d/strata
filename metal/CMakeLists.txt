@@ -49,7 +49,8 @@ list(REMOVE_ITEM STRATA_METAL_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_he
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_gdn_layer_parity.cpp
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_moe_shared_parity.cpp
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_expert_blob_check.cpp
-                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_moe_routed_parity.cpp)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_moe_routed_parity.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_layer_check.cpp)
 foreach(src ${STRATA_METAL_TESTS})
   get_filename_component(t ${src} NAME_WE)
   add_executable(${t} ${src})
@@ -61,7 +62,7 @@ endforeach()
 # what this port cannot take - kept separate from the kernels and from the device runtime, so it builds and is tested
 # with no GPU at all (q36_model_check drives it on tiny synthetic files).
 add_library(strata_q36_model STATIC src/qwen36/q36_model.cpp src/qwen36/q36_device.cpp src/qwen36/q36_dense.cpp
-                                 src/qwen36/q36_attn_layer.cpp src/qwen36/q36_gdn_layer.cpp src/qwen36/q36_moe_shared.cpp src/qwen36/q36_moe_routed.cpp)
+                                 src/qwen36/q36_attn_layer.cpp src/qwen36/q36_gdn_layer.cpp src/qwen36/q36_moe_shared.cpp src/qwen36/q36_moe_routed.cpp src/qwen36/q36_layer.cpp)
 target_link_libraries(strata_q36_model PUBLIC mtl_rt)   # the device half (q36_device.cpp) uploads into mtl::Buffer
 target_include_directories(strata_q36_model PUBLIC src ${STRATA_ROOT}/include)
 target_compile_options(strata_q36_model PRIVATE -Wno-unused-parameter)
@@ -94,6 +95,9 @@ add_test(NAME q36_expert_blob_check COMMAND q36_expert_blob_check)
 add_executable(q36_moe_routed_parity tests/q36_moe_routed_parity.cpp)
 target_link_libraries(q36_moe_routed_parity PRIVATE strata_q36_model)
 add_test(NAME q36_moe_routed_parity COMMAND q36_moe_routed_parity)
+add_executable(q36_layer_check tests/q36_layer_check.cpp)
+target_link_libraries(q36_layer_check PRIVATE strata_q36_model)
+add_test(NAME q36_layer_check COMMAND q36_layer_check)
 add_executable(q36_upload_check tests/q36_upload_check.cpp)
 target_include_directories(q36_upload_check PRIVATE ${STRATA_ROOT}/tests/core)
 target_link_libraries(q36_upload_check PRIVATE strata_q36_model)
