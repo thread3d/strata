@@ -47,7 +47,8 @@ list(REMOVE_ITEM STRATA_METAL_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_he
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_dense_parity.cpp            # (drives strata_q36_model: own target)
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_attn_layer_parity.cpp
                  ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_gdn_layer_parity.cpp
-                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_moe_shared_parity.cpp)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_moe_shared_parity.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_expert_blob_check.cpp)
 foreach(src ${STRATA_METAL_TESTS})
   get_filename_component(t ${src} NAME_WE)
   add_executable(${t} ${src})
@@ -86,6 +87,9 @@ add_test(NAME q36_gdn_layer_parity COMMAND q36_gdn_layer_parity)
 add_executable(q36_moe_shared_parity tests/q36_moe_shared_parity.cpp)
 target_link_libraries(q36_moe_shared_parity PRIVATE strata_q36_model)
 add_test(NAME q36_moe_shared_parity COMMAND q36_moe_shared_parity)
+add_executable(q36_expert_blob_check tests/q36_expert_blob_check.cpp)
+target_link_libraries(q36_expert_blob_check PRIVATE strata_q36_model)
+add_test(NAME q36_expert_blob_check COMMAND q36_expert_blob_check)
 add_executable(q36_upload_check tests/q36_upload_check.cpp)
 target_include_directories(q36_upload_check PRIVATE ${STRATA_ROOT}/tests/core)
 target_link_libraries(q36_upload_check PRIVATE strata_q36_model)
