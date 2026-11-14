@@ -37,9 +37,13 @@ inline constexpr uint32_t kNotLoaded = 0xFFFFFFFFu;
 /// A pool of `n_slot` slots and the map that goes with it (every entry starts as kNotLoaded).
 bool stream_init(mtl::Context& cx, ExpertStream& s, const ExpertBlob& b, int n_slot, int n_expert, std::string& err);
 
-/// Fills slots with `ids` (a token's routed experts for one layer), least-recently-used first, and updates `smap` so that exactly
-/// those experts point at their slots.  A repeated id is loaded once.  Returns the number of blobs copied; false with `err` when an
-/// id is outside the model or the copy does not fit the pool.
+/// Fills slots with `ids` (a token's routed experts for ONE LAYER) and points `smap` at them, so that exactly those experts are
+/// addressable.  A repeated id is loaded once.
+///
+/// **The map is cleared first, and that is the whole contract**: a slot holds one layer's expert, and one pool serves every layer of
+/// a token (the layers run in sequence), so an entry left from the previous layer would point at THAT layer's weights - the numbers
+/// stay finite and the answer is quietly wrong, expert by expert.  `loaded` is the number of blobs copied, which can be fewer than
+/// `ids.size()` when a token routes the same expert twice.
 int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids, std::string& err);
 
 /// The same fill from three raw tensor mappings (the file's gate / up / down payloads), for a caller that already holds them - a

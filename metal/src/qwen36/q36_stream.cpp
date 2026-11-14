@@ -49,6 +49,8 @@ int stream_load_raw(const ExpertBlob& b, ExpertStream& s, const std::vector<int>
                     const uint8_t* down, std::string& err) {
     (void) b;
     uint32_t* map = s.smap.as<uint32_t>();
+    // every slot now belongs to THIS layer: forget which expert the previous one left in which slot
+    for (int e = 0; e < s.n_expert; ++e) map[e] = kNotLoaded;
     int slot = 0, loaded = 0;
     for (int e : ids) {
         if (e < 0 || e >= s.n_expert) {

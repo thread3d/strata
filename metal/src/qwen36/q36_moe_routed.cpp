@@ -139,7 +139,14 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
             err = "a token routed to more experts than the pool holds";
             return false;
         }
-        if (!picked.empty() && stream_load(*fill->m, *fill->L, *fill->pool, picked, err) <= 0) return false;
+        if (!picked.empty()) {
+            err.clear();
+            const int loaded = stream_load(*fill->m, *fill->L, *fill->pool, picked, err);
+            if (loaded <= 0) {   // (0 with no message is a bug in the caller, so say which)
+                if (err.empty()) err = "the pool filled nothing from the router's picks";
+                return false;
+            }
+        }
         we.stream = fill->pool;
     }
 

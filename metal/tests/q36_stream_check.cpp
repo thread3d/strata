@@ -79,21 +79,25 @@ int main() {
         check(map[0] == strata::qwen36::kNotLoaded, "an expert that was not routed stays unloaded");
     }
 
-    // a second fill reuses the pool from slot 0 and re-points the map
+    // A SECOND FILL STARTS EMPTY: the map is per (layer, token), because a slot holds one layer's expert and one pool serves every
+    // layer - so a fresh fill reloads everything it needs and re-points the map from slot 0.  (The first version of this check
+    // asserted the opposite - reuse across fills - which encoded the bug the per-layer clear fixes: a stale entry would have handed
+    // this layer the previous layer's weights.)
     const std::vector<int> ids2{2, 0, 1};
     const int n2 = strata::qwen36::stream_load(m, L, st, ids2, err);
-    check(n2 == 1, "a second fill loads only what is not already in a slot (only 0 is new)");
+    check(n2 == 3, "a second fill loads all of its own experts (" + std::to_string(n2) + " of 3)");
     {
         const uint32_t* map = st.smap.as<uint32_t>();
-        check(map[2] == strata::qwen36::slot_word(st, 2) && map[0] == strata::qwen36::slot_word(st, 0) &&
-                  map[1] == strata::qwen36::slot_word(st, 1),
-          "the map points each loaded expert at its own slot (an arena word: slot * stride / 16384)");
+        check(map[2] == strata::qwen36::slot_word(st, 0) && map[0] == strata::qwen36::slot_word(st, 1) &&
+                  map[1] == strata::qwen36::slot_word(st, 2),
+              "the map points each of this fill's experts at its own slot, from slot 0");
         std::vector<uint8_t> want((size_t) b.blob);
-        bool all = strata::qwen36::pack(b, 0, L.gate_exps.data(*m.file), L.up_exps.data(*m.file),
-                                        L.down_exps.data(*m.file), want.data(), err) &&
-                   std::memcmp(strata::qwen36::slot_ptr(st, 0), want.data(), (size_t) b.blob) == 0;
-        check(all, "slot 0 now holds expert 0, not the expert it held before");
+        bool all = strata::qwen36::pack(b, 2, L.gate_exps.data(*m.file), L.up_exps.data(*m.file),
+                                        L.down_exps.data(*m.file), want.data(), err);
+        if (all) all = std::memcmp(strata::qwen36::slot_ptr(st, 0), want.data(), (size_t) b.blob) == 0;
+        check(all, "slot 0 now holds this fill's first expert, not the expert the previous fill left there");
     }
+
     // and a pool smaller than the routing is refused, not silently truncated
     strata::qwen36::ExpertStream small;
     if (!strata::qwen36::stream_init(cx, small, b, 2, (int) m.g.n_expert, err)) { std::printf("init: %s\n", err.c_str()); return 1; }
