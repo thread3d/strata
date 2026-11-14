@@ -134,6 +134,13 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
                           f.slots[i].as<uint8_t>() + (size_t) e * b.blob, err))
                     return false;
         }
+        // Q36_PRINT_SLOTS: every layer's own state / history / ring / slot address, so a shared buffer shows up as a duplicate
+        if (std::getenv("Q36_PRINT_SLOTS")) {
+            std::printf("slot %2zu kind %s state %p hist %p ring %p\n", i,
+                        L.kind == strata::core::LayerKind::Gdn ? "gdn" : (L.kind == strata::core::LayerKind::Attention ? "attn" : "mtp"),
+                        (void*) f.state[i].ptr, (void*) f.hist[i].ptr, (void*) f.kring[i].ptr);
+        }
+
     }
     return true;
 }
