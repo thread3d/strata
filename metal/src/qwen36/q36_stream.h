@@ -41,6 +41,11 @@ bool stream_init(mtl::Context& cx, ExpertStream& s, const ExpertBlob& b, int n_s
 /// id is outside the model or the copy does not fit the pool.
 int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids, std::string& err);
 
+/// The routed ids, off the device and into a host list: the one synchronisation a token needs.  `ids` holds n_tok * top_k ints as
+/// moe_route wrote them; the list comes back deduplicated (a verify window routes the same expert for two tokens) and in the order
+/// they were found, which is the order stream_load fills slots in.
+void stream_ids(const mtl::Buffer& ids, int n_tok, int top_k, std::vector<int>& out);
+
 /// The host address of slot `i` (a slot is `blob.blob` bytes).
 inline uint8_t* slot_ptr(ExpertStream& s, int i) { return s.slots.as<uint8_t>() + (size_t) i * s.blob.blob; }
 

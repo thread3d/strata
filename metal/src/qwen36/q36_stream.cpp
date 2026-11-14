@@ -24,6 +24,22 @@ bool stream_init(mtl::Context& cx, ExpertStream& s, const ExpertBlob& b, int n_s
     return true;
 }
 
+void stream_ids(const mtl::Buffer& ids, int n_tok, int top_k, std::vector<int>& out) {
+    out.clear();
+    if (ids.ptr == nullptr) return;
+    const int* p = ids.as<int>();
+    for (int i = 0; i < n_tok * top_k; ++i) {
+        const int e = p[i];
+        bool seen = false;
+        for (int q : out)
+            if (q == e) {
+                seen = true;
+                break;
+            }
+        if (!seen && e >= 0) out.push_back(e);
+    }
+}
+
 int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids, std::string& err) {
     uint32_t* map = s.smap.as<uint32_t>();
     int slot = 0, loaded = 0;

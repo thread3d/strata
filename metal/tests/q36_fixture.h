@@ -30,7 +30,9 @@ inline constexpr Dims kTiny = {5, 64, 2, 1, 256, 4, 2, 32, 32, 4, 128, 2, 4, 512
 inline constexpr uint64_t kVocab = 64;
 /// A second model, wide enough to run the ARITHMETIC on: every matrix row is a whole number of the gemv tiles' units (n_embd 512,
 /// n_ff 128), which kTiny's 64/32 are not - kTiny is for the loader tests, where nothing is multiplied.
-inline constexpr Dims kSmall = {5, 512, 2, 1, 256, 4, 2, 128, 128, 4, 128, 2, 4, 512, 4, 1};
+inline constexpr Dims kSmall = {5, 512, 2, 1, 256, 8, 2, 128, 128, 4, 128, 2, 4, 512, 4, 1};
+//                                              ^ 8 experts: the router's top-8 needs eight to pick from, or four of its picks
+//                                                fall outside a smaller model and the pool's range check refuses them
 
 inline std::vector<Kv> metadata(const char* arch, const Dims& d) {
     const std::string p = std::string(arch) + ".";
