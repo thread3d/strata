@@ -55,11 +55,14 @@ void run(mtl::Context& cx, int heads, bool bf16, int pos, const char* name) {
     std::vector<float> want((size_t) heads * QD);
     std::vector<uint16_t> wantb((size_t) heads * QD);
     for (int h = 0; h < heads; ++h) {
+        // where this head's row starts in the projection: a QUERY head's is (h * 2) * QD - the row is per head [q | gate] - and a
+        // KEY head's is h * QD, because attn_k is a plain matrix with no gate folded in.
+        const size_t src = (size_t) h * (bf16 ? 1 : 2) * QD;   // bf16 is the key variant (dense); f32 is the query one
         double ss = 0.0;
-        for (int e = 0; e < QD; ++e) ss += (double) raw[(size_t) h * 2 * QD + e] * (double) raw[(size_t) h * 2 * QD + e];
+        for (int e = 0; e < QD; ++e) ss += (double) raw[src + e] * (double) raw[src + e];
         const double rs = 1.0 / std::sqrt(ss / QD + (double) eps);
         std::vector<double> y((size_t) QD);
-        for (int e = 0; e < QD; ++e) y[(size_t) e] = (double) raw[(size_t) h * 2 * QD + e] * rs * (double) w[e];
+        for (int e = 0; e < QD; ++e) y[(size_t) e] = (double) raw[src + e] * rs * (double) w[e];
         for (int e = 0; e < QD; ++e) {
             double o = y[(size_t) e];
             if (e < QROT) {

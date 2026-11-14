@@ -57,10 +57,9 @@ kernel void q36_head_norm_rope_bf16(device const float* raw [[buffer(0)]], devic
                                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     constexpr uint QD = 256, HALF = 32, QROT = 2 * HALF;
     const uint h = tg.x;
-    // The projection's row is per head [q(QD) | gate(QD)], as the CUDA engine lays it out
-    // (q36_engine.cu: qg[(t*H+head)*2*HD] for q, +HD for the gate), so a head's q starts at h*2*QD - NOT h*QD, which read the
-    // first eight heads' q and the last eight heads' GATE as if they were queries.
-    device const float* r = raw + (size_t) h * 2 * QD;
+    // The KEYS' projection has no gate folded in - attn_k is a plain [n_embd, KVH*QD] matrix - so a key head's row is at h*QD.
+    // (The queries above are the interleaved one; applying their stride here as well cost exactly one KV head: 256 of 512 values.)
+    device const float* r = raw + (size_t) h * QD;
     const float x = r[tid];
     const float ss = sum32(x * x);
     threadgroup float part[8];

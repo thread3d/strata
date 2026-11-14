@@ -169,6 +169,10 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
     }
 
     for (size_t i = 0; i < m.layers.size(); ++i) {
+        // The in-file MTP block is a DRAFT HEAD, not a trunk layer: the engine runs the trunk, and the MTP block is what a
+        // speculative decode evaluates against the trunk's own last state.  Running it in the trunk would feed a draft layer's
+        // output into the final norm - which is one way to get fluent-looking nonsense out of a correct model.
+        if (m.layers[i].kind == strata::core::LayerKind::Mtp) continue;
         LayerWeights w;
         if (!bind_layer(m, d, i, w, err)) return false;
         LayerIo io;
