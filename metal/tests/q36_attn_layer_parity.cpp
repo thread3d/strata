@@ -163,9 +163,9 @@ void run_case(mtl::Context& cx, strata::qwen36::AttnKernels& k, int pos, int n_k
             kk[(size_t) hd * QD + e] = kr[(size_t) hd * QD + e];   // trap as the zero `scale` in q36_attn_parity)
     for (int hd = 0; hd < QH; ++hd) {   // (the queries come from the projection's FIRST half, as the kernel reads them)
         for (int e = 0; e < QD; ++e) q[(size_t) hd * QD + e] = qg[(size_t) hd * 2 * QD + e];   // per head [q | gate]
-        norm_rope(&q[(size_t) hd * QD], 0, qn);
+        norm_rope(&q[(size_t) hd * QD], pos, qn);   // the ropes are per POSITION: a hardcoded 0 matched the layer only at pos 0
     }
-    for (int hd = 0; hd < KVH; ++hd) norm_rope(&kk[(size_t) hd * QD], 0, kn);
+    for (int hd = 0; hd < KVH; ++hd) norm_rope(&kk[(size_t) hd * QD], pos, kn);   // the key of THIS token ropes at its position too
 
     // the window as the kernel reads it: earlier rows from the ring, this token's appended here
     std::vector<float> kwin((size_t) n_kv * KVH * QD), vwin((size_t) n_kv * KVH * QD);
