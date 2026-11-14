@@ -669,6 +669,11 @@ int main(int argc, char** argv) {
                         (int) L.q.type(), (unsigned long long) (L.q.ok() ? L.q.bytes() : 0), (int) L.v.ok(), (int) L.v.type(),
                         (unsigned long long) (L.v.ok() ? L.v.bytes() : 0), (int) L.o.ok(), QH);
         }
+        {
+            double vmx = 0.0;
+            for (double t : vx) vmx = std::max(vmx, std::fabs(t));
+            std::printf("attn layer %d host v[0..3]: %.5g %.5g %.5g %.5g  |v|max %.4g\n", check_attn, vx[0], vx[1], vx[2], vx[3], vmx);
+        }
         std::printf("attn layer %d host post-gate out[0..3]: %g %g %g %g\n", check_attn, yin[0], yin[1], yin[2], yin[3]);
         std::printf("attn layer %d host mixer y[0..3]:", check_attn);
         for (int r = 0; r < 4; ++r) {

@@ -134,6 +134,12 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
     da.tg[1] = da.tg[2] = 1;
 
     cx.run({dq, dk_, dv, da});
+    if (const char* vp = std::getenv("Q36_DUMP_V")) {   // the value projection before the ring store
+        if (FILE* fv = std::fopen(vp, "wb")) {
+            std::fwrite(s.v_raw.ptr, 4, hkv, fv);
+            std::fclose(fv);
+        }
+    }
     if (const char* ap = std::getenv("Q36_DUMP_A")) {   // the attention's own output, before the o projection: the discriminator
         if (FILE* fa = std::fopen(ap, "wb")) {
             std::fwrite(s.a.ptr, 4, hq, fa);
