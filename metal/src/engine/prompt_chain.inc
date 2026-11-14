@@ -25,6 +25,12 @@ int pc_unit_of(int t) {
 
 bool Window::coop_k4() {
     if (const char* e = std::getenv("COOP_K4")) return std::atoi(e) != 0;
+    // A Metal without MetalPerformancePrimitives has no matmul2d cooperative tensor to ask about: mm_bench.metal does not
+    // compile the coop_layout probes there (they are matmul2d), so the pipeline() below would throw rather than answer.
+    // The answer on such a Metal is "not the M5's layout", which is the M4 path - the same answer metal/tests/coop_probe.h
+    // gives, so the tooling and the engine agree.  Unmeasured on this card: no Qwen-family model has run here yet, so
+    // this is the first thing that path would have hit (see the port's note in docs/MAC.md).
+    if (!cx_->has_mpp()) return false;
     const int lib = cx_->compile({"mm_bench.metal"}, "#define NO_GGML_COMMON 1\n");
     mtl::Pipeline p = cx_->pipeline(lib, "coop_layout_16_64_32");
     mtl::Buffer out = cx_->alloc(4 * 3 * 32 * 128 * 4);
