@@ -18,6 +18,34 @@
 
 namespace {
 
+// The byte-level BPE alphabet: a token's string holds its bytes remapped to printable codepoints (the GPT-2 table every Qwen
+// tokenizer ships), so decoding is that map undone and the bytes written out.  Enough to READ a continuation; merges are not needed
+// for that, because the vocabulary already holds whole pieces.
+std::string detok(const std::vector<std::string>& vocab, uint32_t id, const std::vector<int>& byte_of) {
+    if ((size_t) id >= vocab.size()) return "<id ?>";
+    std::string out;
+    for (size_t i = 0; i < vocab[id].size();) {
+        const unsigned char c = (unsigned char) vocab[id][i];
+        int len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xe ? 3 : 4;
+        uint32_t cp = len == 1 ? c : len == 2 ? ((c & 0x1f) << 6) : len == 3 ? ((c & 0x0f) << 12) : ((c & 0x07) << 18);
+        for (int k = 1; k < len && i + (size_t) k < vocab[id].size(); ++k) cp = (cp << 6) | ((unsigned char) vocab[id][i + (size_t) k] & 0x3f);
+        i += (size_t) len;
+        if ((size_t) cp < byte_of.size() && byte_of[(size_t) cp] >= 0) out.push_back((char) byte_of[(size_t) cp]);
+        else return out + "<?>";
+    }
+    return out;
+}
+
+std::vector<int> byte_table() {
+    std::vector<int> byte_of(512, -1), cp_of(256, 0);
+    int n = 0;
+    for (int b = 0; b < 256; ++b) cp_of[(size_t) b] = b;
+    for (int b = 0; b < 256; ++b)
+        if (!((b >= 33 && b <= 126) || (b >= 161 && b <= 172) || (b >= 174 && b <= 255))) cp_of[(size_t) b] = 256 + n++;
+    for (int b = 0; b < 256; ++b) byte_of[(size_t) cp_of[(size_t) b]] = b;
+    return byte_of;
+}
+
 std::vector<uint32_t> parse_ids(const char* s) {
     std::vector<uint32_t> out;
     for (const char* p = s; *p;) {
@@ -38,7 +66,7 @@ int main(int argc, char** argv) {
     std::string model, tokens_s = "3,1";
     int n_new = 8, kv_cap = 64;
     double budget_gib = 2.0;
-    bool describe = false, no_stream = false;
+    bool describe = false, no_stream = false, text = false;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -48,6 +76,7 @@ int main(int argc, char** argv) {
         else if (a == "--kv-cap") kv_cap = std::atoi(next().c_str());
         else if (a == "--resident-byte-budget") budget_gib = std::atof(next().c_str());
         else if (a == "--describe") describe = true;
+    else if (a == "--text") text = true;
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -102,5 +131,19 @@ int main(int argc, char** argv) {
     std::printf("tokens:");
     for (uint32_t t : out) std::printf(" %u", t);
     std::printf("\n");
+    if (text) {   // the same ids as text, through the pack's own vocabulary
+        const strata::MetaValue* tv = m.file->meta().get("tokenizer.ggml.tokens");
+        if (tv == nullptr || tv->items.empty()) {
+            std::printf("text: this pack has no tokenizer.ggml.tokens\n");
+            return 0;
+        }
+        std::vector<std::string> vocab;
+        vocab.reserve(tv->items.size());
+        for (const auto& it : tv->items) vocab.push_back(it.s);
+        const std::vector<int> bt = byte_table();
+        std::printf("text:");
+        for (uint32_t t : out) std::printf("%s", detok(vocab, t, bt).c_str());
+        std::printf("\n");
+    }
     return 0;
 }
