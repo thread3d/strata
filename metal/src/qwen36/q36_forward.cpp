@@ -138,13 +138,8 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
     return true;
 }
 
-bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, int pos, int n_kv,
-                   std::string& err) {
+bool embed_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, std::string& err) {
     const int N = (int) m.g.n_embd;
-    const GdnShape gsh{N, (int) m.g.ssm_k_heads, (int) m.g.ssm_v_heads, (int) m.g.ssm_state_size, m.eps};
-    const AttnShape ash{N, (int) m.g.n_head, (int) m.g.n_head_kv, (int) m.g.head_dim, m.eps};
-    const SharedShape ssh{N, (int) m.g.n_ff_shexp};
-
     mtl::Pipeline emb;
     try {
         emb = cx.pipeline(f.lk.glue_lib, "q36_embed");
@@ -160,6 +155,17 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
     de.grid[0] = (uint32_t) ((N + 63) / 64);
     de.grid[1] = de.grid[2] = 1;
     cx.run({de});
+    return true;
+}
+
+bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, int pos, int n_kv,
+                   std::string& err) {
+    const int N = (int) m.g.n_embd;
+    const GdnShape gsh{N, (int) m.g.ssm_k_heads, (int) m.g.ssm_v_heads, (int) m.g.ssm_state_size, m.eps};
+    const AttnShape ash{N, (int) m.g.n_head, (int) m.g.n_head_kv, (int) m.g.head_dim, m.eps};
+    const SharedShape ssh{N, (int) m.g.n_ff_shexp};
+
+    if (!embed_token(cx, m, d, f, token, err)) return false;
     if (std::getenv("Q36_TRACE")) {
         const float* xv = (const float*) f.x.ptr;
         size_t bad = 0;

@@ -68,6 +68,7 @@ int main(int argc, char** argv) {
     double budget_gib = 2.0;
     bool describe = false, no_stream = false, text = false;
     std::string prompt_text;
+    int check_embed = -1;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -79,6 +80,7 @@ int main(int argc, char** argv) {
         else if (a == "--describe") describe = true;
     else if (a == "--text") text = true;
     else if (a == "--prompt") prompt_text = next();
+    else if (a == "--check-embed") check_embed = (int) std::atoi(next().c_str());
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -120,6 +122,30 @@ int main(int argc, char** argv) {
     std::printf("engine: %s experts, %d-slot pool, %.1f MiB of state and scratch, %.1f s\n",
                 f.streaming ? "STREAMED (a pool filled per layer)" : "resident", f.streaming ? (int) m.top_k : 0,
                 (double) f.resident_bytes() / 1048576.0, init_s);
+
+    if (check_embed >= 0) {
+        // The embedding gather against the file's own bytes: the row decoded on the host and compared with what the kernel produced.
+        // A real pack's row of 248,320 has no fixture to vouch for it, and everything downstream starts here.
+        if (!strata::qwen36::embed_token(cx, m, d, f, (uint32_t) check_embed, err)) {
+            std::printf("embed: %s\n", err.c_str());
+            return 1;
+        }
+        std::vector<float> want((size_t) m.g.n_embd);
+        ref::dequant(m.embed.type(),
+                     m.embed.data(*m.file) + (size_t) check_embed * ref::row_bytes(m.embed.type(), (int) m.g.n_embd),
+                     want.data(), want.size());
+        const float* got = (const float*) f.x.ptr;
+        double num = 0.0, den = 0.0;
+        for (int i = 0; i < (int) m.g.n_embd; ++i) {
+            const double e = (double) got[i] - (double) want[(size_t) i];
+            num += e * e;
+            den += (double) want[(size_t) i] * (double) want[(size_t) i];
+        }
+        std::printf("embed row %d: got %g %g %g | file %g %g %g | rel L2 %.3e\n", check_embed, (double) got[0], (double) got[1],
+                    (double) got[2], (double) want[0], (double) want[1], (double) want[2],
+                    den > 0 ? std::sqrt(num / den) : std::sqrt(num));
+        return 0;
+    }
 
     std::vector<uint32_t> prompt = parse_ids(tokens_s.c_str());
     if (!prompt_text.empty()) {
