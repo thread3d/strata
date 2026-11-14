@@ -23,7 +23,10 @@ kernel void q36_head_norm_rope_f32(device const float* raw [[buffer(0)]], device
                                    ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     constexpr uint QD = 256, HALF = 32, QROT = 2 * HALF;
     const uint h = tg.x;
-    device const float* r = raw + (size_t) h * QD;
+    // The projection's row is per head [q(QD) | gate(QD)], as the CUDA engine lays it out
+    // (q36_engine.cu: qg[(t*H+head)*2*HD] for q, +HD for the gate), so a head's q starts at h*2*QD - NOT h*QD, which read the
+    // first eight heads' q and the last eight heads' GATE as if they were queries.
+    device const float* r = raw + (size_t) h * 2 * QD;
     const float x = r[tid];
     const float ss = sum32(x * x);
     threadgroup float part[8];
@@ -54,7 +57,10 @@ kernel void q36_head_norm_rope_bf16(device const float* raw [[buffer(0)]], devic
                                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
     constexpr uint QD = 256, HALF = 32, QROT = 2 * HALF;
     const uint h = tg.x;
-    device const float* r = raw + (size_t) h * QD;
+    // The projection's row is per head [q(QD) | gate(QD)], as the CUDA engine lays it out
+    // (q36_engine.cu: qg[(t*H+head)*2*HD] for q, +HD for the gate), so a head's q starts at h*2*QD - NOT h*QD, which read the
+    // first eight heads' q and the last eight heads' GATE as if they were queries.
+    device const float* r = raw + (size_t) h * 2 * QD;
     const float x = r[tid];
     const float ss = sum32(x * x);
     threadgroup float part[8];

@@ -119,11 +119,13 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
     dv.grid[0] = (uint32_t) ((hkv + 63) / 64);
     dv.grid[1] = dv.grid[2] = 1;
 
-    // 4. attention over the window, the output gate folded in (sigmoid(gate) * out, gate being the projection's second half)
+    // 4. attention over the window, the output gate folded in (sigmoid(gate) * out).  The gate is the SECOND QD of each head's
+    // row in the q projection - per head [q | gate], not all-q-then-all-gate - so the kernel is handed the projection itself and
+    // indexes (h * 2 + 1) * QD.
     const float scale = 1.0f / std::sqrt((float) QD);
     mtl::Dispatch da;
     da.p = &k.attn;
-    da.args = {mtl::Arg::B(s.q), mtl::Arg::B(s.kring), mtl::Arg::B(s.vring), mtl::Arg::B(s.qg, hq * 4),
+    da.args = {mtl::Arg::B(s.q), mtl::Arg::B(s.kring), mtl::Arg::B(s.vring), mtl::Arg::B(s.qg, 0),
                mtl::Arg::B(s.a), mtl::Arg::V((uint32_t) n_kv), mtl::Arg::V(1u), mtl::Arg::V(scale)};
     da.grid[0] = 1;
     da.grid[1] = da.grid[2] = 1;

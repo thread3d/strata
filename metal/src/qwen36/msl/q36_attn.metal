@@ -74,7 +74,8 @@ kernel void q36_attn(device const float* q [[buffer(0)]], device const uint16_t*
     for (int i = 0; i < LPR; ++i) {
         const int j = lane + 32 * i;
         float o = acc[i] * inv;
-        if (has_gate) o *= 1.0f / (1.0f + exp(-gate[(size_t) h * QD + j]));
+        // the gate is the second QD of this head's row in the q projection: (h * 2 + 1) * QD
+        if (has_gate) o *= 1.0f / (1.0f + exp(-gate[(size_t) h * 2 * QD + QD + j]));
         oh[j] = o;
     }
 }

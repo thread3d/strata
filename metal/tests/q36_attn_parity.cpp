@@ -54,12 +54,14 @@ void run_case(mtl::Context& cx, const Case& c) {
     mtl::Pipeline p = cx.pipeline(cx.compile({"../src/qwen36/msl/q36_attn.metal"}, "", false), fn);
 
     // deterministic values with a spread that makes the softmax's max matter (logits of order +-3)
-    std::vector<float> q((size_t) QH * QD), gate((size_t) QH * QD);
+    std::vector<float> q((size_t) QH * QD), gate((size_t) QH * 2 * QD);   // [q | gate] a head, as the projection gives it
     // TOKEN-MAJOR, as the kernel reads them: row r holds every KV head's QD values side by side
     std::vector<uint16_t> kb((size_t) NKV * KVH * QD), vb((size_t) NKV * KVH * QD);
     std::vector<float> kf((size_t) NKV * KVH * QD), vf((size_t) NKV * KVH * QD);
     for (size_t i = 0; i < q.size(); ++i) q[i] = 0.7f * std::sin(0.013f * (float) i + 0.3f);
-    for (size_t i = 0; i < gate.size(); ++i) gate[i] = 3.0f * std::sin(0.007f * (float) i + 1.1f);
+    for (int h = 0; h < QH; ++h)
+        for (int e = 0; e < QD; ++e)
+            gate[(size_t) (h * 2 + 1) * QD + e] = 3.0f * std::sin(0.007f * (float) (h * QD + e) + 1.1f);
     for (size_t i = 0; i < kb.size(); ++i) {
         kf[i] = 0.8f * std::sin(0.011f * (float) i + 2.0f);
         vf[i] = 0.9f * std::cos(0.005f * (float) i + 0.7f);
@@ -92,7 +94,7 @@ void run_case(mtl::Context& cx, const Case& c) {
             double a = 0.0;
             for (int r = 0; r < NKV; ++r) a += s[(size_t) r] * (double) vf[(size_t) (r * KVH + kvh) * QD + e];
             a /= sum;
-            if (c.gate) a *= 1.0 / (1.0 + std::exp(-(double) gate[(size_t) h * QD + e]));
+            if (c.gate) a *= 1.0 / (1.0 + std::exp(-(double) gate[(size_t) h * 2 * QD + QD + e]));
             want[(size_t) h * QD + e] = (float) a;
         }
     }

@@ -162,7 +162,7 @@ void run_case(mtl::Context& cx, strata::qwen36::AttnKernels& k, int pos, int n_k
         for (int e = 0; e < QD; ++e)   //  the keys entirely, so a reference with zeroed keys still matched - the same shape of
             kk[(size_t) hd * QD + e] = kr[(size_t) hd * QD + e];   // trap as the zero `scale` in q36_attn_parity)
     for (int hd = 0; hd < QH; ++hd) {   // (the queries come from the projection's FIRST half, as the kernel reads them)
-        for (int e = 0; e < QD; ++e) q[(size_t) hd * QD + e] = qg[(size_t) hd * QD + e];
+        for (int e = 0; e < QD; ++e) q[(size_t) hd * QD + e] = qg[(size_t) hd * 2 * QD + e];   // per head [q | gate]
         norm_rope(&q[(size_t) hd * QD], 0, qn);
     }
     for (int hd = 0; hd < KVH; ++hd) norm_rope(&kk[(size_t) hd * QD], 0, kn);
@@ -201,7 +201,7 @@ void run_case(mtl::Context& cx, strata::qwen36::AttnKernels& k, int pos, int n_k
             double acc = 0.0;
             for (int r = 0; r < n_kv; ++r) acc += sc[(size_t) r] * (double) vwin[(size_t) (r * KVH * QD + kvh * QD + e)];
             acc /= sum;
-            acc *= 1.0 / (1.0 + std::exp(-qg[(size_t) (QH * QD + hd * QD + e)]));   // the gate is the projection's second half
+            acc *= 1.0 / (1.0 + std::exp(-qg[(size_t) (hd * 2 * QD + QD + e)]));   // the gate is the second QD of this head's row
             a[(size_t) hd * QD + e] = acc;
         }
     }

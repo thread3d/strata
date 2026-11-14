@@ -46,7 +46,8 @@ void run(mtl::Context& cx, int heads, bool bf16, int pos, const char* name) {
             cs[(size_t) (p * HALF + i) * 2] = (float) std::cos(th);
             cs[(size_t) (p * HALF + i) * 2 + 1] = (float) std::sin(th);
         }
-    std::vector<float> raw((size_t) heads * QD), w((size_t) QD);
+    // the projection is per head [q(QD) | gate(QD)]: heads * 2 * QD values, of which only every other QD is a query
+    std::vector<float> raw((size_t) heads * 2 * QD), w((size_t) QD);
     for (size_t i = 0; i < raw.size(); ++i) raw[i] = 1.3f * std::sin(0.0031f * (float) i + 0.4f);
     for (int i = 0; i < QD; ++i) w[i] = 0.6f + 0.4f * std::cos(0.017f * (float) i);
 
@@ -55,10 +56,10 @@ void run(mtl::Context& cx, int heads, bool bf16, int pos, const char* name) {
     std::vector<uint16_t> wantb((size_t) heads * QD);
     for (int h = 0; h < heads; ++h) {
         double ss = 0.0;
-        for (int e = 0; e < QD; ++e) ss += (double) raw[(size_t) h * QD + e] * (double) raw[(size_t) h * QD + e];
+        for (int e = 0; e < QD; ++e) ss += (double) raw[(size_t) h * 2 * QD + e] * (double) raw[(size_t) h * 2 * QD + e];
         const double rs = 1.0 / std::sqrt(ss / QD + (double) eps);
         std::vector<double> y((size_t) QD);
-        for (int e = 0; e < QD; ++e) y[(size_t) e] = (double) raw[(size_t) h * QD + e] * rs * (double) w[e];
+        for (int e = 0; e < QD; ++e) y[(size_t) e] = (double) raw[(size_t) h * 2 * QD + e] * rs * (double) w[e];
         for (int e = 0; e < QD; ++e) {
             double o = y[(size_t) e];
             if (e < QROT) {
