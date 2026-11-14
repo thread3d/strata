@@ -64,7 +64,7 @@ bool gdn_scratch(mtl::Context& cx, GdnScratch& s, const GdnShape& sh, std::strin
 
 bool gdn_forward(mtl::Context& cx, GdnKernels& k, DenseKernels& dk, DenseScratch& ds, const GdnShape& sh,
                  const GdnWeights& w, GdnScratch& s, mtl::Buffer& state, mtl::Buffer& hist, const mtl::Buffer& h,
-                 std::string& err) {
+                 std::string& err, size_t layer_index) {
     if (!gdn_init(cx, k, err)) return false;
     if (!gdn_scratch(cx, s, sh, err)) return false;
 
@@ -97,7 +97,9 @@ bool gdn_forward(mtl::Context& cx, GdnKernels& k, DenseKernels& dk, DenseScratch
     std::memcpy(hist.ptr, s.hist_out.ptr, 4 * (size_t) sh.channels() * 3);
 
     // 3. the output projection
-    if (const char* sp = std::getenv("Q36_DUMP_S")) {   // the state AFTER this step: the only check that touches the carried state
+    const char* lp_ = std::getenv("Q36_DUMP_LAYER");
+    const size_t want_ = lp_ != nullptr ? (size_t) std::atoi(lp_) : 0;
+    if (const char* sp = std::getenv("Q36_DUMP_S"); sp != nullptr && layer_index == want_) {   // the state AFTER this step: the only check that touches the carried state
         if (FILE* fs = std::fopen(sp, "wb")) {
             std::fwrite(state.ptr, 4, 4 * (size_t) sh.h_v * sh.state * sh.state, fs);
             std::fclose(fs);

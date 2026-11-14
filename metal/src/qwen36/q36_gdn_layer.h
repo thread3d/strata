@@ -62,7 +62,7 @@ bool gdn_scratch(mtl::Context& cx, GdnScratch& s, const GdnShape& sh, std::strin
 /// is left in `s.out` (fp32, n_embd).
 bool gdn_forward(mtl::Context& cx, GdnKernels& k, DenseKernels& dk, DenseScratch& ds, const GdnShape& sh,
                  const GdnWeights& w, GdnScratch& s, mtl::Buffer& state, mtl::Buffer& hist, const mtl::Buffer& h,
-                 std::string& err);
+                 std::string& err, size_t layer_index = 0);
 
 /// The state and history a layer needs: allocate both for a run (the caller keeps one pair a layer).
 bool gdn_state(mtl::Context& cx, const GdnShape& sh, mtl::Buffer& state, mtl::Buffer& hist, std::string& err);

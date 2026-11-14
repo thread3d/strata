@@ -88,7 +88,8 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
                           err))
             return false;
     } else {
-        if (!gdn_forward(cx, *io.gdn_kernels, dk, ds, io.gdn, w.gdn, *io.gdn_scratch, *io.state, *io.hist, s.h, err))
+        if (!gdn_forward(cx, *io.gdn_kernels, dk, ds, io.gdn, w.gdn, *io.gdn_scratch, *io.state, *io.hist, s.h, err,
+                         io.layer_index))
             return false;
     }
     const mtl::Buffer& mix = w.attention ? io.attn_scratch->y : io.gdn_scratch->out;
