@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     std::string prompt_text;
     int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
     std::string h_file, logits_file;
-    int show_token = -1;
+    int show_token = -1, check_gdn = -1;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -92,6 +92,7 @@ int main(int argc, char** argv) {
     else if (a == "--h-file") h_file = next();
     else if (a == "--dump-logits") logits_file = next();
     else if (a == "--show-token") show_token = (int) std::atoi(next().c_str());
+    else if (a == "--check-gdn") check_gdn = (int) std::atoi(next().c_str());
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -390,6 +391,93 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::printf("token %d = \"%s\"\n", show_token, tv->items[(size_t) show_token].s.c_str());
+        return 0;
+    }
+
+    if (check_gdn >= 0) {
+        // LAYER 0'S MIXER, in double, straight from the file - the measurement that answers "is ONE layer right" instead of "is the
+        // model right".  At token `check_gdn` with a zero state and a zero conv history the delta rule is a single step, so the whole
+        // GDN is computable here in a page: the conv's last tap, the L2 norms, `d = v*b`, `S = d k^T`, `o = S q` (which collapses to
+        // `o[j] = d[j] * sum_i k[i]q[i]`), the siLU-gated rms, and ssm_out.
+        const strata::qwen36::Layer& L0 = m.layers[0];
+        const int N = (int) m.g.n_embd, HK = (int) m.g.ssm_k_heads, HV = (int) m.g.ssm_v_heads,
+                  S = (int) m.g.ssm_state_size, C = (2 * HK + HV) * S, ZV = HV * S;
+        std::vector<float> f((size_t) std::max(N, std::max(C, ZV)));
+        std::vector<double> x((size_t) N);
+        ref::dequant(m.embed.type(), m.embed.data(*m.file) + (size_t) check_gdn * ref::row_bytes(m.embed.type(), N), f.data(), (size_t) N);
+        for (int i = 0; i < N; ++i) x[(size_t) i] = (double) f[(size_t) i];
+        ref::dequant(L0.attn_norm.type(), L0.attn_norm.data(*m.file), f.data(), (size_t) N);
+        double ss = 0.0;
+        for (int i = 0; i < N; ++i) ss += x[(size_t) i] * x[(size_t) i];
+        const double rs = 1.0 / std::sqrt(ss / (double) N + (double) m.eps);
+        std::vector<double> h((size_t) N);
+        for (int i = 0; i < N; ++i) h[(size_t) i] = x[(size_t) i] * rs * (double) f[(size_t) i];
+        auto gemv = [&](const strata::qwen36::TensorRef& W, int nout) {
+            std::vector<double> out((size_t) nout);
+            const size_t rb = ref::row_bytes(W.type(), N);
+            std::vector<float> row((size_t) N);
+            for (int r = 0; r < nout; ++r) {
+                ref::dequant(W.type(), W.data(*m.file) + (size_t) r * rb, row.data(), (size_t) N);
+                double acc = 0.0;
+                for (int i = 0; i < N; ++i) acc += (double) row[(size_t) i] * h[(size_t) i];
+                out[(size_t) r] = acc;
+            }
+            return out;
+        };
+        const std::vector<double> qkv = gemv(L0.qkv, C), z = gemv(L0.sgate, ZV), al = gemv(L0.alpha, HV), be = gemv(L0.beta, HV);
+        std::vector<float> cwf((size_t) C * 4), dtf((size_t) HV), saf((size_t) HV), gmf((size_t) S);
+        ref::dequant(L0.conv1d.type(), L0.conv1d.data(*m.file), cwf.data(), (size_t) C * 4);
+        ref::dequant(L0.dt_bias.type(), L0.dt_bias.data(*m.file), dtf.data(), (size_t) HV);
+        ref::dequant(L0.ssm_a.type(), L0.ssm_a.data(*m.file), saf.data(), (size_t) HV);
+        ref::dequant(L0.ssm_norm.type(), L0.ssm_norm.data(*m.file), gmf.data(), (size_t) S);
+        std::vector<double> cv((size_t) C);
+        for (int c = 0; c < C; ++c) {
+            const double acc = qkv[(size_t) c] * (double) cwf[(size_t) c * 4 + 3];   // a zero history: only the current tap
+            cv[(size_t) c] = acc / (1.0 + std::exp(-acc));
+        }
+        std::vector<double> qq((size_t) HK * S), kk((size_t) HK * S);
+        for (int hh = 0; hh < HK; ++hh) {
+            double s2 = 0.0, s3 = 0.0;
+            for (int i = 0; i < S; ++i) {
+                s2 += cv[(size_t) (hh * S + i)] * cv[(size_t) (hh * S + i)];
+                s3 += cv[(size_t) (HK * S + hh * S + i)] * cv[(size_t) (HK * S + hh * S + i)];
+            }
+            const double r1 = 1.0 / std::sqrt(s2 / (double) S + (double) m.eps / (double) S);
+            const double r2 = 1.0 / std::sqrt(s3 / (double) S + (double) m.eps / (double) S);
+            for (int i = 0; i < S; ++i) {
+                qq[(size_t) (hh * S + i)] = cv[(size_t) (hh * S + i)] * r1 / std::sqrt((double) S);   // q: scaled
+                kk[(size_t) (hh * S + i)] = cv[(size_t) (HK * S + hh * S + i)] * r2;                    // k: normed only
+            }
+        }
+        std::vector<double> y((size_t) ZV), o((size_t) S);
+        for (int hh = 0; hh < HV; ++hh) {
+            const int kh = hh % HK;
+            const double a = al[(size_t) hh] + (double) dtf[(size_t) hh];
+            const double b = 1.0 / (1.0 + std::exp(-be[(size_t) hh]));
+            double kq = 0.0;
+            for (int i = 0; i < S; ++i) kq += kk[(size_t) (kh * S + i)] * qq[(size_t) (kh * S + i)];
+            double so = 0.0;
+            for (int j = 0; j < S; ++j) {
+                o[(size_t) j] = cv[(size_t) (2 * HK * S + hh * S + j)] * b * kq;   // (v - 0) * b * (k.q), the state's first step
+                so += o[(size_t) j] * o[(size_t) j];
+            }
+            const double ro = 1.0 / std::sqrt(so / (double) S + (double) m.eps);
+            for (int j = 0; j < S; ++j) {
+                const double zz = z[(size_t) (hh * S + j)];
+                const double sg = 1.0 / (1.0 + std::exp(-zz));
+                y[(size_t) (hh * S + j)] = o[(size_t) j] * ro * (double) gmf[(size_t) j] * zz * sg;   // silu(z)
+            }
+        }
+        const size_t rb2 = ref::row_bytes(L0.ssm_out.type(), ZV);
+        std::vector<float> row2((size_t) ZV);
+        std::printf("gdn layer 0 host mixer (token %d):", check_gdn);
+        for (int r = 0; r < 4; ++r) {
+            ref::dequant(L0.ssm_out.type(), L0.ssm_out.data(*m.file) + (size_t) r * rb2, row2.data(), (size_t) ZV);
+            double acc = 0.0;
+            for (int i = 0; i < ZV; ++i) acc += (double) row2[(size_t) i] * y[(size_t) i];
+            std::printf(" %g", acc);
+        }
+        std::printf("\n");
         return 0;
     }
 
