@@ -11,8 +11,8 @@
 // Apple one (mtl_rt.mm's STRATA_SIMD_WIDTH).
 //
 //   q      fp32 [QH][QD]   the query after its qk-norm and RoPE (the host's business, not this kernel's)
-//   kb     bf16 [KVH][n_kv][QD]  the window's keys, oldest row first
-//   vb     bf16 [KVH][n_kv][QD]  the same rows' values
+//   kb     bf16 [n_kv][KVH][QD]  the window's keys, token-major, oldest row first
+//   vb     bf16 [n_kv][KVH][QD]  the same rows' values
 //   gate   fp32 [QH][QD] or nothing: attention's output gate, sigmoid(gate) * out (qwen35moe's attn_q second half)
 //   out    fp32 [QH][QD]
 //
@@ -48,10 +48,13 @@ kernel void q36_attn(device const float* q [[buffer(0)]], device const uint16_t*
     float m = -INFINITY, l = 0.0f;
 
     if (n_kv > 0) {
-        device const uint16_t* krows = kb + (size_t) kvh * n_kv * QD;
-        device const uint16_t* vrows = vb + (size_t) kvh * n_kv * QD;
+        // TOKEN-MAJOR rows: row r of the window holds every KV head's 256 values side by side, ((r * KVH) + kvh) * QD.
+        // That is the layout an append wants - one q36_head_norm_rope_bf16 / q36_store_bf16 dispatch writes a whole
+        // token's KV heads contiguously at the row the token belongs to, because those kernels write head h at
+        // h * QD from the base they are handed.  The head-major alternative costs n_kv_head dispatches a token, and a
+        // dispatch is ~0.7 ms on this card whatever it computes (NEXT.md rounds 92-97).
         for (uint r = 0; r < n_kv; ++r) {
-            device const uint16_t* krow = krows + (size_t) r * QD;
+            device const uint16_t* krow = kb + ((size_t) r * KVH + kvh) * QD;
             float dot = 0.0f;
             for (int i = 0; i < LPR; ++i) dot = fma(qv[i], q36_bf16(krow[lane + 32 * i]), dot);
             const float s = sum32(dot) * scale;   // the group's dot product, then the 1/sqrt(QD)
@@ -61,7 +64,7 @@ kernel void q36_attn(device const float* q [[buffer(0)]], device const uint16_t*
             const float p = exp(s - mn);
             l = l * corr + p;
             m = mn;
-            device const uint16_t* vrow = vrows + (size_t) r * QD;
+            device const uint16_t* vrow = vb + ((size_t) r * KVH + kvh) * QD;
             for (int i = 0; i < LPR; ++i) acc[i] = fma(p, q36_bf16(vrow[lane + 32 * i]), acc[i] * corr);
         }
     }
@@ -74,6 +77,16 @@ kernel void q36_attn(device const float* q [[buffer(0)]], device const uint16_t*
         if (has_gate) o *= 1.0f / (1.0f + exp(-gate[(size_t) h * QD + j]));
         oh[j] = o;
     }
+}
+
+// Qwen3.6's values need no norm and no rotation - they go to the ring as they come from their projection, in bf16.  This is
+// that store: the same round-to-nearest-even on the top half the other bf16 writers use, one thread a value.
+kernel void q36_store_bf16(device const float* src [[buffer(0)]], device uint16_t* dst [[buffer(1)]],
+                           constant uint& n [[buffer(2)]], uint gid [[thread_position_in_grid]]) {
+    if (gid >= n) return;
+    uint u = as_type<uint>(src[gid]);
+    u += 0x7fffu + ((u >> 16) & 1u);
+    dst[gid] = uint16_t(u >> 16);
 }
 
 // The shapes the port compiles: the family's own (16 query heads over 2 KV, width 256) and the small ones the parity

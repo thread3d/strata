@@ -55,8 +55,9 @@ void run_case(mtl::Context& cx, const Case& c) {
 
     // deterministic values with a spread that makes the softmax's max matter (logits of order +-3)
     std::vector<float> q((size_t) QH * QD), gate((size_t) QH * QD);
-    std::vector<uint16_t> kb((size_t) KVH * NKV * QD), vb((size_t) KVH * NKV * QD);
-    std::vector<float> kf((size_t) KVH * NKV * QD), vf((size_t) KVH * NKV * QD);
+    // TOKEN-MAJOR, as the kernel reads them: row r holds every KV head's QD values side by side
+    std::vector<uint16_t> kb((size_t) NKV * KVH * QD), vb((size_t) NKV * KVH * QD);
+    std::vector<float> kf((size_t) NKV * KVH * QD), vf((size_t) NKV * KVH * QD);
     for (size_t i = 0; i < q.size(); ++i) q[i] = 0.7f * std::sin(0.013f * (float) i + 0.3f);
     for (size_t i = 0; i < gate.size(); ++i) gate[i] = 3.0f * std::sin(0.007f * (float) i + 1.1f);
     for (size_t i = 0; i < kb.size(); ++i) {
@@ -76,7 +77,8 @@ void run_case(mtl::Context& cx, const Case& c) {
         double mx = -INFINITY;
         for (int r = 0; r < NKV; ++r) {
             double d = 0.0;
-            for (int e = 0; e < QD; ++e) d += (double) q[(size_t) h * QD + e] * (double) kf[(size_t) (kvh * NKV + r) * QD + e];
+            for (int e = 0; e < QD; ++e)
+                d += (double) q[(size_t) h * QD + e] * (double) kf[(size_t) (r * KVH + kvh) * QD + e];
             s[(size_t) r] = d * (double) scale;
             mx = std::fmax(mx, s[(size_t) r]);
         }
@@ -88,7 +90,7 @@ void run_case(mtl::Context& cx, const Case& c) {
         if (NKV == 0) sum = 1.0;
         for (int e = 0; e < QD; ++e) {
             double a = 0.0;
-            for (int r = 0; r < NKV; ++r) a += s[(size_t) r] * (double) vf[(size_t) (kvh * NKV + r) * QD + e];
+            for (int r = 0; r < NKV; ++r) a += s[(size_t) r] * (double) vf[(size_t) (r * KVH + kvh) * QD + e];
             a /= sum;
             if (c.gate) a *= 1.0 / (1.0 + std::exp(-(double) gate[(size_t) h * QD + e]));
             want[(size_t) h * QD + e] = (float) a;
@@ -125,6 +127,32 @@ void run_case(mtl::Context& cx, const Case& c) {
     report(nm, den > 0 ? std::sqrt(num / den) : std::sqrt(num), 2e-5);
 }
 
+// q36_store_bf16: the value half of a KV append (no norm, no rotation), which the attention ring needs and nothing else in
+// the port writes.  Checked against the same round-to-nearest-even the reference applies, bit for bit.
+void store_case(mtl::Context& cx, int n, int pos_unused) {
+    (void) pos_unused;
+    std::vector<float> src((size_t) n);
+    for (int i = 0; i < n; ++i) src[(size_t) i] = 2.5f * std::sin(0.01f * (float) i + 0.3f) + 0.001f * (float) i;
+    std::vector<uint16_t> want((size_t) n);
+    for (int i = 0; i < n; ++i) want[(size_t) i] = to_bf16(src[(size_t) i]);
+    mtl::Buffer bs = cx.alloc(4 * (size_t) n), bd = cx.alloc(2 * (size_t) n);
+    std::memcpy(bs.ptr, src.data(), 4 * (size_t) n);
+    mtl::Pipeline p = cx.pipeline(cx.compile({"../src/qwen36/msl/q36_attn.metal"}, "", false), "q36_store_bf16");
+    mtl::Dispatch d;
+    d.p = &p;
+    d.args = {mtl::Arg::B(bs), mtl::Arg::B(bd), mtl::Arg::V((unsigned) n)};
+    d.tg[0] = 64;
+    d.grid[0] = (uint32_t) ((n + 63) / 64);
+    cx.run({d});
+    const uint16_t* got = (const uint16_t*) bd.ptr;
+    size_t bad = 0;
+    for (int i = 0; i < n; ++i)
+        if (got[(size_t) i] != want[(size_t) i]) ++bad;
+    char nm[96];
+    std::snprintf(nm, sizeof nm, "q36_store_bf16 %d values (bit for bit)", n);
+    report(nm, bad == 0 ? 0.0 : 1.0, 0.0);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -138,6 +166,9 @@ int main(int argc, char** argv) {
                           Case{16, 2, 256, 2048, false}, Case{4, 2, 32, 10, false}, Case{8, 4, 64, 64, true},
                           Case{2, 1, 32, 0, false}})
         run_case(cx, c);
+    // the KV append's value half: the family's per-token value count, and one that is not a whole number of threadgroups
+    store_case(cx, 2 * 256, 0);
+    store_case(cx, 1000, 0);
     std::printf("%s\n", g_fail ? "FAILURES" : "ALL PASS");
     return g_fail ? 1 : 0;
 }
