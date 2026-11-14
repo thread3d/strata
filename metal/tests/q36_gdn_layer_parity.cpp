@@ -150,7 +150,7 @@ void run_case(mtl::Context& cx, strata::qwen36::GdnKernels& k, int T, int pos_un
             const double rs = 1.0 / std::sqrt(ss / S + sh.eps / S);
             // qwen35moe: the QUERY head (hh < HK) is normed and scaled by 1/sqrt(D); the KEY head is normed only
             // (q36ref.cu:220-221, llama.cpp's kq_scale goes into the delta-net builder and multiplies q).
-            const double sc = hh < HK ? rs / std::sqrt((double) S) : rs;
+            const double sc = rs / std::sqrt((double) S);   // q AND k are both scaled (round 116: cos 0.9999 against llama.cpp)
             for (int i = 0; i < S; ++i) cv[(size_t) (hh * S + i)] = cv[(size_t) (hh * S + i)] * sc;
         }
         std::vector<double> yv((size_t) ZV);

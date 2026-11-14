@@ -19,7 +19,7 @@ bool gdn_init(mtl::Context& cx, GdnKernels& k, std::string& err) {
     if (k.step.handle == nullptr) {
         try {
             // function constant 2 is the token count the specialization is cut for (gdn_parity's convention), 1 here
-            k.step = cx.pipeline(k.lib, "gdn_step", mtl::Constants().i(2, 1).b(26, true).b(27, false));   // 26: SiLU gate; 27: the key is normed, not scaled.  (28 is NOT set: the kernel's output scale is correct - see round 115)
+            k.step = cx.pipeline(k.lib, "gdn_step", mtl::Constants().i(2, 1).b(26, true));   // 26: the SiLU gate.  27 and 28 are NOT set: the kernel's defaults are right (rounds 116/115)   // 26: SiLU gate; 27: the key is normed, not scaled.  (28 is NOT set: the kernel's output scale is correct - see round 115)
         } catch (const std::exception& e) {
             err = std::string("no gdn_step kernel: ") + e.what();
             return false;
