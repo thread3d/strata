@@ -346,6 +346,19 @@ int main(int argc, char** argv) {
         FILE* fh = std::fopen(logits_file.c_str(), "wb");
         if (fh == nullptr) { std::printf("--dump-logits: cannot write %s\n", logits_file.c_str()); return 1; }
         const std::vector<uint32_t> pr = parse_ids(tokens_s.c_str());
+        // llama.cpp's format: the magic, the row count, then LOG-PROBABILITIES (log-softmax), not raw logits - see
+        // tools/perplexity/perplexity.cpp's kl_divergence(), which checks the magic and reads n_ctx next.
+        // The base file is: "_logits_", uint32 n_ctx, int32 n_vocab, int32 n_chunk, n_ctx*n_chunk token ids,
+        // then n_ctx*n_chunk rows of n_vocab log-probabilities (tools/perplexity/perplexity.cpp: kl_divergence()).
+        std::fwrite("_logits_", 1, 8, fh);
+        const uint32_t rows = (uint32_t) pr.size();
+        const int32_t nv = (int32_t) m.g.n_vocab, nchunk = 1;
+        std::fwrite(&rows, sizeof rows, 1, fh);
+        std::fwrite(&nv, sizeof nv, 1, fh);
+        std::fwrite(&nchunk, sizeof nchunk, 1, fh);
+        std::vector<int32_t> ids(pr.begin(), pr.end());
+        std::fwrite(ids.data(), sizeof(int32_t), ids.size(), fh);
+        std::vector<float> lp((size_t) m.g.n_vocab);
         for (size_t i = 0; i < pr.size(); ++i) {
             const int n_kv = f.kv_cap < (int) i + 1 ? f.kv_cap : (int) i + 1;
             if (!strata::qwen36::forward_token(cx, m, d, f, pr[i], (int) i, n_kv, err)) {
@@ -353,7 +366,14 @@ int main(int argc, char** argv) {
                 std::fclose(fh);
                 return 1;
             }
-            std::fwrite(f.logits.ptr, 4, (size_t) m.g.n_vocab, fh);
+            const float* lg = (const float*) f.logits.ptr;
+            double mx = lg[0];
+            for (int k = 1; k < (int) m.g.n_vocab; ++k) mx = std::max(mx, (double) lg[k]);
+            double sum = 0.0;
+            for (int k = 0; k < (int) m.g.n_vocab; ++k) sum += std::exp((double) lg[k] - mx);
+            const double lse = mx + std::log(sum);
+            for (int k = 0; k < (int) m.g.n_vocab; ++k) lp[(size_t) k] = (float) ((double) lg[k] - lse);
+            std::fwrite(lp.data(), 4, (size_t) m.g.n_vocab, fh);
         }
         std::fclose(fh);
         std::printf("wrote %zu logit rows of %lld floats to %s\n", pr.size(), (long long) m.g.n_vocab, logits_file.c_str());
