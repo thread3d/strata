@@ -1,3 +1,20 @@
+// The output gate: DELTA-NET families want sigmoid(z), qwen35moe wants silu(z) - fused_gdn.hpp carries both
+// (fused_gdn_step_norm_silu) and names this family.  Declared at FILE SCOPE, before any guard, because the step body needs it in
+// every variant this file compiles into.
+// The KEY's scale: DeltaNet norms q and k and multiplies BOTH by 1/sqrt(D); qwen35moe scales the QUERY only
+// (q36ref.cu:220-221, and llama.cpp passes kq_scale into the delta-net builder, which applies it to q).  Undefined = the DeltaNet form,
+// so every existing caller keeps its semantics; qwen35moe sets it false.
+// The OUTPUT's scale: this kernel multiplies o by 1/sqrt(D) as well as the query, i.e. the attention scale lands twice.  The family
+// scales once - q36ref.cu scales q (`q[i] = ... / sqrtf((float) D)`) and writes `out[h*D+i] = o`, and llama.cpp passes kq_scale into the
+// delta-net builder, which applies it to q - so qwen35moe sets this false.  Undefined = keep the double scale, as every other caller
+// of this kernel has always had.
+constant bool GDN_OSCALE_C [[function_constant(28)]];
+constant bool gdn_oscale = !is_function_constant_defined(GDN_OSCALE_C) || GDN_OSCALE_C;
+constant bool GDN_KSCALE_C [[function_constant(27)]];
+constant bool gdn_kscale = !is_function_constant_defined(GDN_KSCALE_C) || GDN_KSCALE_C;
+constant bool GDN_SILU_C [[function_constant(26)]];
+constant bool gdn_silu = is_function_constant_defined(GDN_SILU_C) && GDN_SILU_C;
+
 // metal/kernels/gdn.metal - one GDN (gated delta-net) layer's recurrence for a window of tokens, fused end to end:
 //
 //   conv (4 taps, history [channels][3] oldest first) -> SiLU, on q (16 heads), k (16), v (48 heads) of 128
@@ -12,6 +29,21 @@
 // `commit` the state and the conv history are written back after the last one (a verify window runs without commit,
 // the fold of m accepted tokens is the same kernel with GDN_NTOK = m and commit).  The conv history is read from
 // `hist` and the committed one written to `hist_out` (ping-pong: the q/k channels are shared by three threadgroups).
+
+#ifndef STRATA_XH16_DECL
+#define STRATA_XH16_DECL
+// STRATA_METAL_F16 (function constant 25): the window's x also as half planes, after the float planes and S16:
+// [3][plane] halves - raw (IQ4_XS), x * 4^-(i % 4) (Q2_0), x * 2^-8 at odd i (the K-quants); idx = t * n + d, jj = d % 16
+constant bool XH16 [[function_constant(25)]];
+constant bool xh16 = is_function_constant_defined(XH16) && XH16;
+static inline void put_x16(device float* xp, uint plane, uint idx, uint jj, float v) {
+    device half* xh = (device half*)(xp + 4 * plane + plane / 16);
+    const float q2b[4] = {1.0f, 0.25f, 0.0625f, 0.015625f};
+    xh[idx] = half(v);
+    xh[plane + idx] = half(v * q2b[jj & 3]);
+    xh[2 * plane + idx] = half((jj & 1) ? v * 0.00390625f : v);
+}
+#endif
 
 constant int GDN_NTOK [[function_constant(2)]];
 // GDN_ROWS (function constant 31, with GDN_NTOK = 1): the grid is (h_v, rows) and row y is a DIFFERENT sequence (a batch slot) with its own
@@ -117,7 +149,7 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
             const float rs = rsqrt(tot / float(S) + a.eps / float(S));
             const float nv = (rs * cv) * scale;
             if (tid < 128) qs[tid] = nv;
-            else ks[tid - 128] = nv;
+            else ks[tid - 128] = gdn_kscale ? nv : (rs * cv);   // the key: scaled for DeltaNet, normed only for qwen35moe
         } else if (tid < 384) {
             vs[tid - 256] = cv;
         }
@@ -142,7 +174,7 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
         // the readout and the output norm: column j's o (every i-block thread of the column holds the same value)
         o = 0.0f;
         for (int k = 0; k < IB; ++k) o += red[k][j];
-        o = o * scale;
+        if (gdn_oscale) o = o * scale;
         const float osq = ib == 0 ? sum32(o * o) : 0.0f;
         if (ib == 0 && lane == 0) part[cb] = osq;
         threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -150,7 +182,8 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
             const float tot = (part[0] + part[1]) + (part[2] + part[3]);
             const float rs = rsqrt(tot / float(S) + a.eps);
             const float zz = z[tr * hv * S + h * S + j];
-            const float yv = ((rs * o) * gamma[j]) * (1.0f / (1.0f + exp(-zz)));
+            const float sg = 1.0f / (1.0f + exp(-zz));
+            const float yv = ((rs * o) * gamma[j]) * (gdn_silu ? zz * sg : sg);
             y[tr * hv * S + h * S + j] = yv;
             if (a.plane) {
                 const float q2s[8] = {1.0f, 0.25f, 0.0625f, 0.015625f, 0.00390625f, 0.0009765625f, 0.000244140625f,
@@ -161,6 +194,7 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
                 raw[a.plane] = yv * q2s[jj & 7];
                 raw[2 * a.plane] = yv * p4s[jj & 3];
                 raw[3 * a.plane] = (jj & 1) ? yv * 0.00390625f : yv;
+                if (xh16) put_x16(y, a.plane, t * hv * S + h * S + j, jj, yv);
                 ys[j] = yv;
             }
         }

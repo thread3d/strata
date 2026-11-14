@@ -12,6 +12,7 @@
 #   ninja -C build-metal
 cmake_minimum_required(VERSION 3.24)
 project(strata_metal LANGUAGES C CXX OBJCXX)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/strata_geometry.cmake)   # -DSTRATA_GEOMETRY=<name> (default flash_next, no flag added)
 
 if(NOT APPLE)
   message(FATAL_ERROR "metal/ builds on macOS only")
@@ -40,12 +41,87 @@ target_link_libraries(mtl_rt PUBLIC "-framework Metal" "-framework Foundation")
 
 file(GLOB STRATA_METAL_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp)
 list(REMOVE_ITEM STRATA_METAL_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_hello.cpp
-                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/dsu_ref_vs_ggml.cpp)   # (needs ggml: below)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/dsu_ref_vs_ggml.cpp            # (needs ggml: below)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_model_check.cpp            # (the Qwen3.6 checks: their own targets, below)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_upload_check.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_dense_parity.cpp            # (drives strata_q36_model: own target)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_attn_layer_parity.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_gdn_layer_parity.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_moe_shared_parity.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_expert_blob_check.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_moe_routed_parity.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_layer_check.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_bind_check.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_forward_check.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_stream_check.cpp
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_generate_check.cpp)
 foreach(src ${STRATA_METAL_TESTS})
   get_filename_component(t ${src} NAME_WE)
   add_executable(${t} ${src})
   target_link_libraries(${t} PRIVATE mtl_rt)
 endforeach()
+
+# ---- Qwen3.6-35B-A3B (qwen35moe) on this Metal runtime: the host half first -----------------------------------------
+# src/qwen36 is the engine's host side - reading the file, deciding what stays resident and what streams, and refusing
+# what this port cannot take - kept separate from the kernels and from the device runtime, so it builds and is tested
+# with no GPU at all (q36_model_check drives it on tiny synthetic files).
+add_library(strata_q36_model STATIC src/qwen36/q36_model.cpp src/qwen36/q36_device.cpp src/qwen36/q36_dense.cpp
+                                 src/qwen36/q36_attn_layer.cpp src/qwen36/q36_gdn_layer.cpp src/qwen36/q36_moe_shared.cpp src/qwen36/q36_moe_routed.cpp src/qwen36/q36_layer.cpp src/qwen36/q36_bind.cpp src/qwen36/q36_forward.cpp src/qwen36/q36_stream.cpp src/qwen36/q36_generate.cpp)
+target_link_libraries(strata_q36_model PUBLIC mtl_rt)   # the device half (q36_device.cpp) uploads into mtl::Buffer
+target_include_directories(strata_q36_model PUBLIC src ${STRATA_ROOT}/include)
+target_compile_options(strata_q36_model PRIVATE -Wno-unused-parameter)
+add_executable(q36_model_check tests/q36_model_check.cpp)
+target_include_directories(q36_model_check PRIVATE ${STRATA_ROOT}/tests/core)
+target_link_libraries(q36_model_check PRIVATE strata_q36_model)
+# both halves of the Qwen3.6 work so far are checks the build can run: the host half with no GPU, the attention kernel
+# against its double reference.  (q36_attn_parity comes from the tests glob above, which links mtl_rt.)
+enable_testing()
+add_test(NAME q36_model_check COMMAND q36_model_check)
+add_test(NAME q36_attn_parity COMMAND q36_attn_parity)
+add_test(NAME q36_glue_parity COMMAND q36_glue_parity)
+add_test(NAME q36_rope_parity COMMAND q36_rope_parity)
+add_test(NAME q36_router_parity COMMAND q36_router_parity)
+add_executable(q36_dense_parity tests/q36_dense_parity.cpp)
+target_link_libraries(q36_dense_parity PRIVATE strata_q36_model)
+add_test(NAME q36_dense_parity COMMAND q36_dense_parity)
+add_executable(q36_attn_layer_parity tests/q36_attn_layer_parity.cpp)
+target_link_libraries(q36_attn_layer_parity PRIVATE strata_q36_model)
+add_test(NAME q36_attn_layer_parity COMMAND q36_attn_layer_parity)
+add_executable(q36_gdn_layer_parity tests/q36_gdn_layer_parity.cpp)
+target_link_libraries(q36_gdn_layer_parity PRIVATE strata_q36_model)
+add_test(NAME q36_gdn_layer_parity COMMAND q36_gdn_layer_parity)
+add_executable(q36_moe_shared_parity tests/q36_moe_shared_parity.cpp)
+target_link_libraries(q36_moe_shared_parity PRIVATE strata_q36_model)
+add_test(NAME q36_moe_shared_parity COMMAND q36_moe_shared_parity)
+add_executable(q36_expert_blob_check tests/q36_expert_blob_check.cpp)
+target_link_libraries(q36_expert_blob_check PRIVATE strata_q36_model)
+add_test(NAME q36_expert_blob_check COMMAND q36_expert_blob_check)
+add_executable(q36_moe_routed_parity tests/q36_moe_routed_parity.cpp)
+target_link_libraries(q36_moe_routed_parity PRIVATE strata_q36_model)
+add_test(NAME q36_moe_routed_parity COMMAND q36_moe_routed_parity)
+add_executable(q36_layer_check tests/q36_layer_check.cpp)
+target_link_libraries(q36_layer_check PRIVATE strata_q36_model)
+add_test(NAME q36_layer_check COMMAND q36_layer_check)
+add_executable(q36_bind_check tests/q36_bind_check.cpp)
+target_include_directories(q36_bind_check PRIVATE ${STRATA_ROOT}/tests/core)
+target_link_libraries(q36_bind_check PRIVATE strata_q36_model)
+add_test(NAME q36_bind_check COMMAND q36_bind_check)
+add_executable(q36_forward_check tests/q36_forward_check.cpp)
+target_include_directories(q36_forward_check PRIVATE ${STRATA_ROOT}/tests/core)
+target_link_libraries(q36_forward_check PRIVATE strata_q36_model)
+add_test(NAME q36_forward_check COMMAND q36_forward_check)
+add_executable(q36_stream_check tests/q36_stream_check.cpp)
+target_include_directories(q36_stream_check PRIVATE ${STRATA_ROOT}/tests/core)
+target_link_libraries(q36_stream_check PRIVATE strata_q36_model)
+add_test(NAME q36_stream_check COMMAND q36_stream_check)
+add_executable(q36_generate_check tests/q36_generate_check.cpp)
+target_include_directories(q36_generate_check PRIVATE ${STRATA_ROOT}/tests/core)
+target_link_libraries(q36_generate_check PRIVATE strata_q36_model)
+add_test(NAME q36_generate_check COMMAND q36_generate_check)
+add_executable(q36_upload_check tests/q36_upload_check.cpp)
+target_include_directories(q36_upload_check PRIVATE ${STRATA_ROOT}/tests/core)
+target_link_libraries(q36_upload_check PRIVATE strata_q36_model)
+add_test(NAME q36_upload_check COMMAND q36_upload_check)
 
 # ---- the device runtime and the engine (mac-design) ---------------------------------------------------------------
 set(METAL_CPP_DIR "" CACHE PATH "metal-cpp headers (https://developer.apple.com/metal/cpp/), e.g. metal-cpp_26")
@@ -68,28 +144,23 @@ target_link_libraries(runtime_hello PRIVATE strata_core_metal)
 enable_testing()
 add_test(NAME runtime_hello COMMAND runtime_hello)
 
-# The engine: ggml (the native expert formats' type traits and ggml-cpu) from a llama.cpp checkout at the commit the
-# PC build pins (CMakeLists.txt: 3cf03257).
+# The engine: ggml (the native expert formats' type traits and ggml-cpu) from the tree vendored in third_party/strata-ggml (frozen at the
+# commit the PC build pins, 3cf03257).  -DSTRATA_GGML_DIR=<llama.cpp checkout> builds from that checkout instead (an override kept for two releases).
 option(STRATA_METAL_ENGINE "Build the engine (strata) for Metal" ON)
-set(STRATA_GGML_DIR "" CACHE PATH "llama.cpp checkout at the pinned commit")
+set(STRATA_GGML_DIR "" CACHE PATH "llama.cpp checkout to take ggml from instead of the vendored third_party/strata-ggml (empty: the vendored tree)")
 if(NOT STRATA_METAL_ENGINE)
   return()
 endif()
-if(NOT EXISTS "${STRATA_GGML_DIR}/ggml/CMakeLists.txt")
-  message(FATAL_ERROR "STRATA_GGML_DIR='${STRATA_GGML_DIR}' is not a llama.cpp checkout")
+include(${STRATA_ROOT}/cmake/strata_ggml.cmake)        # -DSTRATA_GGML_DIR, or the vendored third_party/strata-ggml
+include(${STRATA_ROOT}/cmake/backends/metal.cmake)
+strata_ggml_resolve("${STRATA_ROOT}")
+if(NOT EXISTS "${_strata_ggml_root}/ggml/CMakeLists.txt")
+  message(FATAL_ERROR "ggml sources not found in '${_strata_ggml_root}' (third_party/strata-ggml, or the -DSTRATA_GGML_DIR checkout)")
 endif()
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-set(GGML_STATIC ON CACHE BOOL "" FORCE)
-set(GGML_METAL OFF CACHE BOOL "" FORCE)
-set(GGML_BLAS OFF CACHE BOOL "" FORCE)
-set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
-set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
-set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-add_subdirectory(${STRATA_GGML_DIR}/ggml ${CMAKE_BINARY_DIR}/ggml EXCLUDE_FROM_ALL)
+strata_metal_ggml()
 # ref_quant's IQ1_S / IQ1_M / Q6_K dequantizers against ggml's own (the Unsloth sets' kernels are checked against ref_quant: dsu_parity)
 add_executable(dsu_ref_vs_ggml tests/dsu_ref_vs_ggml.cpp)
-target_include_directories(dsu_ref_vs_ggml PRIVATE ${STRATA_GGML_DIR}/ggml/include)
+target_include_directories(dsu_ref_vs_ggml PRIVATE ${_strata_ggml_root}/ggml/include)
 target_link_libraries(dsu_ref_vs_ggml PRIVATE mtl_rt ggml-base ggml-cpu)
 
 set(S ${STRATA_ROOT}/src)
@@ -99,7 +170,7 @@ set(STRATA_METAL_HOST_SOURCES
   ${S}/core/native_head.cpp ${S}/core/native_dense.cpp ${S}/core/verify.cpp ${S}/core/mtp.cpp
   ${S}/core/conversation_snapshot.cpp ${S}/core/conversation_state.cpp ${S}/core/conversation_memory.cpp
   ${S}/core/peer_experts.cpp ${S}/core/arch_defaults.cpp ${S}/core/vmm.cpp ${S}/core/conversation_file.cpp
-  ${S}/kernels/ngram.cpp ${S}/ngram/ple_reader.cpp ${S}/platform/direct_file.cpp
+  ${S}/kernels/ngram.cpp ${S}/ngram/ple_reader.cpp ${S}/platform/direct_file.cpp ${S}/platform/io_priority.cpp
   ${S}/prefill/prefill.cpp
   ${S}/spec/suffix_drafter.cpp ${S}/spec/controller.cpp ${S}/spec/draft_policy.cpp ${S}/spec/draft_source.cpp
   ${S}/kernels/cpu/pool.cpp ${S}/kernels/cpu/expert_layout.cpp ${S}/kernels/cpu/native_expert.cpp
@@ -169,8 +240,8 @@ file(GLOB STRATA_METAL_ENGINE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_D
 
 add_library(strata_metal_host STATIC ${STRATA_METAL_HOST_SOURCES})
 target_include_directories(strata_metal_host PUBLIC ${STRATA_ROOT}/include ${S}/core ${STRATA_ROOT}/third_party/ggml
-                           ${STRATA_GGML_DIR}/ggml/include ${STRATA_GGML_DIR}/ggml/src ${STRATA_GGML_DIR}/ggml/src/ggml-cpu)
-target_compile_definitions(strata_metal_host PUBLIC STRATA_NATIVE_EXPERTS=1 STRATA_VERSION="0.1.55-metal")
+                           ${_strata_ggml_root}/ggml/include ${_strata_ggml_root}/ggml/src ${_strata_ggml_root}/ggml/src/ggml-cpu)
+target_compile_definitions(strata_metal_host PUBLIC STRATA_NATIVE_EXPERTS=1 STRATA_HAVE_DFLASH2=1 STRATA_VERSION="0.1.59-metal")
 target_compile_options(strata_metal_host PRIVATE -Wno-unused-parameter -Wno-deprecated-declarations)
 target_link_libraries(strata_metal_host PUBLIC strata_gpu_metal ggml-cpu ggml-base)
 
@@ -183,7 +254,13 @@ target_compile_definitions(strata_metal_kernels PRIVATE
 target_link_libraries(strata_metal_kernels PUBLIC strata_metal_host mtl_rt)
 
 add_executable(strata ${S}/program/generate.cpp)
+# the Qwen3.6 engine on this runtime, on its own: open a pack and generate (the first real run is made with this)
+add_executable(strata-q36-metal src/qwen36/q36_main.cpp)
+target_link_libraries(strata-q36-metal PRIVATE strata_q36_model)
 target_link_libraries(strata PRIVATE strata_metal_kernels strata_metal_host strata_metal_kernels)
+# the decode window on its own (probe/window_probe.cpp): the engine's process state without the engine, for looking at a Metal fault
+add_executable(window_probe probe/window_probe.cpp)
+target_link_libraries(window_probe PRIVATE strata_metal_kernels strata_metal_host strata_metal_kernels)
 
 # --- the DeepSeek engine on this Metal runtime (M5MAX-DEEPSEEK-PLAN.md, steps 3+).  The .cu sources are compiled as C++
 # through include/metal_compat, which gives them CUDA's names over the Metal runtime; the kernel entry points they call are
@@ -221,7 +298,7 @@ target_compile_definitions(ds4_rt_gpu PRIVATE STRATA_DS4_RUNTIME=1 STRATA_GPU_ME
 add_executable(strata_ds4 ${STRATA_DS4_SOURCES} $<TARGET_OBJECTS:ds4_rt_mm> $<TARGET_OBJECTS:ds4_rt_gpu>)
 target_include_directories(strata_ds4 PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include/metal_compat ${STRATA_ROOT}/include ${DS4} ${CMAKE_CURRENT_SOURCE_DIR}/src
-  ${STRATA_ROOT}/third_party/ggml ${STRATA_GGML_DIR}/ggml/include ${STRATA_GGML_DIR}/ggml/src ${STRATA_GGML_DIR}/ggml/src/ggml-cpu)
+  ${STRATA_ROOT}/third_party/ggml ${_strata_ggml_root}/ggml/include ${_strata_ggml_root}/ggml/src ${_strata_ggml_root}/ggml/src/ggml-cpu)
 target_compile_definitions(strata_ds4 PRIVATE STRATA_METAL=1)   # the real host CPU lane (ds4_gg_cpu.cpp)
 target_compile_options(strata_ds4 PRIVATE -Wno-unused-parameter -Wno-deprecated-declarations -Wno-implicit-function-declaration)
 target_link_libraries(strata_ds4 PRIVATE strata_metal_kernels strata_metal_host)
@@ -237,7 +314,7 @@ if(NOT STRATA_BUILD_ID)
   set(STRATA_BUILD_ID unknown)
 endif()
 set_source_files_properties(${DS4}/ds4_main.cpp PROPERTIES COMPILE_DEFINITIONS "DS4_BUILD_ID=\"${STRATA_BUILD_ID}\"")
-# -DSTRATA_DS4_VERSION=0.1.55-metal: the version this DeepSeek engine reports, when its package is released apart from the Qwen engine's
+# -DSTRATA_DS4_VERSION=0.1.59-metal: the version this DeepSeek engine reports, when its package is released apart from the Qwen engine's
 if(STRATA_DS4_VERSION)
   set_source_files_properties(${DS4}/ds4_main.cpp PROPERTIES COMPILE_OPTIONS "-USTRATA_VERSION;-DSTRATA_VERSION=\"${STRATA_DS4_VERSION}\"")
 endif()

@@ -57,9 +57,17 @@ inline bool model_family_runs(ModelFamily f) { return f == ModelFamily::Qwen4Exp
 inline std::string model_family_not_supported(ModelFamily f) {
     if (model_family_runs(f)) return {};
     if (f == ModelFamily::Unknown) return "this is not a model family Strata knows";
+    // The clause in brackets has to name the build it is printed from, or it sends the reader to the wrong place: the Mac
+    // (Metal) engine is not a SYCL port in development, it is an engine that has no path for this family at all
+    // (QWEN36-METAL.md, workspace: what such a path would be made of).
+#if defined(STRATA_GPU_METAL)
+    const char* where = "the Mac (Metal) engine has no path for that family";
+#else
+    const char* where = "the Intel Arc / SYCL port is in development";
+#endif
     return std::string(model_family_title(f)) + " (architecture '" + model_family_arch(f) +
-           "') runs on the NVIDIA (CUDA) and AMD (HIP) builds of Strata; this build does not run it yet (the Intel "
-           "Arc / SYCL port is in development). Use a CUDA or HIP build, or a Qwen3.8-Flash-Next model file";
+           "') runs on the NVIDIA (CUDA) and AMD (HIP) builds of Strata; this build does not run it yet (" +
+           std::string(where) + "). Use a CUDA or HIP build, or a Qwen3.8-Flash-Next model file";
 }
 
 }  // namespace strata

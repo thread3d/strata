@@ -321,6 +321,14 @@ private:
 
 enum class MetaType : uint32_t { U8 = 0, I8, U16, I16, U32, I32, F32, BOOL, STRING, ARRAY, U64, I64, F64 };
 
+/// Whether an array's ITEMS are kept whole or sampled.  A loader wants a vocabulary's length, not its 248,320 strings, so the default
+/// keeps 64 and reports the true `count`.  A caller that must READ text - a detokeniser - sets this first; the price is the array's
+/// size in the metadata (~4 MiB for a Qwen vocabulary) and nothing else.
+inline bool& keep_all_meta_arrays() {
+    static bool keep = false;
+    return keep;
+}
+
 struct MetaValue {
     MetaType type = MetaType::U32;
     uint64_t u = 0;                // integer payloads
@@ -381,10 +389,11 @@ inline MetaValue read_value(Cursor& c, MetaType t, int depth = 0) {
         v.elem = (MetaType)c.read<uint32_t>();
         v.count = c.read<uint64_t>();
         if (v.count > (1u << 24)) throw std::runtime_error("GGUF: implausible array length");
-        v.items.reserve((size_t)std::min<uint64_t>(v.count, 64));
+        const bool all = keep_all_meta_arrays();
+        v.items.reserve((size_t) (all ? v.count : std::min<uint64_t>(v.count, 64)));
         for (uint64_t i = 0; i < v.count; ++i) {
             MetaValue e = read_value(c, v.elem, depth + 1);
-            if (i < 64) v.items.push_back(std::move(e)); // keep a sample; the count is what matters
+            if (all || i < 64) v.items.push_back(std::move(e));  // a sample by default; the whole array on request
         }
         break;
     }
