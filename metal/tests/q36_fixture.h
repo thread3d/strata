@@ -64,6 +64,10 @@ inline std::vector<Kv> metadata(const char* arch, const Dims& d) {
 /// Q8_0 where the row width is a whole number of its 32-value blocks (as a real pack's matrices are), F32 elsewhere (the
 /// 1-D tensors and the narrow 2-D ones: the conv's 4-wide rows, the GDN's alpha / beta).  The experts are 3-D -
 /// [width, FF, experts] with the expert on the last axis - and their rows are matrix rows like any other.
+/// NOTE for arithmetic tests: the payload of every tensor here is a BYTE PATTERN (fixture::Tensor's seed), which is meaningless
+/// as an F32 - denormals, 1e38, NaN.  That is fine for the loader checks, which only read shapes, types and bytes; a test that
+/// MULTIPLIES with these tensors must overwrite the ones it uses (q36_forward_check fills the norms with 1.0 for exactly this
+/// reason - a norm weight of 1e24 turns a well-formed row into garbage and then into NaN).
 inline uint32_t type_of(const std::vector<int64_t>& shape) {
     return (shape.size() >= 2 && shape[0] % 32 == 0) ? 8u : 0u;
 }

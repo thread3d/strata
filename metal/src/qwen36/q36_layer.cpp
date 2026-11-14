@@ -1,7 +1,9 @@
 // metal/src/qwen36/q36_layer.cpp - one decoder layer: the order, and nothing new computed.
 #include "q36_layer.h"
 
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 namespace strata::qwen36 {
 namespace {
@@ -79,6 +81,18 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
             return false;
     }
     const mtl::Buffer& mix = w.attention ? io.attn_scratch->y : io.gdn_scratch->out;
+    if (std::getenv("Q36_TRACE")) {
+        auto scan = [](const mtl::Buffer& b, int n, const char* what) {
+            const float* v = (const float*) b.ptr;
+            size_t bad = 0;
+            for (int i = 0; i < n; ++i) if (!std::isfinite(v[i])) ++bad;
+            std::printf("Q36_TRACE   %s: %g %g %g, non-finite %zu of %d\n", what, (double) v[0], (double) v[1], (double) v[2], bad, n);
+            std::fflush(stdout);
+        };
+        scan(s.h, n, "h after the first norm");
+        scan(mix, n, "the mixer's output");
+        scan(x, n, "x after the mixer join");
+    }
 
     // 3. x += mixer; h = rms(x) * post_attention_norm
     if (!join(cx, lk, x, &mix, *w.post_norm, w.post_norm_off, s.h, n, eps, true, err)) return false;
