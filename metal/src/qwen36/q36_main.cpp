@@ -470,6 +470,115 @@ int main(int argc, char** argv) {
         }
         const size_t rb2 = ref::row_bytes(L0.ssm_out.type(), ZV);
         std::vector<float> row2((size_t) ZV);
+        // 2. THE MOE, from the same double h2 = rms(x_after_mixer) * post_norm, so the whole layer can be compared: router top-8
+        // renormalised, each pick's gate/up/down against the file's stacked expert tensors, plus the shared expert and its sigmoid gate.
+        {
+            std::vector<double> xm((size_t) N);
+            for (int i = 0; i < N; ++i) xm[(size_t) i] = x[(size_t) i];   // x_in
+            // the mixer's own y into xm
+            {
+                const size_t rb2 = ref::row_bytes(L0.ssm_out.type(), ZV);
+                std::vector<float> row2((size_t) ZV);
+                // recompute y (it was built above) and add ssm_out . y
+                for (int r = 0; r < N; ++r) {
+                    ref::dequant(L0.ssm_out.type(), L0.ssm_out.data(*m.file) + (size_t) r * rb2, row2.data(), (size_t) ZV);
+                    double acc = 0.0;
+                    for (int i = 0; i < ZV; ++i) acc += (double) row2[(size_t) i] * y[(size_t) i];
+                    xm[(size_t) r] += acc;
+                }
+            }
+            // h2 = rms(xm) * post_norm
+            ref::dequant(L0.post_norm.type(), L0.post_norm.data(*m.file), f.data(), (size_t) N);
+            double s2 = 0.0;
+            for (int i = 0; i < N; ++i) s2 += xm[(size_t) i] * xm[(size_t) i];
+            const double r2 = 1.0 / std::sqrt(s2 / (double) N + (double) m.eps);
+            std::vector<double> h2((size_t) N);
+            for (int i = 0; i < N; ++i) h2[(size_t) i] = xm[(size_t) i] * r2 * (double) f[(size_t) i];
+            // the router over the real 256 experts, top-8, renormalised
+            const int NE = (int) m.g.n_expert;
+            std::vector<double> lg((size_t) NE);
+            {
+                const size_t rb = ref::row_bytes(L0.gate_inp.type(), N);
+                std::vector<float> row((size_t) N);
+                for (int e = 0; e < NE; ++e) {
+                    ref::dequant(L0.gate_inp.type(), L0.gate_inp.data(*m.file) + (size_t) e * rb, row.data(), (size_t) N);
+                    double acc = 0.0;
+                    for (int i = 0; i < N; ++i) acc += (double) row[(size_t) i] * h2[(size_t) i];
+                    lg[(size_t) e] = acc;
+                }
+            }
+            std::vector<int> ord((size_t) NE);
+            for (int e = 0; e < NE; ++e) ord[(size_t) e] = e;
+            std::sort(ord.begin(), ord.end(), [&](int a, int b) { return lg[(size_t) a] > lg[(size_t) b]; });
+            std::vector<double> moe((size_t) N, 0.0);
+            double wsum = 0.0;
+            for (int k = 0; k < (int) m.top_k; ++k) wsum += std::exp(lg[(size_t) ord[(size_t) k]]);
+            const int FF = (int) m.g.n_ff;
+            const size_t gu_row = ref::row_bytes(L0.gate_exps.type(), N), d_row = ref::row_bytes(L0.down_exps.type(), FF);
+            const size_t gsz = (size_t) FF * gu_row, dsz = (size_t) N * d_row;
+            std::printf("gdn layer 0 host router top-8:");
+            for (int k = 0; k < (int) m.top_k; ++k) std::printf(" %d", ord[(size_t) k]);
+            std::printf("\n");
+            std::vector<float> wr((size_t) N), wa((size_t) FF);
+            for (int k = 0; k < (int) m.top_k; ++k) {
+                const int e = ord[(size_t) k];
+                const double wk = std::exp(lg[(size_t) e]) / wsum;
+                const uint8_t* g = L0.gate_exps.data(*m.file) + (size_t) e * gsz;
+                const uint8_t* u = L0.up_exps.data(*m.file) + (size_t) e * gsz;
+                const uint8_t* dn = L0.down_exps.data(*m.file) + (size_t) e * dsz;
+                std::vector<double> act((size_t) FF);
+                for (int r = 0; r < FF; ++r) {
+                    ref::dequant(L0.gate_exps.type(), g + (size_t) r * gu_row, wr.data(), (size_t) N);
+                    double a1 = 0.0;
+                    for (int i = 0; i < N; ++i) a1 += (double) wr[(size_t) i] * h2[(size_t) i];
+                    ref::dequant(L0.up_exps.type(), u + (size_t) r * gu_row, wr.data(), (size_t) N);
+                    double a2 = 0.0;
+                    for (int i = 0; i < N; ++i) a2 += (double) wr[(size_t) i] * h2[(size_t) i];
+                    act[(size_t) r] = (a1 / (1.0 + std::exp(-a1))) * a2;
+                }
+                for (int r = 0; r < N; ++r) {
+                    ref::dequant(L0.down_exps.type(), dn + (size_t) r * d_row, wa.data(), (size_t) FF);
+                    double a3 = 0.0;
+                    for (int i = 0; i < FF; ++i) a3 += (double) wa[(size_t) i] * act[(size_t) i];
+                    moe[(size_t) r] += wk * a3;
+                }
+            }
+            // the shared expert with its sigmoid gate
+            {
+                std::vector<double> sg((size_t) FF), sh((size_t) N, 0.0);
+                std::vector<float> row((size_t) N);
+                for (int r = 0; r < FF; ++r) {
+                    ref::dequant(L0.gate_shexp.type(), L0.gate_shexp.data(*m.file) + (size_t) r * ref::row_bytes(L0.gate_shexp.type(), N), row.data(), (size_t) N);
+                    double a1 = 0.0;
+                    for (int i = 0; i < N; ++i) a1 += (double) row[(size_t) i] * h2[(size_t) i];
+                    ref::dequant(L0.up_shexp.type(), L0.up_shexp.data(*m.file) + (size_t) r * ref::row_bytes(L0.up_shexp.type(), N), row.data(), (size_t) N);
+                    double a2 = 0.0;
+                    for (int i = 0; i < N; ++i) a2 += (double) row[(size_t) i] * h2[(size_t) i];
+                    sg[(size_t) r] = (a1 / (1.0 + std::exp(-a1))) * a2;
+                }
+                for (int r = 0; r < N; ++r) {
+                    ref::dequant(L0.down_shexp.type(), L0.down_shexp.data(*m.file) + (size_t) r * ref::row_bytes(L0.down_shexp.type(), FF), row.data(), (size_t) FF);
+                    double a3 = 0.0;
+                    for (int i = 0; i < FF; ++i) a3 += (double) row[(size_t) i] * sg[(size_t) i];
+                    sh[(size_t) r] = a3;
+                }
+                double sgate = 0.0;
+                {
+                    const strata::qwen36::TensorRef& wg = L0.gate_inp_shexp;
+                    std::vector<float> row1((size_t) N);
+                    // [n_embd] - a vector, not a matrix
+                    ref::dequant(wg.type(), wg.data(*m.file), row1.data(), (size_t) N);
+                    for (int i = 0; i < N; ++i) sgate += (double) row1[(size_t) i] * h2[(size_t) i];
+                }
+                const double gs = 1.0 / (1.0 + std::exp(-sgate));
+                for (int r = 0; r < N; ++r) moe[(size_t) r] += gs * sh[(size_t) r];
+            }
+            std::printf("gdn layer 0 host x_out[0..3]:");
+            for (int r = 0; r < 4; ++r) std::printf(" %g", xm[(size_t) r] + moe[(size_t) r]);
+            std::printf("  (moe[0..3]:");
+            for (int r = 0; r < 4; ++r) std::printf(" %g", moe[(size_t) r]);
+            std::printf(")\n");
+        }
         std::printf("gdn layer 0 host mixer (token %d):", check_gdn);
         for (int r = 0; r < 4; ++r) {
             ref::dequant(L0.ssm_out.type(), L0.ssm_out.data(*m.file) + (size_t) r * rb2, row2.data(), (size_t) ZV);

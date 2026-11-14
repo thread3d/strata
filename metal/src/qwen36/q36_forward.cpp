@@ -210,6 +210,14 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
             f.attn.vring = f.vring[i];
         }
         if (!layer_forward(cx, f.lk, f.dk, f.dense, w, io, f.layer, f.x, i == 0, err)) return false;
+        if (i == 0) {   // Q36_DUMP_X: the residual after layer 0, so a host reference can compare the whole layer
+            if (const char* xp = std::getenv("Q36_DUMP_X")) {
+                if (FILE* fx = std::fopen(xp, "wb")) {
+                    std::fwrite(f.x.ptr, 4, (size_t) N, fx);
+                    std::fclose(fx);
+                }
+            }
+        }
         if (i == 0) {   // Q36_DUMP_H: the row layer 0's MoE actually read, so a host reference can use the same `h`
             if (const char* hp = std::getenv("Q36_DUMP_H")) {
                 if (FILE* fh = std::fopen(hp, "wb")) {
