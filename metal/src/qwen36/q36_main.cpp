@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
     std::printf("device: %s (%llu-byte buffers, %d-lane simdgroups)\n", cx.device_name().c_str(),
                 (unsigned long long) cx.max_buffer_length(), cx.simd_width());
 
-    if (text || !prompt_text.empty()) strata::keep_all_meta_arrays() = true;   // a detokeniser needs the whole vocabulary
+    if (text || !prompt_text.empty() || show_token >= 0) strata::keep_all_meta_arrays() = true;   // BEFORE the load   // a detokeniser needs the whole vocabulary
     strata::qwen36::Model m;
     std::string err;
     auto t0 = std::chrono::steady_clock::now();
