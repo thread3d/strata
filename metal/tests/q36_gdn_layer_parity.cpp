@@ -171,7 +171,7 @@ void run_case(mtl::Context& cx, strata::qwen36::GdnKernels& k, int T, int pos_un
                     sv = g * sv + cv[(size_t) (HK * S + hk * S + i)] * delta;
                     acc += sv * cv[(size_t) (hk * S + i)];
                 }
-                o[(size_t) jj] = acc;   // no second 1/sqrt(D): the query already carries it (q36ref.cu)
+                o[(size_t) jj] = acc / std::sqrt((double) S);   // the kernel's output scale IS right (round 115: cos 0.3355 -> 0.9224 against llama.cpp)
             }
             double ss = 0;
             for (int jj = 0; jj < S; ++jj) ss += o[(size_t) jj] * o[(size_t) jj];
