@@ -617,6 +617,7 @@ int main(int argc, char** argv) {
             if (fx == nullptr) { std::printf("--check-attn: cannot read %s\\n", x_file.c_str()); return 1; }
             std::vector<float> xf((size_t) N);   // the dump is float32; widen here
             if (std::fread(xf.data(), 4, (size_t) N, fx) != (size_t) N) { std::printf("--check-attn: x-file is not doubles\\n"); std::fclose(fx); return 1; }
+            for (int i = 0; i < N; ++i) x[(size_t) i] = (double) xf[(size_t) i];   // the widen that was missing
             std::fclose(fx);
         }
         ref::dequant(L.attn_norm.type(), L.attn_norm.data(*m.file), f.data(), (size_t) N);
