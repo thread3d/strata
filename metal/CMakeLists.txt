@@ -41,12 +41,24 @@ target_link_libraries(mtl_rt PUBLIC "-framework Metal" "-framework Foundation")
 
 file(GLOB STRATA_METAL_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp)
 list(REMOVE_ITEM STRATA_METAL_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/runtime_hello.cpp
-                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/dsu_ref_vs_ggml.cpp)   # (needs ggml: below)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/dsu_ref_vs_ggml.cpp            # (needs ggml: below)
+                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/q36_model_check.cpp)           # (the Qwen3.6 host half: its own target, below)
 foreach(src ${STRATA_METAL_TESTS})
   get_filename_component(t ${src} NAME_WE)
   add_executable(${t} ${src})
   target_link_libraries(${t} PRIVATE mtl_rt)
 endforeach()
+
+# ---- Qwen3.6-35B-A3B (qwen35moe) on this Metal runtime: the host half first -----------------------------------------
+# src/qwen36 is the engine's host side - reading the file, deciding what stays resident and what streams, and refusing
+# what this port cannot take - kept separate from the kernels and from the device runtime, so it builds and is tested
+# with no GPU at all (q36_model_check drives it on tiny synthetic files).
+add_library(strata_q36_model STATIC src/qwen36/q36_model.cpp)
+target_include_directories(strata_q36_model PUBLIC src ${STRATA_ROOT}/include)
+target_compile_options(strata_q36_model PRIVATE -Wno-unused-parameter)
+add_executable(q36_model_check tests/q36_model_check.cpp)
+target_include_directories(q36_model_check PRIVATE ${STRATA_ROOT}/tests/core)
+target_link_libraries(q36_model_check PRIVATE strata_q36_model)
 
 # ---- the device runtime and the engine (mac-design) ---------------------------------------------------------------
 set(METAL_CPP_DIR "" CACHE PATH "metal-cpp headers (https://developer.apple.com/metal/cpp/), e.g. metal-cpp_26")
