@@ -42,6 +42,12 @@ void stream_ids(const mtl::Buffer& ids, int n_tok, int top_k, std::vector<int>& 
 }
 
 int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids, std::string& err) {
+    return stream_load_raw(s.blob, s, ids, L.gate_exps.data(*m.file), L.up_exps.data(*m.file), L.down_exps.data(*m.file), err);
+}
+
+int stream_load_raw(const ExpertBlob& b, ExpertStream& s, const std::vector<int>& ids, const uint8_t* gate, const uint8_t* up,
+                    const uint8_t* down, std::string& err) {
+    (void) b;
     uint32_t* map = s.smap.as<uint32_t>();
     int slot = 0, loaded = 0;
     for (int e : ids) {
@@ -54,9 +60,7 @@ int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vect
             err = "a token routed to more experts than the pool holds (" + std::to_string(s.n_slot) + ")";
             return 0;
         }
-        if (!pack(s.blob, e, L.gate_exps.data(*m.file), L.up_exps.data(*m.file), L.down_exps.data(*m.file),
-                  slot_ptr(s, slot), err))
-            return 0;
+        if (!pack(s.blob, e, gate, up, down, slot_ptr(s, slot), err)) return 0;
         map[e] = slot_word(s, slot);
         ++slot;
         ++loaded;

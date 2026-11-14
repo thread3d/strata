@@ -71,7 +71,7 @@ int main() {
     std::memset(bsg.ptr, 0, 4);
 
     strata::qwen36::RoutedShape sh{b, NE, TOPK, 1};
-    strata::qwen36::RoutedWeights w{&slots, 0, strata::qwen36::DenseMatrix{&br, 0, 8, N, NE}};
+    strata::qwen36::RoutedWeights w{&slots, 0, nullptr, strata::qwen36::DenseMatrix{&br, 0, 8, N, NE}};
     strata::qwen36::RoutedScratch s;
     strata::qwen36::RoutedKernels k;
     if (!strata::qwen36::routed_forward(cx, k, dk, ds, sh, w, s, bx, bysh, bsg, bo, err)) {
@@ -135,6 +135,40 @@ int main() {
     char nm[128];
     std::snprintf(nm, sizeof nm, "routed MoE: %d experts top-%d, blob %.1f KiB, 1 token", NE, TOPK, (double) b.blob / 1024.0);
     report(nm, den > 0 ? std::sqrt(num / den) : std::sqrt(num), 2e-4);
+
+    // THE SAME EXPERTS THROUGH THE ARENA, against the resident answer above: this is what the streaming path rests on - a slot
+    // loaded a moment ago must give the arithmetic the resident pack gives, to the last bit that float arithmetic allows.
+    {
+        // the experts the resident run routed to: read them off its ids, which the router wrote
+        std::vector<int> picked;
+        strata::qwen36::stream_ids(s.ids, 1, TOPK, picked);
+        strata::qwen36::ExpertStream stream;
+        if (!strata::qwen36::stream_init(cx, stream, b, (int) picked.size(), NE, err)) {
+            std::printf("stream_init: %s\n", err.c_str());
+            return 1;
+        }
+        const int loaded = strata::qwen36::stream_load_raw(b, stream, picked, gate.data(), up.data(), down.data(), err);
+        if (loaded != (int) picked.size()) {
+            std::printf("stream_load: %s\n", err.c_str());
+            return 1;
+        }
+        strata::qwen36::RoutedWeights w2{nullptr, 0, &stream, strata::qwen36::DenseMatrix{&br, 0, 8, N, NE}};
+        strata::qwen36::RoutedScratch s2;
+        strata::qwen36::RoutedKernels k2;
+        mtl::Buffer bo2 = cx.alloc(4 * (size_t) N);
+        if (!strata::qwen36::routed_forward(cx, k2, dk, ds, sh, w2, s2, bx, bysh, bsg, bo2, err)) {
+            std::printf("routed_forward (arena): %s\n", err.c_str());
+            return 1;
+        }
+        const float* g2 = (const float*) bo2.ptr;
+        double n2 = 0.0, d2 = 0.0;
+        for (int i = 0; i < N; ++i) {
+            const double e = (double) g2[i] - (double) got[i];
+            n2 += e * e;
+            d2 += (double) got[i] * (double) got[i];
+        }
+        report("the same token through the ARENA gives the resident answer", d2 > 0 ? std::sqrt(n2 / d2) : std::sqrt(n2), 2e-6);
+    }
     std::printf("%s\n", g_fail ? "FAILURES" : "ALL PASS");
     return g_fail ? 1 : 0;
 }

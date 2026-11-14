@@ -100,7 +100,7 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
     // 4. the MoE: the shared expert, its gate, then the routed experts and the combine
     if (!shared_forward(cx, dk, ds, io.shared, w.shared, *io.shared_scratch, s.h, err)) return false;
     if (!dense_gemv(cx, dk, w.gate_inp_shexp, s.h, s.sg, ds, err)) return false;   // n_embd -> 1
-    RoutedWeights rw{io.slots, io.slots_off, w.gate_inp};
+    RoutedWeights rw{io.slots, io.slots_off, nullptr, w.gate_inp};
     if (!routed_forward(cx, *io.routed_kernels, dk, ds, io.routed, rw, *io.routed_scratch, s.h, io.shared_scratch->y, s.sg,
                         s.moe_out, err))
         return false;

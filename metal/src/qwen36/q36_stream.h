@@ -42,6 +42,11 @@ bool stream_init(mtl::Context& cx, ExpertStream& s, const ExpertBlob& b, int n_s
 /// id is outside the model or the copy does not fit the pool.
 int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids, std::string& err);
 
+/// The same fill from three raw tensor mappings (the file's gate / up / down payloads), for a caller that already holds them - a
+/// test with a packed blob rather than a model, or an engine that streamed the slabs itself.
+int stream_load_raw(const ExpertBlob& b, ExpertStream& s, const std::vector<int>& ids, const uint8_t* gate, const uint8_t* up,
+                    const uint8_t* down, std::string& err);
+
 /// The routed ids, off the device and into a host list: the one synchronisation a token needs.  `ids` holds n_tok * top_k ints as
 /// moe_route wrote them; the list comes back deduplicated (a verify window routes the same expert for two tokens) and in the order
 /// they were found, which is the order stream_load fills slots in.

@@ -16,6 +16,7 @@
 
 #include "q36_dense.h"
 #include "q36_expert_blob.h"
+#include "q36_stream.h"
 #include "mtl_rt.h"
 
 #include <cstdint>
@@ -31,8 +32,9 @@ struct RoutedShape {
 };
 
 struct RoutedWeights {
-    const mtl::Buffer* blobs = nullptr;   // n_expert slots of blob.blob bytes
+    const mtl::Buffer* blobs = nullptr;   // resident: n_expert slots of blob.blob bytes
     size_t blobs_off = 0;
+    const ExpertStream* stream = nullptr; // streamed: a pool of slots, read through smap (takes precedence over `blobs`)
     DenseMatrix router;                   // ffn_gate_inp.weight [n_embd, n_expert]
 };
 
@@ -43,10 +45,11 @@ struct RoutedScratch {
 
 struct RoutedKernels {
     int lib = -1;
+    int arena = -1;   // -1 unresolved, 0 resident, 1 streaming (function constant 20: the kernels read slots, not blobs)
     mtl::Pipeline route, gu, dn, combine;
 };
 
-bool routed_init(mtl::Context& cx, RoutedKernels& k, const RoutedShape& sh, std::string& err);
+bool routed_init(mtl::Context& cx, RoutedKernels& k, const RoutedShape& sh, std::string& err, bool arena = false);
 bool routed_scratch(mtl::Context& cx, RoutedScratch& s, const RoutedShape& sh, std::string& err);
 
 /// One token through the routed path.  `x` is the normed residual row (fp32, n_embd); `ysh` and `sg` are the shared expert's

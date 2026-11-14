@@ -27,7 +27,7 @@ std::string tile(const char* kernel, int type, Cfg c) {
 
 }  // namespace
 
-bool routed_init(mtl::Context& cx, RoutedKernels& k, const RoutedShape& sh, std::string& err) {
+bool routed_init(mtl::Context& cx, RoutedKernels& k, const RoutedShape& sh, std::string& err, bool arena) {
     if (k.lib < 0) {
         try {
             // GEO_TOPK is the router's window (ROUTE_K): 8 for this family, and without it the default 10 reads past it
@@ -37,11 +37,15 @@ bool routed_init(mtl::Context& cx, RoutedKernels& k, const RoutedShape& sh, std:
             return false;
         }
     }
+    const int want = arena ? 1 : 0;
+    if (k.arena == want) return true;   // (the two modes are different pipelines: function constant 20 changes the addressing)
     try {
+        const mtl::Constants fc = mtl::Constants().b(20, arena);
         k.route = cx.pipeline(k.lib, "moe_route");
-        k.gu = cx.pipeline(k.lib, tile("moe_gu", sh.blob.gu_type, kGu));
-        k.dn = cx.pipeline(k.lib, tile("moe_down", sh.blob.down_type, kDn));
+        k.gu = cx.pipeline(k.lib, tile("moe_gu", sh.blob.gu_type, kGu), fc);
+        k.dn = cx.pipeline(k.lib, tile("moe_down", sh.blob.down_type, kDn), fc);
         k.combine = cx.pipeline(k.lib, "moe_combine_sh");
+        k.arena = want;
     } catch (const std::exception& e) {
         err = std::string("a MoE kernel is missing for this model: ") + e.what();
         return false;
@@ -77,10 +81,11 @@ bool routed_scratch(mtl::Context& cx, RoutedScratch& s, const RoutedShape& sh, s
 bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseScratch& ds, const RoutedShape& sh,
                     const RoutedWeights& w, RoutedScratch& s, const mtl::Buffer& x, const mtl::Buffer& ysh,
                     const mtl::Buffer& sg, mtl::Buffer& bo, std::string& err) {
-    if (!routed_init(cx, k, sh, err)) return false;
+    const bool arena = w.stream != nullptr;
+    if (!routed_init(cx, k, sh, err, arena)) return false;
     if (!routed_scratch(cx, s, sh, err)) return false;
     const ExpertBlob& b = sh.blob;
-    if (w.blobs == nullptr) {
+    if (w.blobs == nullptr && w.stream == nullptr) {
         err = "the routed experts have no buffers";
         return false;
     }
@@ -121,10 +126,16 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
 
     // 3. the grouped experts, their grids read out of the plan
     const size_t plane = (size_t) n_embd * 4;
+    // In streaming mode the pool is buffer 0, the slot map is buffer 6, and W1..W3 are the pool again (a pool that spans more
+    // than one buffer would use them; this one does not, so they are bound to the same buffer and never addressed).
+    const mtl::Buffer& pool = w.stream != nullptr ? w.stream->slots : *w.blobs;
+    const size_t pool_off = w.stream != nullptr ? 0 : w.blobs_off;
+    const mtl::Buffer& smap = w.stream != nullptr ? w.stream->smap : s.plan;   // (unread when the arena is off)
     mtl::Dispatch dg;
     dg.p = &k.gu;
-    dg.args = {mtl::Arg::B(*w.blobs, w.blobs_off), mtl::Arg::B(ds.xp, plane * 0), mtl::Arg::B(s.h), mtl::Arg::B(s.plan),
-               mtl::Arg::V(a), mtl::Arg::B(ds.xp, plane * 4)};
+    dg.args = {mtl::Arg::B(pool, pool_off), mtl::Arg::B(ds.xp, plane * 0), mtl::Arg::B(s.h), mtl::Arg::B(s.plan),
+               mtl::Arg::V(a), mtl::Arg::B(ds.xp, plane * 4), mtl::Arg::B(smap), mtl::Arg::B(pool), mtl::Arg::B(pool),
+               mtl::Arg::B(pool)};
     dg.tg[0] = (uint32_t) (kGu.S * 32);
     dg.tg[1] = dg.tg[2] = 1;
     dg.indirect = &s.plan;
@@ -132,8 +143,8 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
 
     mtl::Dispatch dd;
     dd.p = &k.dn;
-    dd.args = {mtl::Arg::B(*w.blobs, w.blobs_off), mtl::Arg::B(s.h), mtl::Arg::B(s.ye), mtl::Arg::B(s.plan),
-               mtl::Arg::V(a), mtl::Arg::B(ds.xp)};
+    dd.args = {mtl::Arg::B(pool, pool_off), mtl::Arg::B(s.h), mtl::Arg::B(s.ye), mtl::Arg::B(s.plan), mtl::Arg::V(a),
+               mtl::Arg::B(ds.xp), mtl::Arg::B(smap), mtl::Arg::B(pool), mtl::Arg::B(pool), mtl::Arg::B(pool)};
     dd.tg[0] = (uint32_t) (kDn.S * 32);
     dd.tg[1] = dd.tg[2] = 1;
     dd.indirect = &s.plan;
