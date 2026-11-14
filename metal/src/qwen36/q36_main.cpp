@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -69,7 +70,7 @@ int main(int argc, char** argv) {
     double budget_gib = 2.0;
     bool describe = false, no_stream = false, text = false;
     std::string prompt_text;
-    int check_embed = -1, check_output = 0;
+    int check_embed = -1, check_output = 0, check_bind = -1;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -83,6 +84,7 @@ int main(int argc, char** argv) {
     else if (a == "--prompt") prompt_text = next();
     else if (a == "--check-embed") check_embed = (int) std::atoi(next().c_str());
     else if (a == "--check-output") check_output = (int) std::atoi(next().c_str());
+    else if (a == "--check-bind") check_bind = (int) std::atoi(next().c_str());
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -180,6 +182,45 @@ int main(int argc, char** argv) {
         std::printf("output projection: %d rows checked, worst rel %.3e at row %d; engine argmax %d (logit %g, h[0] %g)\n", check_output,
                     worst_rel, worst, best, (double) lg[best], (double) h[0]);
         return worst_rel < 2e-5 ? 0 : 1;
+    }
+
+    if (check_bind >= 0) {
+        // Is the binding right for a REAL layer?  Every DeviceLayer buffer must hold exactly its tensor's file bytes - upload_dense
+        // copies them, so a byte comparison convicts a wrong tensor, a wrong offset or a wrong order, none of which the fixture's
+        // uniform shapes can reveal.
+        if (check_bind >= (int) m.layers.size() || check_bind >= (int) d.layers.size()) {
+            std::printf("no layer %d\n", check_bind);
+            return 1;
+        }
+        const strata::qwen36::Layer& L = m.layers[(size_t) check_bind];
+        const strata::qwen36::DeviceLayer& D = d.layers[(size_t) check_bind];
+        struct Pair { const char* name; const strata::qwen36::TensorRef* t; const mtl::Buffer* b; };
+        std::vector<Pair> pairs{{"attn_norm", &L.attn_norm, &D.attn_norm}, {"post_norm", &L.post_norm, &D.post_norm},
+                                {"ffn_gate_inp", &L.gate_inp, &D.gate_inp},
+                                {"ffn_gate_inp_shexp", &L.gate_inp_shexp, &D.gate_inp_shexp},
+                                {"ffn_gate_shexp", &L.gate_shexp, &D.gate_shexp},
+                                {"ffn_up_shexp", &L.up_shexp, &D.up_shexp},
+                                {"ffn_down_shexp", &L.down_shexp, &D.down_shexp},
+                                {"attn_qkv", &L.qkv, &D.qkv}, {"ssm_out", &L.ssm_out, &D.ssm_out},
+                                {"ssm_alpha", &L.alpha, &D.alpha}, {"ssm_beta", &L.beta, &D.beta},
+                                {"ssm_conv1d", &L.conv1d, &D.conv1d}, {"ssm_norm", &L.ssm_norm, &D.ssm_norm},
+                                {"attn_q", &L.q, &D.q}, {"attn_k", &L.k, &D.k}, {"attn_v", &L.v, &D.v},
+                                {"attn_output", &L.o, &D.o}, {"q_norm", &L.q_norm, &D.q_norm}, {"k_norm", &L.k_norm, &D.k_norm}};
+        int bad = 0, checked = 0;
+        for (const Pair& pr : pairs) {
+            if (pr.b->ptr == nullptr || pr.b->bytes == 0) continue;
+            if (pr.t != nullptr) {
+                if (!pr.t->ok()) { std::printf("  %-20s DEVICE BUFFER BUT NO TENSOR\n", pr.name); ++bad; continue; }
+                const uint8_t* f = pr.t->data(*m.file);
+                const size_t n = (size_t) std::min<uint64_t>(pr.b->bytes, pr.t->bytes());
+                if (std::memcmp(pr.b->ptr, f, n) != 0) { std::printf("  %-20s MISMATCH (%zu bytes)\n", pr.name, n); ++bad; }
+                ++checked;
+            }
+        }
+        std::printf("layer %d bindings: %d checked, %d wrong (%s, %zu tensors)\n", check_bind, checked, bad,
+                    L.kind == strata::core::LayerKind::Gdn ? "GDN" : (L.kind == strata::core::LayerKind::Attention ? "attention" : "MTP"),
+                    m.layers.size());
+        return bad == 0 ? 0 : 1;
     }
 
     std::vector<uint32_t> prompt = parse_ids(tokens_s.c_str());
