@@ -97,6 +97,56 @@ int main() {
     const int n3 = strata::qwen36::stream_load(m, L, small, {1, 2, 3}, err);
     check(n3 == 0 && !err.empty(), "a routing wider than the pool is refused with a message (" + err + ")");
 
+    // THE TWO HALVES JOINED: a router's output becomes a filled pool.  The routing here is 256 experts top-8 - the kernel's
+    // 8-wide window - with the fixture's eight experts as the only candidates above the rest, because a smaller n_expert makes
+    // moe_route take its 512-logit path and pick from values this test never wrote (256..259, which is what round 29 mistook for
+    // a kernel defect: its own call had said n_expert = 8).
+    {
+        constexpr int NLOG = 256, TOPK = 8;
+        std::vector<float> logits(NLOG, -100.0f);
+        for (int e = 0; e < 8; ++e) logits[(size_t) e] = 3.0f - 0.25f * (float) e;   // no ties among the eight that matter
+        mtl::Buffer bl = cx.alloc(4 * logits.size()), bids = cx.alloc(4 * (size_t) TOPK), bw = cx.alloc(4 * (size_t) TOPK),
+                    bplan = cx.alloc(4 * 4096);
+        std::memcpy(bl.ptr, logits.data(), 4 * logits.size());
+        struct MoeArgs {
+            uint64_t gate_off, up_off, down_off, gu_stride, d_stride;
+            uint32_t gu_row, d_row, n_embd, n_ff, n_tok, topk, n_expert, gx_gu, gx_dn, pad;
+        } ma{};
+        ma.n_embd = (uint32_t) m.g.n_embd;
+        ma.n_ff = (uint32_t) m.g.n_ff;
+        ma.n_tok = 1;
+        ma.topk = TOPK;
+        ma.n_expert = NLOG;   // the kernel's 256-expert path: 8-wide window, no reading past it
+        ma.gx_gu = ma.gx_dn = 1;
+        mtl::Pipeline route =
+            cx.pipeline(cx.compile({"quant.metal", "units.metal", "moe.metal"}, "#define GEO_TOPK 8\n"), "moe_route");
+        mtl::Dispatch d;
+        d.p = &route;
+        d.args = {mtl::Arg::B(bl), mtl::Arg::B(bids), mtl::Arg::B(bw), mtl::Arg::B(bplan), mtl::Arg::V(ma)};
+        d.tg[0] = 512;
+        d.grid[0] = 1;
+        cx.run({d});
+
+        strata::qwen36::ExpertStream pool;
+        if (!strata::qwen36::stream_init(cx, pool, b, 8, (int) m.g.n_expert, err)) {
+            std::printf("init: %s\n", err.c_str());
+            return 1;
+        }
+        std::vector<int> picked;
+        err.clear();   // (the refusal case above left its message here)
+        strata::qwen36::stream_ids(bids, 1, TOPK, picked);
+        const int loaded = strata::qwen36::stream_load(m, L, pool, picked, err);
+        bool ordered = picked.size() == 8;
+        for (size_t i = 0; ordered && i < picked.size(); ++i) ordered = picked[i] == (int) i;   // 0..7, best first
+        check(ordered, "the router's eight picks reach the host in order, best first (0..7)");
+        check(loaded == 8, "the pool fills from the router's own output (" + std::to_string(loaded) + " loaded" +
+                               (err.empty() ? std::string() : ": " + err) + ")");
+        const uint32_t* pm = pool.smap.as<uint32_t>();
+        bool mapped = true;
+        for (int e = 0; e < 8; ++e) mapped = mapped && pm[e] == (uint32_t) e;
+        check(mapped, "and the map points each of them at its own slot");
+    }
+
     std::printf("%s\n", g_fail ? "q36_stream_check: FAILURES" : "q36_stream_check: all ok");
     return g_fail ? 1 : 0;
 }
