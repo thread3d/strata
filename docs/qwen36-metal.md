@@ -393,8 +393,10 @@ or field* and assuming its meaning.  `s.ye`, the plan's slots, and a synthetic b
 
 **Where to look next**, in order:
 
-1. **the attention layer** (10 of 40) against `q36ref.cu`'s block: `rms(.)*q_norm/k_norm`, NEOX over the first 64 with base 1e7, GQA 16/2,
-   `y = W_o (softmax(q k^T / 16) v * sigmoid(gate))` — note the sigmoid here, unlike the GDN's silu;
+1. ~~the attention layer~~ **VERIFIED BY READING (round 71)**: per-head rms with its weight, the query's interleaved [q|gate] source, the
+   gate at `qg[h*2*D + D + i]`, NEOX pairs `(i, i+hald)` with `theta = pos*base^(-2p/n_rot)`, the dense (gaugeless) key projection, and
+   `softmax(q k^T / 16) v * sigmoid(gate)` — all identical to `q36ref.cu:259-296`. Only the KV cache's storage order differs, and that is
+   internal. **This is no longer a suspect.**
 2. **the same treatment for the MoE**: `top-8, renormalised` (verified: weights sum 1.0000) and `sigmoid(w_shexp_gate . h2)`;
 3. **the layer loop's composition** (`q36_forward.cpp`): it skips the MTP block, adds each layer's MoE with a plain `q36_add`, and runs the
    final norm once - all checked against `q36ref.cu`'s structure, none checked against a second implementation;
