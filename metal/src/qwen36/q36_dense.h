@@ -44,6 +44,10 @@ bool dense_init(mtl::Context& cx, DenseKernels& k, std::string& err);
 /// Allocates the scratch for a width (once per model; every projection of a token shares it).
 bool dense_scratch(mtl::Context& cx, DenseScratch& s, int n_in, std::string& err);
 
+/// Fills `s` with the prepared forms of `x` (the four kinds and the 16-wide sums) for a width of `n_in`.  A caller that runs a
+/// kernel of its own on the prepared activation (gemv_pair for the shared expert) calls this once, then binds `s.xp`.
+bool dense_prep(mtl::Context& cx, DenseKernels& k, const mtl::Buffer& x, DenseScratch& s, int n_in, std::string& err);
+
 /// y[0..n_out) = W . x, one token.  `x` holds n_in fp32 values.  The pipeline for the weight's format and shape is resolved
 /// on each call (Metal caches compiled functions; the host map is the only cost) and refused by name when the kernel does
 /// not exist - which is the failure a caller can act on, unlike a silently empty dispatch.

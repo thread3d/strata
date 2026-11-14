@@ -80,6 +80,22 @@ bool dense_scratch(mtl::Context& cx, DenseScratch& s, int n_in, std::string& err
     return true;
 }
 
+bool dense_prep(mtl::Context& cx, DenseKernels& k, const mtl::Buffer& x, DenseScratch& s, int n_in, std::string& err) {
+    if (!dense_init(cx, k, err)) return false;
+    if (s.xp.ptr == nullptr || s.n_in != n_in) {
+        if (!dense_scratch(cx, s, n_in, err)) return false;
+    }
+    mtl::Dispatch prep;
+    prep.p = &k.prep;
+    prep.args = {mtl::Arg::B(x), mtl::Arg::B(s.xp), mtl::Arg::V((uint32_t) n_in), mtl::Arg::V(1u)};
+    prep.tg[0] = 256;
+    prep.tg[1] = prep.tg[2] = 1;
+    prep.grid[0] = (uint32_t) ((n_in / 16 + 255) / 256);
+    prep.grid[1] = prep.grid[2] = 1;
+    cx.run({prep});
+    return true;
+}
+
 bool dense_gemv(mtl::Context& cx, DenseKernels& k, const DenseMatrix& W, const mtl::Buffer& x, mtl::Buffer& y,
                 DenseScratch& s, std::string& err) {
     if (!dense_init(cx, k, err)) return false;
@@ -87,9 +103,7 @@ bool dense_gemv(mtl::Context& cx, DenseKernels& k, const DenseMatrix& W, const m
         err = "a dense matrix with no buffer or no shape";
         return false;
     }
-    if (s.xp.ptr == nullptr || s.n_in != W.n_in) {
-        if (!dense_scratch(cx, s, W.n_in, err)) return false;
-    }
+    if (!dense_prep(cx, k, x, s, W.n_in, err)) return false;
     Cfg c = tile_for(W.n_in);
     if (!cfg_ok(c, W.type, W.n_in)) c = Cfg{32, 1, 4, 1};
     if (!cfg_ok(c, W.type, W.n_in)) {
@@ -111,13 +125,6 @@ bool dense_gemv(mtl::Context& cx, DenseKernels& k, const DenseMatrix& W, const m
     const uint64_t rb = (uint64_t) ref::row_bytes(W.type, W.n_in);
     // the prepared activations: one token, so the planes sit n_in floats apart and the sums after the fourth
     const size_t plane = (size_t) n_in * 4;
-    mtl::Dispatch prep;
-    prep.p = &k.prep;
-    prep.args = {mtl::Arg::B(x), mtl::Arg::B(s.xp), mtl::Arg::V(n_in), mtl::Arg::V(1u)};
-    prep.tg[0] = 256;
-    prep.tg[1] = prep.tg[2] = 1;
-    prep.grid[0] = (uint32_t) ((n_in / 16 + 255) / 256);
-    prep.grid[1] = prep.grid[2] = 1;
 
     // gemv's arguments, in its own order: W, the prepared plane this format reads, the sums, y, and the shape
     struct GemvArgs {
@@ -131,7 +138,7 @@ bool dense_gemv(mtl::Context& cx, DenseKernels& k, const DenseMatrix& W, const m
     d.grid[1] = d.grid[2] = 1;
     d.tg[0] = (uint32_t) (c.S * 32);
     d.tg[1] = d.tg[2] = 1;
-    cx.run({prep, d});
+    cx.run({d});
     return true;
 }
 

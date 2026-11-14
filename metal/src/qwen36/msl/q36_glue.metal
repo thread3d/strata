@@ -53,3 +53,14 @@ kernel void q36_add_rms(device float* x [[buffer(0)]], device const float* y [[b
     for (uint i = tid; i < n; i += nth) hr[i] = xr[i] * inv * w[i];
 }
 
+
+// The shared expert's SwiGLU: h = silu(gate) * up, elementwise.  gemv.metal's gemv_pair fuses this into one dispatch, but it is
+// only instantiated for the IQ/K-quant gates (GP_ROW lists IQ3_S, IQ4_XS, Q2_0, Q3_K..Q6_K) - not Q8_0, which is the format
+// the Qwen3.6 Q8_0 pack keeps its shared expert in - so the pair would be three dispatches here anyway and there is no reason
+// to make the shared expert depend on which types that kernel happens to cover.
+kernel void q36_swiglu(device const float* gate [[buffer(0)]], device const float* up [[buffer(1)]],
+                       device float* h [[buffer(2)]], constant uint& n [[buffer(3)]], uint gid [[thread_position_in_grid]]) {
+    if (gid >= n) return;
+    const float g = gate[gid];
+    h[gid] = g / (1.0f + exp(-g)) * up[gid];
+}
