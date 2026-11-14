@@ -405,3 +405,74 @@ or field* and assuming its meaning.  `s.ye`, the plan's slots, and a synthetic b
 
 **The comparison that decides every fix**: `metal/tests/q36_real_compare.sh PACK` — llama.cpp tokenizes the prompt, this engine runs those
 ids greedily, llama.cpp runs the same text; the first token that disagrees is the first part that is wrong.
+
+## 14. It works: the constants that mattered, the measurement that found them, and how to run it
+
+### The three GDN constants, and which one was right
+
+The GDN step in `metal/kernels/gdn.metal` is shared with the DeltaNet families, and qwen35moe differs from them in three places. This port made
+three changes on the strength of `src/qwen35/q36ref.cu`'s prose; **one was right and two were wrong**, and the two wrong ones broke a kernel that had
+been correct all along:
+
+| constant | change | verdict |
+|---|---|---|
+| 26 `GDN_SILU_C` | the output gate is `silu(z)`, not the DeltaNet `sigmoid(z)` | **right** - it is what the family needs |
+| 27 `GDN_KSCALE_C` | "the key is normed and not scaled" | **wrong** - the key IS scaled, as the kernel's default does |
+| 28 `GDN_OSCALE_C` | "the scale lands once, on q, not twice" | **wrong** - the kernel's `o * scale` is correct |
+
+`q36_gdn_layer.cpp` therefore sets **only constant 26**; 27 and 28 are left at the kernel's defaults. Undefined constants keep every other caller's
+semantics, so nothing outside this family changes.
+
+### The measurement that found it
+
+`tools/qwen35/q36_llama_dump.cpp` (in this repository from the start) runs llama.cpp's own API on the pack and writes every layer's hidden state; our
+`--dump-layers` writes the same format. Comparing them:
+
+    before (constants 27/28 both off):   layer 0 cos 0.3355, ||ours|| 5.02 vs ||llama|| 1.17
+    after  (the kernel's defaults):      layer 0 cos 0.9999, ||ours|| 1.174 vs ||llama|| 1.172
+                                         layer 5 cos 1.0000, layer 10 cos 1.0000
+
+**Every parity test in this port passed while the model was wrong**, because each one's reference was written by the same hand that misread the prose -
+so both sides agreed. The only comparison that shares no reading with this port is llama.cpp's, and it found the defect in two runs.
+
+### Running it
+
+    strata-q36-metal --model Qwen3.6-35B-A3B-Q8_0.gguf --tokens 760,6511,314,9338,369 --n 16 --text
+    -> " Paris, a city renowned for its rich history, culture, and iconic landmarks."
+
+    --chat          wrap the tokens in the pack's own template
+                    (<|im_start|>user\\n...<|im_end|>\\n<|im_start|>assistant\\n, every piece looked up in the file)
+    --temp F        sample instead of taking the argmax (0, the default, is greedy and byte-identical to the first version)
+    --top-p F       nucleus sampling, with --temp
+    --seed N        replays a sampled run exactly
+    --kv-cap N      the window; the context is bounded by it
+    --text          print the ids as text through the pack's vocabulary
+    --show-token ID / --find-token STRING   read a vocabulary entry, or find a control token's id
+
+`<|im_end|>` (248046) and `<|endoftext|>` (248044) always end a generation: they are not appended to the output, and no flag is needed for that.
+
+A chat run of "The capital of France is" ends, at 200 tokens:
+
+    </think>
+
+    The capital of France is **Paris**.
+
+### What it costs, measured on the RX 580 (8 GB usable)
+
+    pack            37.8 GB on disk (Qwen3.6-35B-A3B Q8_0, unsloth, the pin setup.py carries)
+    dense resident  2.52 GiB uploaded in 3.8 s
+    experts         32.67 GiB streamed: 8 slots refilled per layer, 8 x 3.19 MiB a layer, ~1 GiB read a token
+    engine state    64.6 MiB (30 GDN states and histories, 10 KV rings at the window, all the scratch)
+    speed           ~1.0 s a token at a 64-token window; the prompt runs one token at a time
+    correctness     trunk hidden states cos 0.9999 against llama.cpp at every layer
+
+### What is not done
+
+* **chunked prefill** - a prompt is processed one token at a time, which is correct and slow; a batch of prompt tokens in one pass is the next
+  performance piece.
+* **`--serve`** - there is no OpenAI-compatible endpoint for this family on Metal; `strata-q36-metal` is a command-line tool.
+* **sampling beyond temperature/top-p** - no repetition penalties, no min-p, no grammars.
+* **the MTP draft head** - the in-file MTP block is deliberately skipped in the trunk (it is a draft head, not a layer); speculative decoding is not
+  implemented, so MTP is unused.
+* **other quantisations** - the pack must be Q8_0 for the dense half (the expert kernels take IQ3_S, IQ4_XS, Q2_0 and Q3_K..Q6_K through
+  `native_expert`); the gate refuses by name rather than mis-reading.

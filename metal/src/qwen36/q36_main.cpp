@@ -21,6 +21,15 @@
 
 namespace {
 
+// A token id whose RAW vocabulary string is exactly `s`, or -1: how the chat template's own tokens are found in the pack, not hardcoded.
+int find_id(const strata::GgufModel& f, const char* seek) {
+    const strata::MetaValue* tv = f.meta().get("tokenizer.ggml.tokens");
+    if (tv == nullptr) return -1;
+    for (size_t i = 0; i < tv->items.size(); ++i)
+        if (tv->items[i].s == seek) return (int) i;
+    return -1;
+}
+
 // The byte-level BPE alphabet: a token's string holds its bytes remapped to printable codepoints (the GPT-2 table every Qwen
 // tokenizer ships), so decoding is that map undone and the bytes written out.  Enough to READ a continuation; merges are not needed
 // for that, because the vocabulary already holds whole pieces.
@@ -76,6 +85,10 @@ int main(int argc, char** argv) {
     int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
     std::string h_file, logits_file;
     int show_token = -1, check_gdn = -1, gdn_layer = 0, check_attn = -1;
+    std::string find_token;
+    float temperature = 0.0f, top_p = 1.0f;
+    uint64_t seed = 0;
+    bool chat = false;
     std::string check_gemv;
     std::string x_file;
     for (int i = 1; i < argc; ++i) {
@@ -96,6 +109,11 @@ int main(int argc, char** argv) {
     else if (a == "--h-file") h_file = next();
     else if (a == "--dump-logits") logits_file = next();
     else if (a == "--show-token") show_token = (int) std::atoi(next().c_str());
+    else if (a == "--find-token") find_token = next();
+    else if (a == "--temp") temperature = (float) std::atof(next().c_str());
+    else if (a == "--top-p") top_p = (float) std::atof(next().c_str());
+    else if (a == "--seed") seed = (uint64_t) std::strtoull(next().c_str(), nullptr, 10);
+    else if (a == "--chat") chat = true;
     else if (a == "--check-gdn") check_gdn = (int) std::atoi(next().c_str());
     else if (a == "--gdn-layer") gdn_layer = (int) std::atoi(next().c_str());
     else if (a == "--x-file") x_file = next();
@@ -113,7 +131,7 @@ int main(int argc, char** argv) {
     std::printf("device: %s (%llu-byte buffers, %d-lane simdgroups)\n", cx.device_name().c_str(),
                 (unsigned long long) cx.max_buffer_length(), cx.simd_width());
 
-    if (text || !prompt_text.empty() || show_token >= 0) strata::keep_all_meta_arrays() = true;   // BEFORE the load   // a detokeniser needs the whole vocabulary
+    if (text || !prompt_text.empty() || show_token >= 0 || !find_token.empty()) strata::keep_all_meta_arrays() = true;   // BEFORE the load   // a detokeniser needs the whole vocabulary
     strata::qwen36::Model m;
     std::string err;
     auto t0 = std::chrono::steady_clock::now();
@@ -389,6 +407,16 @@ int main(int argc, char** argv) {
         std::fclose(fh);
         std::printf("wrote %zu logit rows of %lld floats to %s\n", pr.size(), (long long) m.g.n_vocab, logits_file.c_str());
         return 0;
+    }
+
+    if (!find_token.empty()) {   // every id whose RAW vocabulary string is exactly this - how a control token like <|im_end|> is found
+        const strata::MetaValue* tv = m.file->meta().get("tokenizer.ggml.tokens");
+        if (tv == nullptr) { std::printf("no vocabulary\n"); return 1; }
+        int hits = 0;
+        for (size_t i = 0; i < tv->items.size(); ++i)
+            if (tv->items[i].s == find_token) { std::printf("%zu\n", i); ++hits; }
+        if (hits == 0) std::printf("no token is exactly \"%s\" (%zu entries)\n", find_token.c_str(), tv->items.size());
+        return hits > 0 ? 0 : 1;
     }
 
     if (show_token >= 0) {   // the RAW vocabulary string of an id - what a control token's text actually is
@@ -776,6 +804,26 @@ int main(int argc, char** argv) {
     }
 
     std::vector<uint32_t> prompt = parse_ids(tokens_s.c_str());
+    strata::qwen36::Sampling samp;
+    samp.temperature = temperature;
+    samp.top_p = top_p;
+    samp.seed = seed;
+    for (const char* e : {"<|im_end|>", "<|endoftext|>"}) {   // end-of-turn always stops: generating past it is not a style choice
+        const int id = find_id(*m.file, e);
+        if (id >= 0) samp.stop.push_back((uint32_t) id);
+    }
+    if (chat) {
+        const int ims = find_id(*m.file, "<|im_start|>"), ime = find_id(*m.file, "<|im_end|>"), usr = find_id(*m.file, "user"),
+                  asst = find_id(*m.file, "assistant"), nl = find_id(*m.file, "\u010a");   // byte-level newline (U+010A)
+        if (ims < 0 || ime < 0 || usr < 0 || asst < 0 || nl < 0) {
+            std::printf("--chat: template tokens missing (im_start %d im_end %d user %d assistant %d nl %d)\n", ims, ime, usr, asst, nl);
+            return 1;
+        }
+        std::vector<uint32_t> wrapped{(uint32_t) ims, (uint32_t) usr, (uint32_t) nl};
+        wrapped.insert(wrapped.end(), prompt.begin(), prompt.end());
+        for (uint32_t t : {(uint32_t) ime, (uint32_t) nl, (uint32_t) ims, (uint32_t) asst, (uint32_t) nl}) wrapped.push_back(t);
+        prompt = wrapped;
+    }
     if (!prompt_text.empty()) {
         // Encode by greedy longest match over the pack's own vocabulary: each token's decoded string, the longest piece that fits.
         // A crude encoder, but it needs no merge table - and what it is FOR is finding the ids of a phrase so the continuation can be
@@ -812,7 +860,7 @@ int main(int argc, char** argv) {
     }
     std::vector<uint32_t> out;
     t0 = std::chrono::steady_clock::now();
-    if (!strata::qwen36::generate(cx, m, d, f, prompt, n_new, out, err)) {
+    if (!strata::qwen36::generate(cx, m, d, f, prompt, n_new, out, samp, err)) {
         std::printf("generation failed: %s\n", err.c_str());
         return 1;
     }

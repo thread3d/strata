@@ -78,6 +78,41 @@ int main() {
     check(strata::qwen36::argmax(nullptr, 4) < 0, "argmax of nothing is -1, not a guess");
     std::printf("    tokens:");
     for (uint32_t t : out) std::printf(" %u", t);
+    // SAMPLING AND STOP, on rows whose answers are known by construction: no model, no dispatch, just the picker.
+    {
+        std::vector<float> row(8, -10.0f);
+        row[3] = 5.0f; row[1] = 2.0f; row[2] = 2.0f;   // 3 wins; 1 and 2 tie
+        check(strata::qwen36::argmax(row.data(), 8) == 3, "argmax picks the highest logit (3)");
+        strata::qwen36::Sampling g;                     // greedy by default
+        uint64_t rng = 0;
+        check(strata::qwen36::sample(row.data(), 8, g, rng) == 3, "temperature 0 is the argmax, whatever the seed");
+        row[3] = -10.0f;
+        check(strata::qwen36::argmax(row.data(), 8) == 1, "a tie keeps the lower id (1 over 2)");
+        strata::qwen36::Sampling sp;
+        sp.temperature = 1.0f;
+        sp.seed = 12345;
+        uint64_t r1 = sp.seed, r2 = sp.seed;
+        bool inrange = true;
+        std::vector<uint32_t> a, b;
+        for (int i = 0; i < 64; ++i) {
+            const uint32_t x = strata::qwen36::sample(row.data(), 8, sp, r1);
+            inrange = inrange && (x == 1 || x == 2);
+            a.push_back(x);
+            b.push_back(strata::qwen36::sample(row.data(), 8, sp, r2));
+        }
+        check(inrange, "sampling 64 times from a two-token distribution never leaves it");
+        check(a == b, "the same seed replays the same 64 draws");
+        row[2] = 1.0f;   // a UNIQUE head: with a tie either token would be a legal nucleus, and the sort does not order equals
+        strata::qwen36::Sampling np;
+        np.temperature = 1.0f;
+        np.top_p = 0.01f;
+        np.seed = 7;
+        uint64_t r3 = np.seed;
+        bool only_top = true;
+        for (int i = 0; i < 32; ++i) only_top = only_top && strata::qwen36::sample(row.data(), 8, np, r3) == 1;
+        check(only_top, "top-p at 0.01 keeps only the head of the distribution");
+    }
+
     std::printf("\n%s\n", g_fail ? "q36_generate_check: FAILURES" : "q36_generate_check: all ok");
     return g_fail ? 1 : 0;
 }
