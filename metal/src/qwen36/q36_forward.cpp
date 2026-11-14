@@ -222,6 +222,15 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
                 }
             }
         }
+        {   // Q36_DUMP_LAYERS: every layer's residual, in tools/qwen35/parity.py's own format - a flat float32 array of
+            // (positions, n_layer, n_embd) - so this port can be compared with llama.cpp by the harness that already exists
+            // instead of by hand-built checks.
+            if (const char* lp2 = std::getenv("Q36_DUMP_LAYERS")) {
+                static FILE* fl = nullptr;
+                if (fl == nullptr) fl = std::fopen(lp2, "ab");
+                if (fl != nullptr) std::fwrite(f.x.ptr, 4, (size_t) N, fl);
+            }
+        }
         if (i == 0) {   // Q36_DUMP_H: the row layer 0's MoE actually read, so a host reference can use the same `h`
             if (const char* hp = std::getenv("Q36_DUMP_H")) {
                 if (FILE* fh = std::fopen(hp, "wb")) {
