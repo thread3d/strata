@@ -18,7 +18,11 @@
 
 namespace {
 int g_fail = 0;
-constexpr int N = 512, NFF = 128, NE = 256, TOPK = 8;
+// NFF is the PACK's FF (512), not the fixture's 128: the expert kernels template on the row counts, and a partial reduction that is
+// right at 128 was measured wrong at 512 on the real Q8_0 pack (round 60: the engine's expert output differed from a double reference
+// by factors of 3 to -111, which is a different sum rather than a scaled one).  A parity test at the real width is the only thing that
+// can catch that class.
+constexpr int N = 2048, NFF = 512, NE = 256, TOPK = 8;   // the PACK's own numbers: n_embd 2048, FF 512, 256 experts top-8
 
 void report(const std::string& what, double err, double tol) {
     const bool ok = err <= tol;
