@@ -4,6 +4,12 @@
 // The KEY's scale: DeltaNet norms q and k and multiplies BOTH by 1/sqrt(D); qwen35moe scales the QUERY only
 // (q36ref.cu:220-221, and llama.cpp passes kq_scale into the delta-net builder, which applies it to q).  Undefined = the DeltaNet form,
 // so every existing caller keeps its semantics; qwen35moe sets it false.
+// The OUTPUT's scale: this kernel multiplies o by 1/sqrt(D) as well as the query, i.e. the attention scale lands twice.  The family
+// scales once - q36ref.cu scales q (`q[i] = ... / sqrtf((float) D)`) and writes `out[h*D+i] = o`, and llama.cpp passes kq_scale into the
+// delta-net builder, which applies it to q - so qwen35moe sets this false.  Undefined = keep the double scale, as every other caller
+// of this kernel has always had.
+constant bool GDN_OSCALE_C [[function_constant(28)]];
+constant bool gdn_oscale = !is_function_constant_defined(GDN_OSCALE_C) || GDN_OSCALE_C;
 constant bool GDN_KSCALE_C [[function_constant(27)]];
 constant bool gdn_kscale = !is_function_constant_defined(GDN_KSCALE_C) || GDN_KSCALE_C;
 constant bool GDN_SILU_C [[function_constant(26)]];
@@ -168,7 +174,7 @@ kernel void gdn_step_t(device float* state [[buffer(0)]], device float* hist [[b
         // the readout and the output norm: column j's o (every i-block thread of the column holds the same value)
         o = 0.0f;
         for (int k = 0; k < IB; ++k) o += red[k][j];
-        o = o * scale;
+        if (gdn_oscale) o = o * scale;
         const float osq = ib == 0 ? sum32(o * o) : 0.0f;
         if (ib == 0 && lane == 0) part[cb] = osq;
         threadgroup_barrier(mem_flags::mem_threadgroup);
