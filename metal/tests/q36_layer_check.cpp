@@ -147,6 +147,23 @@ int main() {
     std::snprintf(nm2, sizeof nm2, "the MoE's normed row is rms(x) * post_attention_norm (rel L2 %.2e)", std::sqrt(num / den));
     check(std::sqrt(num / den) <= 2e-5, nm2);
 
+    // A SECOND layer over the same scratch, with the first layer's output as the residual: the parts share one AttnScratch,
+    // GdnScratch, SharedScratch, RoutedScratch and LayerScratch, so a buffer one part still reads while the next writes it would
+    // show here and nowhere else (each part is checked alone elsewhere).  The weights are still zero, so the answer is still x.
+    std::vector<float> x1((size_t) N);
+    std::memcpy(x1.data(), bx.ptr, 4 * (size_t) N);
+    if (!strata::qwen36::layer_forward(cx, lk, dk, ds, w, io, ls, bx, false, err)) {
+        std::printf("layer_forward (second): %s\n", err.c_str());
+        return 1;
+    }
+    const float* got2 = (const float*) bx.ptr;
+    size_t diff2 = 0;
+    for (int i = 0; i < N; ++i)
+        if (got2[i] != x1[(size_t) i]) ++diff2;
+    char nm3[128];
+    std::snprintf(nm3, sizeof nm3, "a second layer over the same scratch leaves the residual alone too (%zu of %d differ)", diff2, N);
+    check(diff2 == 0, nm3);
+
     std::printf("%s\n", g_fail ? "q36_layer_check: FAILURES" : "q36_layer_check: all ok");
     return g_fail ? 1 : 0;
 }

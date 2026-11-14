@@ -62,8 +62,12 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
     }
     if (!layer_scratch(cx, s, n, err)) return false;
 
-    // 1. h = rms(x) * attn_norm (no add on the first layer: x is the embedding)
-    if (!join(cx, lk, x, nullptr, *w.attn_norm, w.attn_norm_off, s.h, n, eps, !from_embedding, err)) return false;
+    // 1. h = rms(x) * attn_norm, with NO add - always.  A layer is a closed unit: its last step adds the MoE's output to x, so
+    // the residual already holds everything up to this point and the next layer has nothing to add.  (This was wrong first time:
+    // the join was given a null source and added x to itself on every layer after the first, which the second-layer case below
+    // caught - the residual doubled a layer, rms went to inf and everything downstream was NaN.)
+    (void) from_embedding;
+    if (!join(cx, lk, x, nullptr, *w.attn_norm, w.attn_norm_off, s.h, n, eps, false, err)) return false;
 
     // 2. the mixer, its output read from the part's own scratch
     if (w.attention) {
