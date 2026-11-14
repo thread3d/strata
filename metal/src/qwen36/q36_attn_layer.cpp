@@ -145,14 +145,18 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
 
     cx.run({dq, dk_, dv, da});
     if (std::getenv("Q36_TRACE_QG")) { std::printf("  qg[0] after the group = %.6g\n", (double) ((const float*) s.qg.ptr)[0]); std::fflush(stdout); }
+    static size_t attn_call = 0;
+    const size_t this_call = attn_call++;
+    const char* want_n = std::getenv("Q36_DUMP_ATTN_N");
+    const bool dump_this = want_n == nullptr ? true : (size_t) std::atoi(want_n) == this_call;
     if (const char* qp = std::getenv("Q36_DUMP_QG")) {   // the query projection: with v, the pair says whether h or one dispatch is wrong
-        if (FILE* fq = std::fopen(qp, "wb")) {
+        if (dump_this) if (FILE* fq = std::fopen(qp, "wb")) {
             std::fwrite(s.qg.ptr, 4, 2 * hq, fq);
             std::fclose(fq);
         }
     }
     if (const char* vp = std::getenv("Q36_DUMP_V")) {   // the value projection before the ring store
-        if (FILE* fv = std::fopen(vp, "wb")) {
+        if (dump_this) if (FILE* fv = std::fopen(vp, "wb")) {
             std::fwrite(s.v_raw.ptr, 4, hkv, fv);
             std::fclose(fv);
         }
