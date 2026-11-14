@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
     bool describe = false, no_stream = false, text = false;
     std::string prompt_text;
     int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
-    std::string h_file;
+    std::string h_file, logits_file;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -89,6 +89,7 @@ int main(int argc, char** argv) {
     else if (a == "--check-bind") check_bind = (int) std::atoi(next().c_str());
     else if (a == "--check-expert") check_expert = (int) std::atoi(next().c_str());
     else if (a == "--h-file") h_file = next();
+    else if (a == "--dump-logits") logits_file = next();
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -336,6 +337,26 @@ int main(int argc, char** argv) {
             for (int k = 0; k < (int) m.top_k; ++k) std::printf(" %d", order[(size_t) k]);
             std::printf("  (top logits %g %g %g)\n", lg[(size_t) order[0]], lg[(size_t) order[1]], lg[(size_t) order[2]]);
         }
+        return 0;
+    }
+
+    if (!logits_file.empty()) {
+        // --dump-logits FILE: every prompt token's logit row, raw float32, in order - what llama-perplexity's --kl-divergence-base
+        // reads.  This is the whole-model comparison: a KL against the reference says how far the trunk is, as one number.
+        FILE* fh = std::fopen(logits_file.c_str(), "wb");
+        if (fh == nullptr) { std::printf("--dump-logits: cannot write %s\n", logits_file.c_str()); return 1; }
+        const std::vector<uint32_t> pr = parse_ids(tokens_s.c_str());
+        for (size_t i = 0; i < pr.size(); ++i) {
+            const int n_kv = f.kv_cap < (int) i + 1 ? f.kv_cap : (int) i + 1;
+            if (!strata::qwen36::forward_token(cx, m, d, f, pr[i], (int) i, n_kv, err)) {
+                std::printf("forward: %s\n", err.c_str());
+                std::fclose(fh);
+                return 1;
+            }
+            std::fwrite(f.logits.ptr, 4, (size_t) m.g.n_vocab, fh);
+        }
+        std::fclose(fh);
+        std::printf("wrote %zu logit rows of %lld floats to %s\n", pr.size(), (long long) m.g.n_vocab, logits_file.c_str());
         return 0;
     }
 
