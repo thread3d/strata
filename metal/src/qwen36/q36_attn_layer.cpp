@@ -95,6 +95,10 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
         std::fflush(stdout);
     }
     if (!dense_gemv(cx, dk, w.q, h, s.qg, ds, err)) return false;
+    if (std::getenv("Q36_TRACE_QG")) {   // qg[0] the moment it is produced: 0.331396 means someone overwrites s.qg later, 5.04 means two
+        std::printf("attn_forward qg[0] = %.6g after the gemv\n", (double) ((const float*) s.qg.ptr)[0]);   // identical gemvs disagree
+        std::fflush(stdout);
+    }
     if (!dense_gemv(cx, dk, w.k, h, s.k_raw, ds, err)) return false;
     if (!dense_gemv(cx, dk, w.v, h, s.v_raw, ds, err)) return false;
 
