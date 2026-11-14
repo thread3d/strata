@@ -610,6 +610,7 @@ int main(int argc, char** argv) {
         const int N = (int) m.g.n_embd, H = (int) m.g.n_head, HKV = (int) m.g.n_head_kv, D = (int) m.g.head_dim;
         const int QH = H * D, KVH = HKV * D;
         std::vector<float> f((size_t) std::max(N, std::max(2 * QH, std::max(QH, KVH))));
+        const bool use_h = !h_file.empty() && h_file != std::string("--none");
         std::vector<double> x((size_t) N);
         if (x_file.empty()) { std::printf("--check-attn needs --x-file\\n"); return 1; }
         {
@@ -620,12 +621,20 @@ int main(int argc, char** argv) {
             for (int i = 0; i < N; ++i) x[(size_t) i] = (double) xf[(size_t) i];   // the widen that was missing
             std::fclose(fx);
         }
-        ref::dequant(L.attn_norm.type(), L.attn_norm.data(*m.file), f.data(), (size_t) N);
-        double ss = 0.0;
-        for (int i = 0; i < N; ++i) ss += x[(size_t) i] * x[(size_t) i];
-        const double rs = 1.0 / std::sqrt(ss / (double) N + (double) m.eps);
         std::vector<double> h((size_t) N);
-        for (int i = 0; i < N; ++i) h[(size_t) i] = x[(size_t) i] * rs * (double) f[(size_t) i];
+        if (use_h) {   // THE ENGINE'S OWN normed row: with the same h, any remaining difference is the matrix handling
+            FILE* fh = std::fopen(h_file.c_str(), "rb");
+            if (fh == nullptr) { std::printf("--check-attn: cannot read h %s\n", h_file.c_str()); return 1; }
+            if (std::fread(f.data(), 4, (size_t) N, fh) != (size_t) N) { std::printf("--check-attn: short h\n"); std::fclose(fh); return 1; }
+            std::fclose(fh);
+            for (int i = 0; i < N; ++i) h[(size_t) i] = (double) f[(size_t) i];
+        } else {
+            ref::dequant(L.attn_norm.type(), L.attn_norm.data(*m.file), f.data(), (size_t) N);
+            double ss = 0.0;
+            for (int i = 0; i < N; ++i) ss += x[(size_t) i] * x[(size_t) i];
+            const double rs = 1.0 / std::sqrt(ss / (double) N + (double) m.eps);
+            for (int i = 0; i < N; ++i) h[(size_t) i] = x[(size_t) i] * rs * (double) f[(size_t) i];
+        }
         auto gemv = [&](const strata::qwen36::TensorRef& W, int nout) {
             std::vector<double> out((size_t) nout);
             const size_t rb = ref::row_bytes(W.type(), N);

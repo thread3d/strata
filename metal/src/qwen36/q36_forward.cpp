@@ -205,6 +205,7 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
         }
         io.pos = pos;
         io.n_kv = n_kv;
+        io.layer_index = i;
         if (w.attention) {   // this layer's own ring: the parts read the one they are handed
             f.attn.kring = f.kring[i];
             f.attn.vring = f.vring[i];

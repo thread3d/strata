@@ -70,6 +70,7 @@ struct LayerIo {
     size_t slots_off = 0;
     StreamFill fill{};                   // streaming: the model, layer and pool to fill instead (pool null = resident)
     int pos = 0, n_kv = 0;
+    size_t layer_index = 0;   // which layer this is (for the dump hooks only)
 };
 
 bool layer_init(mtl::Context& cx, LayerKernels& k, std::string& err);
