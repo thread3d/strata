@@ -254,6 +254,9 @@ target_compile_definitions(strata_metal_kernels PRIVATE
 target_link_libraries(strata_metal_kernels PUBLIC strata_metal_host mtl_rt)
 
 add_executable(strata ${S}/program/generate.cpp)
+# the Qwen3.6 engine on this runtime, on its own: open a pack and generate (the first real run is made with this)
+add_executable(strata-q36-metal src/qwen36/q36_main.cpp)
+target_link_libraries(strata-q36-metal PRIVATE strata_q36_model)
 target_link_libraries(strata PRIVATE strata_metal_kernels strata_metal_host strata_metal_kernels)
 # the decode window on its own (probe/window_probe.cpp): the engine's process state without the engine, for looking at a Metal fault
 add_executable(window_probe probe/window_probe.cpp)
