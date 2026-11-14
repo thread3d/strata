@@ -67,6 +67,7 @@ int main(int argc, char** argv) {
     int n_new = 8, kv_cap = 64;
     double budget_gib = 2.0;
     bool describe = false, no_stream = false, text = false;
+    std::string prompt_text;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -77,6 +78,7 @@ int main(int argc, char** argv) {
         else if (a == "--resident-byte-budget") budget_gib = std::atof(next().c_str());
         else if (a == "--describe") describe = true;
     else if (a == "--text") text = true;
+    else if (a == "--prompt") prompt_text = next();
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -118,7 +120,41 @@ int main(int argc, char** argv) {
                 f.streaming ? "STREAMED (a pool filled per layer)" : "resident", f.streaming ? (int) m.top_k : 0,
                 (double) f.resident_bytes() / 1048576.0, init_s);
 
-    const std::vector<uint32_t> prompt = parse_ids(tokens_s.c_str());
+    std::vector<uint32_t> prompt = parse_ids(tokens_s.c_str());
+    if (!prompt_text.empty()) {
+        // Encode by greedy longest match over the pack's own vocabulary: each token's decoded string, the longest piece that fits.
+        // A crude encoder, but it needs no merge table - and what it is FOR is finding the ids of a phrase so the continuation can be
+        // read, not reproducing a tokenizer exactly.
+        const strata::MetaValue* tv = m.file->meta().get("tokenizer.ggml.tokens");
+        if (tv == nullptr || tv->items.empty()) {
+            std::printf("--prompt needs the vocabulary, which this pack did not give (%zu entries)\n", tv ? tv->items.size() : 0);
+            return 1;
+        }
+        const std::vector<int> bt = byte_table();
+        std::vector<std::string> piece;
+        piece.reserve(tv->items.size());
+        for (const auto& it : tv->items) piece.push_back(detok(([&] {
+            static std::vector<std::string> v;
+            v.clear();
+            for (const auto& x : tv->items) v.push_back(x.s);
+            return v;
+        })(), (uint32_t) piece.size(), bt));
+        size_t at = 0;
+        while (at < prompt_text.size()) {
+            size_t best = 0, bid = 0;
+            for (size_t i = 0; i < piece.size(); ++i) {
+                const std::string& p = piece[i];
+                if (p.size() <= best || p.size() > prompt_text.size() - at) continue;
+                if (prompt_text.compare(at, p.size(), p) == 0) { best = p.size(); bid = i; }
+            }
+            if (best == 0) { std::printf("--prompt: no token covers \"%s\"\n", prompt_text.c_str() + at); return 1; }
+            prompt.push_back((uint32_t) bid);
+            at += best;
+        }
+        std::printf("prompt \"%s\" is %zu token(s):", prompt_text.c_str(), prompt.size());
+        for (uint32_t t : prompt) std::printf(" %u", t);
+        std::printf("\n");
+    }
     std::vector<uint32_t> out;
     t0 = std::chrono::steady_clock::now();
     if (!strata::qwen36::generate(cx, m, d, f, prompt, n_new, out, err)) {
@@ -133,10 +169,12 @@ int main(int argc, char** argv) {
     std::printf("\n");
     if (text) {   // the same ids as text, through the pack's own vocabulary
         const strata::MetaValue* tv = m.file->meta().get("tokenizer.ggml.tokens");
-        if (tv == nullptr || tv->items.empty()) {
+        if (tv == nullptr) {
             std::printf("text: this pack has no tokenizer.ggml.tokens\n");
             return 0;
         }
+        std::printf("text: the vocabulary holds %llu entries, the model %lld\n", (unsigned long long) tv->items.size(),
+                    (long long) m.g.n_vocab);
         std::vector<std::string> vocab;
         vocab.reserve(tv->items.size());
         for (const auto& it : tv->items) vocab.push_back(it.s);
