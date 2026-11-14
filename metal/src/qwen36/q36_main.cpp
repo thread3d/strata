@@ -10,6 +10,7 @@
 #include "q36_model.h"
 
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -70,7 +71,7 @@ int main(int argc, char** argv) {
     double budget_gib = 2.0;
     bool describe = false, no_stream = false, text = false;
     std::string prompt_text;
-    int check_embed = -1, check_output = 0, check_bind = -1;
+    int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -85,6 +86,7 @@ int main(int argc, char** argv) {
     else if (a == "--check-embed") check_embed = (int) std::atoi(next().c_str());
     else if (a == "--check-output") check_output = (int) std::atoi(next().c_str());
     else if (a == "--check-bind") check_bind = (int) std::atoi(next().c_str());
+    else if (a == "--check-expert") check_expert = (int) std::atoi(next().c_str());
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -221,6 +223,65 @@ int main(int argc, char** argv) {
                     L.kind == strata::core::LayerKind::Gdn ? "GDN" : (L.kind == strata::core::LayerKind::Attention ? "attention" : "MTP"),
                     m.layers.size());
         return bad == 0 ? 0 : 1;
+    }
+
+    if (check_expert >= 0) {
+        // THE HOST'S ANSWER for one real expert, in double, straight from the file: gate/up/down of expert `check_expert` of layer 0
+        // against a realistic MoE input row.  The question this settles: is the routed block ~1e-3 because the KERNELS are wrong at the
+        // real 2048/512 widths, or because the ~1e-3 is what these weights actually give?  (The MoE input is the layer's own first
+        // normed row - rms(embedding row) * post_norm - which for layer 0 is within a thousandth of what the block really sees, and
+        // this is a magnitude question, not a parity one.)
+        const strata::qwen36::Layer& L0 = m.layers[0];
+        const int N = (int) m.g.n_embd, FF = (int) m.g.n_ff;
+        std::vector<double> x((size_t) N), h((size_t) N), pn((size_t) N);
+        ref::dequant(m.embed.type(), m.embed.data(*m.file) + (size_t) 760 * ref::row_bytes(m.embed.type(), N), (float*) x.data(), (size_t) N);
+        ref::dequant(L0.post_norm.type(), L0.post_norm.data(*m.file), (float*) pn.data(), (size_t) N);
+        double ss = 0.0;
+        for (int i = 0; i < N; ++i) ss += x[(size_t) i] * x[(size_t) i];
+        const double rs = 1.0 / std::sqrt(ss / (double) N + (double) m.eps);
+        for (int i = 0; i < N; ++i) h[(size_t) i] = x[(size_t) i] * rs * pn[(size_t) i];
+        const size_t gu_row = ref::row_bytes(L0.gate_exps.type(), N);
+        const size_t d_row = ref::row_bytes(L0.down_exps.type(), FF);
+        const size_t gsz = (size_t) FF * gu_row, dsz = (size_t) N * d_row;
+        const uint8_t* src = L0.gate_exps.data(*m.file);
+        std::vector<float> rowmax((size_t) N);
+        auto dot = [&](const uint8_t* slab, size_t rowbytes, int rows, const std::vector<double>& v) {
+            std::vector<double> out((size_t) rows, 0.0);
+            for (int r = 0; r < rows; ++r) {
+                std::vector<float> w((size_t) N);
+                ref::dequant(L0.gate_exps.type(), slab + (size_t) r * rowbytes, w.data(), (size_t) N);
+                double acc = 0.0;
+                for (int i = 0; i < N; ++i) acc += (double) w[(size_t) i] * v[(size_t) i];
+                out[(size_t) r] = acc;
+            }
+            return out;
+        };
+        // gate and up of this expert: the tensor is [n_embd, n_ff, n_expert], expert outermost
+        const uint8_t* g = src + (size_t) check_expert * gsz;
+        const uint8_t* u = L0.up_exps.data(*m.file) + (size_t) check_expert * gsz;
+        const std::vector<double> gate = dot(g, gu_row, FF, h);
+        const std::vector<double> up = dot(u, gu_row, FF, h);
+        std::vector<double> act((size_t) FF);
+        for (int i = 0; i < FF; ++i) {
+            const double gv = gate[(size_t) i];
+            act[(size_t) i] = (gv / (1.0 + std::exp(-gv))) * up[(size_t) i];
+        }
+        // down: [n_ff, n_embd, n_expert]
+        const uint8_t* d = L0.down_exps.data(*m.file) + (size_t) check_expert * dsz;
+        std::vector<double> y((size_t) N, 0.0);
+        double ymax = 0.0, gmax = 0.0;
+        for (int r = 0; r < N; ++r) {
+            std::vector<float> w((size_t) FF);
+            ref::dequant(L0.down_exps.type(), d + (size_t) r * d_row, w.data(), (size_t) FF);
+            double acc = 0.0;
+            for (int i = 0; i < FF; ++i) acc += (double) w[(size_t) i] * act[(size_t) i];
+            y[(size_t) r] = acc;
+            ymax = std::max(ymax, std::fabs(acc));
+        }
+        for (int i = 0; i < FF; ++i) gmax = std::max(gmax, std::fabs(gate[(size_t) i]));
+        std::printf("expert %d of layer 0 on the host: gate max %g, up-vs-gate ok, down max %g (y[0..3] %g %g %g %g)\n", check_expert,
+                    gmax, ymax, y[0], y[1], y[2], y[3]);
+        return 0;
     }
 
     std::vector<uint32_t> prompt = parse_ids(tokens_s.c_str());
