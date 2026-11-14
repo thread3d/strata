@@ -650,6 +650,20 @@ int main(int argc, char** argv) {
         }
         const size_t rb2 = ref::row_bytes(L.o.type(), QH);
         std::vector<float> row2((size_t) QH);
+        {
+            double vmax = 0.0, gmax = 0.0, ymax = 0.0, wmax = 0.0;
+            for (double t : vx) vmax = std::max(vmax, std::fabs(t));
+            for (int hh = 0; hh < H; ++hh)
+                for (int j = 0; j < D; ++j) gmax = std::max(gmax, std::fabs(qg[(size_t) (hh * 2 * D + D + j)]));
+            for (double t : yin) ymax = std::max(ymax, std::fabs(t));
+            {
+                std::vector<float> r0((size_t) QH);
+                ref::dequant(L.o.type(), L.o.data(*m.file), r0.data(), (size_t) QH);
+                for (float t : r0) wmax = std::max(wmax, (double) std::fabs(t));
+            }
+            std::printf("  [diag] |v|max %.3g |gate|max %.3g |yin|max %.3g |o row0|max %.3g  (o type %d, QH %d)\n", vmax, gmax, ymax,
+                        wmax, (int) L.o.type(), QH);
+        }
         std::printf("attn layer %d host mixer y[0..3]:", check_attn);
         for (int r = 0; r < 4; ++r) {
             ref::dequant(L.o.type(), L.o.data(*m.file) + (size_t) r * rb2, row2.data(), (size_t) QH);
