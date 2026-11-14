@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     std::string prompt_text;
     int check_embed = -1, check_output = 0, check_bind = -1, check_expert = -1;
     std::string h_file, logits_file;
-    int show_token = -1, check_gdn = -1, gdn_layer = 0;
+    int show_token = -1, check_gdn = -1, gdn_layer = 0, check_attn = -1;
     std::string x_file;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
@@ -96,6 +96,7 @@ int main(int argc, char** argv) {
     else if (a == "--check-gdn") check_gdn = (int) std::atoi(next().c_str());
     else if (a == "--gdn-layer") gdn_layer = (int) std::atoi(next().c_str());
     else if (a == "--x-file") x_file = next();
+    else if (a == "--check-attn") check_attn = (int) std::atoi(next().c_str());
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -595,6 +596,65 @@ int main(int argc, char** argv) {
             ref::dequant(L0.ssm_out.type(), L0.ssm_out.data(*m.file) + (size_t) r * rb2, row2.data(), (size_t) ZV);
             double acc = 0.0;
             for (int i = 0; i < ZV; ++i) acc += (double) row2[(size_t) i] * y[(size_t) i];
+            std::printf(" %g", acc);
+        }
+        std::printf("\n");
+        return 0;
+    }
+
+    if (check_attn >= 0) {
+        // ONE ATTENTION LAYER at POSITION 0, in double, from the file: at pos 0 the window holds one row, so the softmax is 1 and the
+        // layer's output is `W_o (v * sigmoid(gate))` - which still exercises the three projections, the gate's per-head source
+        // (`qg[h*2*D + D + i]`), the GQA mapping of v, and the output projection.  Compare with Q36_TRACE's "the mixer's output".
+        const strata::qwen36::Layer& L = m.layers[(size_t) check_attn];
+        const int N = (int) m.g.n_embd, H = (int) m.g.n_head, HKV = (int) m.g.n_head_kv, D = (int) m.g.head_dim;
+        const int QH = H * D, KVH = HKV * D;
+        std::vector<float> f((size_t) std::max(N, std::max(2 * QH, std::max(QH, KVH))));
+        std::vector<double> x((size_t) N);
+        if (x_file.empty()) { std::printf("--check-attn needs --x-file\\n"); return 1; }
+        {
+            FILE* fx = std::fopen(x_file.c_str(), "rb");
+            if (fx == nullptr) { std::printf("--check-attn: cannot read %s\\n", x_file.c_str()); return 1; }
+            std::vector<float> xf((size_t) N);   // the dump is float32; widen here
+            if (std::fread(xf.data(), 4, (size_t) N, fx) != (size_t) N) { std::printf("--check-attn: x-file is not doubles\\n"); std::fclose(fx); return 1; }
+            std::fclose(fx);
+        }
+        ref::dequant(L.attn_norm.type(), L.attn_norm.data(*m.file), f.data(), (size_t) N);
+        double ss = 0.0;
+        for (int i = 0; i < N; ++i) ss += x[(size_t) i] * x[(size_t) i];
+        const double rs = 1.0 / std::sqrt(ss / (double) N + (double) m.eps);
+        std::vector<double> h((size_t) N);
+        for (int i = 0; i < N; ++i) h[(size_t) i] = x[(size_t) i] * rs * (double) f[(size_t) i];
+        auto gemv = [&](const strata::qwen36::TensorRef& W, int nout) {
+            std::vector<double> out((size_t) nout);
+            const size_t rb = ref::row_bytes(W.type(), N);
+            std::vector<float> row((size_t) N);
+            for (int r = 0; r < nout; ++r) {
+                ref::dequant(W.type(), W.data(*m.file) + (size_t) r * rb, row.data(), (size_t) N);
+                double acc = 0.0;
+                for (int i = 0; i < N; ++i) acc += (double) row[(size_t) i] * h[(size_t) i];
+                out[(size_t) r] = acc;
+            }
+            return out;
+        };
+        const std::vector<double> qg = gemv(L.q, 2 * QH), vx = gemv(L.v, KVH);
+        const double sc = 1.0 / std::sqrt((double) D);
+        std::vector<double> yin((size_t) QH);
+        for (int hh = 0; hh < H; ++hh) {
+            const int kvh = hh / (H / HKV);
+            for (int j = 0; j < D; ++j) {
+                const double gate = qg[(size_t) (hh * 2 * D + D + j)];
+                const double g = 1.0 / (1.0 + std::exp(-gate));
+                yin[(size_t) (hh * D + j)] = (vx[(size_t) (kvh * D + j)] * sc) * g;   // one row: out = v; then scale and the gate
+            }
+        }
+        const size_t rb2 = ref::row_bytes(L.o.type(), QH);
+        std::vector<float> row2((size_t) QH);
+        std::printf("attn layer %d host mixer y[0..3]:", check_attn);
+        for (int r = 0; r < 4; ++r) {
+            ref::dequant(L.o.type(), L.o.data(*m.file) + (size_t) r * rb2, row2.data(), (size_t) QH);
+            double acc = 0.0;
+            for (int i = 0; i < QH; ++i) acc += (double) row2[(size_t) i] * yin[(size_t) i];
             std::printf(" %g", acc);
         }
         std::printf("\n");
