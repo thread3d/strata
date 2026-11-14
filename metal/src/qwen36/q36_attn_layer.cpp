@@ -144,6 +144,7 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
     da.tg[1] = da.tg[2] = 1;
 
     cx.run({dq, dk_, dv, da});
+    if (std::getenv("Q36_TRACE_QG")) { std::printf("  qg[0] after the group = %.6g\n", (double) ((const float*) s.qg.ptr)[0]); std::fflush(stdout); }
     if (const char* qp = std::getenv("Q36_DUMP_QG")) {   // the query projection: with v, the pair says whether h or one dispatch is wrong
         if (FILE* fq = std::fopen(qp, "wb")) {
             std::fwrite(s.qg.ptr, 4, 2 * hq, fq);
@@ -156,6 +157,7 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
             std::fclose(fv);
         }
     }
+    if (std::getenv("Q36_TRACE_QG")) { std::printf("  qg[0] after attention = %.6g\n", (double) ((const float*) s.qg.ptr)[0]); std::fflush(stdout); }
     if (const char* ap = std::getenv("Q36_DUMP_A")) {   // the attention's own output, before the o projection: the discriminator
         if (FILE* fa = std::fopen(ap, "wb")) {
             std::fwrite(s.a.ptr, 4, hq, fa);
