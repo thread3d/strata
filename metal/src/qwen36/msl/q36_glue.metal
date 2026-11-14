@@ -73,3 +73,19 @@ kernel void q36_add(device float* x [[buffer(0)]], device const float* y [[buffe
     if (gid >= n) return;
     x[gid] += y[gid];
 }
+
+// A token's embedding row: x = dequant(token_embd row t).  The table is [n_embd, n_vocab] in the file's own order, so a row is
+// n_embd contiguous values at t * row_bytes, and the format is the pack's (Q8_0 here: an fp16 scale a 32 values).  Written as
+// its own kernel because the alternative - a one-hot multiply through gemv - would produce n_vocab values to throw away.
+//
+// Q8_0 only, deliberately: it is the format this port's target pack keeps its table in, and a table in another format is refused
+// at open (q36_model.cpp's dense gate) rather than silently mis-read here.
+kernel void q36_embed(device const uchar* table [[buffer(0)]], device float* x [[buffer(1)]],
+                      constant uint& n_embd [[buffer(2)]], constant uint& token [[buffer(3)]],
+                      uint gid [[thread_position_in_grid]]) {
+    if (gid >= n_embd) return;
+    device const uchar* row = table + (size_t) token * ((size_t) n_embd / 32u) * 34u;
+    device const uchar* blk = row + (size_t) (gid / 32u) * 34u;
+    const float d = float(as_type<half>(ushort(blk[0] | (blk[1] << 8))));
+    x[gid] = d * float((int) (signed char) blk[2 + (gid & 31u)]);
+}

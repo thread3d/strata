@@ -7,6 +7,7 @@
 //
 //   q36_glue_parity
 #include "mtl_rt.h"
+#include "ref_quant.h"
 
 #include <cmath>
 #include <cstdio>
@@ -114,6 +115,34 @@ void add_case(mtl::Context& cx, int n) {
     report(nm, bad == 0 ? 0.0 : 1.0, 0.0);
 }
 
+// q36_embed: one token's row out of a Q8_0 table, against ref::dequant of the same bytes.
+void embed_case(mtl::Context& cx, int n_embd, uint32_t token, int vocab) {
+    const size_t rb = ref::row_bytes(ref::Q8_0, n_embd);
+    std::vector<uint8_t> table(rb * (size_t) vocab);
+    ref::random_blocks(ref::Q8_0, table.data(), vocab, n_embd, 77 + token, 0.02f);
+    std::vector<float> want((size_t) n_embd);
+    ref::dequant(ref::Q8_0, table.data() + (size_t) token * rb, want.data(), want.size());
+    mtl::Buffer bt = cx.alloc(table.size()), bx = cx.alloc(4 * (size_t) n_embd);
+    std::memcpy(bt.ptr, table.data(), table.size());
+    mtl::Pipeline p = cx.pipeline(cx.compile({"../src/qwen36/msl/q36_glue.metal"}, "", false), "q36_embed");
+    mtl::Dispatch d;
+    d.p = &p;
+    d.args = {mtl::Arg::B(bt), mtl::Arg::B(bx), mtl::Arg::V((unsigned) n_embd), mtl::Arg::V(token)};
+    d.tg[0] = 64;
+    d.grid[0] = (uint32_t) ((n_embd + 63) / 64);
+    cx.run({d});
+    const float* got = (const float*) bx.ptr;
+    double num = 0.0, den = 0.0;
+    for (int i = 0; i < n_embd; ++i) {
+        const double e = (double) got[i] - (double) want[(size_t) i];
+        num += e * e;
+        den += (double) want[(size_t) i] * (double) want[(size_t) i];
+    }
+    char nm[128];
+    std::snprintf(nm, sizeof nm, "q36_embed token %u of %d, n_embd %d", token, vocab, n_embd);
+    report(nm, den > 0 ? std::sqrt(num / den) : std::sqrt(num), 2e-6);
+}
+
 }  // namespace
 
 int main() {
@@ -125,6 +154,12 @@ int main() {
         run_case(cx, c);
     add_case(cx, 2048);
     add_case(cx, 1000);
+    // the family's hidden width, the first and last tokens of a table, and a narrower table whose rows are still whole Q8_0
+    // blocks (96 = three of them - a width that is not a multiple of 32 is not a valid Q8_0 row at all, which the first
+    // version of this case tried and failed on)
+    embed_case(cx, 2048, 0, 64);
+    embed_case(cx, 2048, 63, 64);
+    embed_case(cx, 96, 7, 16);
     std::printf("%s\n", g_fail ? "FAILURES" : "ALL PASS");
     return g_fail ? 1 : 0;
 }
