@@ -47,14 +47,21 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
         return false;
 
     // the expert slots: only if the caller's budget holds them all (the streaming path is what makes a real pack fit)
+    // EVERY layer's slots count towards the budget, not the first one's: a `break` here made the sum a fortieth of the truth
+    // (816 MiB instead of 33.5 GiB for the Q8_0 pack), which is why the resident plan was chosen against a 2 GiB budget and the run
+    // only survived because the slots are host-backed on a 96 GB machine.  The kernels are resolved once, from the first layer that
+    // has experts, because their instantiation depends on the types and every layer of a pack shares them.
     uint64_t resident = 0;
+    bool resolved = false;
     for (const Layer& L : m.layers) {
         if (!L.gate_exps.ok()) continue;
         const ExpertBlob b = blob_of(m, L);
         resident += b.slots((int) m.g.n_expert);
-        RoutedShape rsh{b, (int) m.g.n_expert, (int) m.top_k, 1};
-        if (!routed_init(cx, f.rk, rsh, err)) return false;
-        break;   // the instantiation depends on the types, which every layer shares in practice
+        if (!resolved) {
+            const RoutedShape rsh{b, (int) m.g.n_expert, (int) m.top_k, 1};
+            if (!routed_init(cx, f.rk, rsh, err, false)) return false;
+            resolved = true;
+        }
     }
     if (resident > slot_budget_bytes && !m.layers.empty()) {
         // STREAMING: top_k slots, filled per layer.  Every layer's experts share one pool because the layers run in sequence.
