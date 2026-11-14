@@ -35,7 +35,9 @@ struct Forward {
     int kv_cap = 0;
     std::vector<mtl::Buffer> state, hist;    // per GDN layer
     std::vector<mtl::Buffer> kring, vring;   // per attention layer
-    std::vector<mtl::Buffer> slots;          // per layer: every expert's blob, resident
+    std::vector<mtl::Buffer> slots;          // per layer: every expert's blob, RESIDENT (unused when streaming)
+    ExpertStream stream;                     // or one pool of top_k slots, filled per layer (the path that fits this card)
+    bool streaming = false;
     mtl::Buffer x, xh, logits, cs;
 
     AttnScratch attn;

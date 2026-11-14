@@ -2,6 +2,7 @@
 #include "q36_moe_routed.h"
 
 #include <cstdio>
+#include <vector>
 
 namespace strata::qwen36 {
 namespace {
@@ -80,12 +81,12 @@ bool routed_scratch(mtl::Context& cx, RoutedScratch& s, const RoutedShape& sh, s
 
 bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseScratch& ds, const RoutedShape& sh,
                     const RoutedWeights& w, RoutedScratch& s, const mtl::Buffer& x, const mtl::Buffer& ysh,
-                    const mtl::Buffer& sg, mtl::Buffer& bo, std::string& err) {
-    const bool arena = w.stream != nullptr;
+                    const mtl::Buffer& sg, mtl::Buffer& bo, std::string& err, const StreamFill* fill) {
+    const bool arena = w.stream != nullptr || (fill != nullptr && fill->pool != nullptr);
     if (!routed_init(cx, k, sh, err, arena)) return false;
     if (!routed_scratch(cx, s, sh, err)) return false;
     const ExpertBlob& b = sh.blob;
-    if (w.blobs == nullptr && w.stream == nullptr) {
+    if (w.blobs == nullptr && w.stream == nullptr && (fill == nullptr || fill->pool == nullptr)) {
         err = "the routed experts have no buffers";
         return false;
     }
@@ -124,13 +125,31 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
     dr.grid[1] = dr.grid[2] = 1;
     cx.run({dr});
 
+    // 2b. STREAMING: the router's picks go back to the host, the pool is filled with those experts, and the experts then run
+    // through the arena.  cx.run() has already waited, so the ids are the ones this token routed to.
+    RoutedWeights we = w;
+    if (fill != nullptr && fill->pool != nullptr) {
+        if (fill->m == nullptr || fill->L == nullptr) {
+            err = "a streamed block needs the model and the layer to fill from";
+            return false;
+        }
+        std::vector<int> picked;
+        stream_ids(s.ids, sh.n_tok, sh.top_k, picked);
+        if ((int) picked.size() > fill->pool->n_slot) {
+            err = "a token routed to more experts than the pool holds";
+            return false;
+        }
+        if (!picked.empty() && stream_load(*fill->m, *fill->L, *fill->pool, picked, err) <= 0) return false;
+        we.stream = fill->pool;
+    }
+
     // 3. the grouped experts, their grids read out of the plan
     const size_t plane = (size_t) n_embd * 4;
     // In streaming mode the pool is buffer 0, the slot map is buffer 6, and W1..W3 are the pool again (a pool that spans more
     // than one buffer would use them; this one does not, so they are bound to the same buffer and never addressed).
-    const mtl::Buffer& pool = w.stream != nullptr ? w.stream->slots : *w.blobs;
-    const size_t pool_off = w.stream != nullptr ? 0 : w.blobs_off;
-    const mtl::Buffer& smap = w.stream != nullptr ? w.stream->smap : s.plan;   // (unread when the arena is off)
+    const mtl::Buffer& pool = we.stream != nullptr ? we.stream->slots : *we.blobs;
+    const size_t pool_off = we.stream != nullptr ? 0 : we.blobs_off;
+    const mtl::Buffer& smap = we.stream != nullptr ? we.stream->smap : s.plan;   // (unread when the arena is off)
     mtl::Dispatch dg;
     dg.p = &k.gu;
     dg.args = {mtl::Arg::B(pool, pool_off), mtl::Arg::B(ds.xp, plane * 0), mtl::Arg::B(s.h), mtl::Arg::B(s.plan),

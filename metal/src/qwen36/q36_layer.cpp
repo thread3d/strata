@@ -101,8 +101,9 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
     if (!shared_forward(cx, dk, ds, io.shared, w.shared, *io.shared_scratch, s.h, err)) return false;
     if (!dense_gemv(cx, dk, w.gate_inp_shexp, s.h, s.sg, ds, err)) return false;   // n_embd -> 1
     RoutedWeights rw{io.slots, io.slots_off, nullptr, w.gate_inp};
+    const StreamFill* fill = io.fill.pool != nullptr ? &io.fill : nullptr;
     if (!routed_forward(cx, *io.routed_kernels, dk, ds, io.routed, rw, *io.routed_scratch, s.h, io.shared_scratch->y, s.sg,
-                        s.moe_out, err))
+                        s.moe_out, err, fill))
         return false;
 
     // 5. x += the MoE's output (a plain add: the next layer's first join carries its own norm)

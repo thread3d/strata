@@ -55,8 +55,18 @@ bool routed_scratch(mtl::Context& cx, RoutedScratch& s, const RoutedShape& sh, s
 /// One token through the routed path.  `x` is the normed residual row (fp32, n_embd); `ysh` and `sg` are the shared expert's
 /// output and its pre-sigmoid gate (both optional: pass a zeroed buffer and 0 to see the routed sum alone).  The result is left
 /// in `bo` (fp32, n_embd).  The plan buffer is scratch and is rewritten on every call.
+/// What a streamed call needs beyond the resident one: the model and layer to fill slots from, and the pool to fill.  When set,
+/// the block routes first, brings the picks back to the host, fills `pool` with exactly those experts and then runs the grouped
+/// experts through the arena - so one pool serves every layer of a token, and the card holds top_k slots (8 x 3.3 MiB for this
+/// family) rather than a model's worth of experts.
+struct StreamFill {
+    const Model* m = nullptr;
+    const Layer* L = nullptr;
+    ExpertStream* pool = nullptr;
+};
+
 bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseScratch& ds, const RoutedShape& sh,
                     const RoutedWeights& w, RoutedScratch& s, const mtl::Buffer& x, const mtl::Buffer& ysh,
-                    const mtl::Buffer& sg, mtl::Buffer& bo, std::string& err);
+                    const mtl::Buffer& sg, mtl::Buffer& bo, std::string& err, const StreamFill* fill = nullptr);
 
 }  // namespace strata::qwen36

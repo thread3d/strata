@@ -56,7 +56,16 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
         if (!routed_init(cx, f.rk, rsh, err)) return false;
         break;   // the instantiation depends on the types, which every layer shares in practice
     }
-    if (resident > slot_budget_bytes) {
+    if (resident > slot_budget_bytes && !m.layers.empty()) {
+        // STREAMING: top_k slots, filled per layer.  Every layer's experts share one pool because the layers run in sequence.
+        const ExpertBlob b = blob_of(m, m.layers[0]);
+        if (!stream_init(cx, f.stream, b, (int) m.top_k, (int) m.g.n_expert, err)) return false;
+        f.streaming = true;
+        const RoutedShape rsh{b, (int) m.g.n_expert, (int) m.top_k, 1};
+        if (!routed_init(cx, f.rk, rsh, err, true) || !routed_scratch(cx, f.routed, rsh, err)) return false;
+        err.clear();
+    }
+    if (!f.streaming && resident > slot_budget_bytes) {
         char buf[320];
         std::snprintf(buf, sizeof buf,
                       "the resident expert slots need %.1f GiB and the budget is %.1f GiB: this card cannot hold them, and the "
@@ -106,7 +115,7 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
                 return false;
             }
         }
-        if (L.gate_exps.ok()) {
+        if (L.gate_exps.ok() && !f.streaming) {
             const ExpertBlob b = blob_of(m, L);
             f.slots[i] = cx.alloc((size_t) b.slots((int) m.g.n_expert));
             if (f.slots[i].ptr == nullptr) {
@@ -170,8 +179,13 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
         io.state = &f.state[i];
         io.hist = &f.hist[i];
         io.cs = &f.cs;
-        io.slots = &f.slots[i];
+        io.slots = f.streaming ? nullptr : &f.slots[i];
         io.slots_off = 0;
+        if (f.streaming) {
+            io.fill.m = &m;
+            io.fill.L = &m.layers[i];
+            io.fill.pool = &f.stream;
+        }
         io.pos = pos;
         io.n_kv = n_kv;
         if (w.attention) {   // this layer's own ring: the parts read the one they are handed

@@ -66,8 +66,9 @@ struct LayerIo {
     mtl::Buffer* state = nullptr;        // this layer's GDN state
     mtl::Buffer* hist = nullptr;         // this layer's conv history
     const mtl::Buffer* cs = nullptr;     // the RoPE table (attention layers)
-    const mtl::Buffer* slots = nullptr;  // the packed expert slots
+    const mtl::Buffer* slots = nullptr;  // the packed expert slots (resident)
     size_t slots_off = 0;
+    StreamFill fill{};                   // streaming: the model, layer and pool to fill instead (pool null = resident)
     int pos = 0, n_kv = 0;
 };
 
