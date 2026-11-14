@@ -64,6 +64,7 @@ target_link_libraries(q36_model_check PRIVATE strata_q36_model)
 enable_testing()
 add_test(NAME q36_model_check COMMAND q36_model_check)
 add_test(NAME q36_attn_parity COMMAND q36_attn_parity)
+add_test(NAME q36_glue_parity COMMAND q36_glue_parity)
 
 # ---- the device runtime and the engine (mac-design) ---------------------------------------------------------------
 set(METAL_CPP_DIR "" CACHE PATH "metal-cpp headers (https://developer.apple.com/metal/cpp/), e.g. metal-cpp_26")
