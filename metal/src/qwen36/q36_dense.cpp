@@ -67,7 +67,9 @@ bool dense_init(mtl::Context& cx, DenseKernels& k, std::string& err) {
 }
 
 bool dense_scratch(mtl::Context& cx, DenseScratch& s, int n_in, std::string& err) {
-    if (s.xp.ptr != nullptr && s.n_in == n_in) return true;
+    // NEVER skip on a matching width: the planes hold a ROW, and two consecutive gemvs with the same n_in are routinely handed
+    // DIFFERENT rows - the attention layer projects h for q, k and v and then the attention's own output for o, all at width 2048.
+    // The early return made the second one read the first one's planes: a wrong answer of exactly the shape this port hunted for weeks.
     if (s.xp.ptr != nullptr) cx.free(s.xp);
     // 4 planes of n_in floats, then the 16-wide sums: (4 + 1/16) rows' worth
     const size_t bytes = (size_t) 4 * (size_t) n_in * 4 + (size_t) (n_in / 16) * 2 * 4;

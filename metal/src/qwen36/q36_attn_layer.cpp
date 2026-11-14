@@ -88,6 +88,12 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
     const size_t row = (size_t) (n_kv - 1) * hkv;   // this token's row, token-major
 
     // 1. the three input projections, all against the same prepared activation
+    if (std::getenv("Q36_TRACE_H")) {   // THE ROW THIS LAYER ACTUALLY PROJECTS: the one number that settles the wiring question
+        const float* hh = (const float*) h.ptr;
+        std::printf("attn_forward h[0..2] = %g %g %g   (dumped s.h was -0.3494 -0.1587 1.5184)\n", (double) hh[0], (double) hh[1],
+                    (double) hh[2]);
+        std::fflush(stdout);
+    }
     if (!dense_gemv(cx, dk, w.q, h, s.qg, ds, err)) return false;
     if (!dense_gemv(cx, dk, w.k, h, s.k_raw, ds, err)) return false;
     if (!dense_gemv(cx, dk, w.v, h, s.v_raw, ds, err)) return false;
