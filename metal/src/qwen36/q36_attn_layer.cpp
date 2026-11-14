@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 namespace strata::qwen36 {
 namespace {
@@ -133,6 +134,12 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
     da.tg[1] = da.tg[2] = 1;
 
     cx.run({dq, dk_, dv, da});
+    if (const char* ap = std::getenv("Q36_DUMP_A")) {   // the attention's own output, before the o projection: the discriminator
+        if (FILE* fa = std::fopen(ap, "wb")) {
+            std::fwrite(s.a.ptr, 4, hq, fa);
+            std::fclose(fa);
+        }
+    }
 
     // 5. the output projection
     if (!dense_gemv(cx, dk, w.o, s.a, s.y, ds, err)) return false;
