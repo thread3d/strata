@@ -14,6 +14,15 @@
 #include <cstring>
 
 namespace strata::qwen36 {
+
+uint64_t Model::expert_slab_bytes() const {
+    const Layer& l0 = layers.empty() ? Layer() : layers.front();
+    if (!l0.gate_exps.ok() || !l0.down_exps.ok()) return 0;
+    const uint64_t gu = (uint64_t) ref::row_bytes(l0.gate_exps.type(), (int) g.n_embd);
+    const uint64_t dn = (uint64_t) ref::row_bytes(l0.down_exps.type(), (int) g.n_ff);
+    return 2 * (uint64_t) g.n_ff * gu + (uint64_t) g.n_embd * dn;
+}
+
 namespace {
 
 using strata::core::ModelGeometry;
@@ -265,13 +274,10 @@ std::string describe(const Model& m) {
          (double) m.embed_bytes / 1073741824.0, (double) m.dense_bytes / 1073741824.0,
          (double) m.expert_bytes / 1073741824.0, (double) m.total_bytes / 1073741824.0);
     const Layer& l0 = m.layers.front();
-    line("  one expert's slab: %.3f MiB (%s gate/up at %llu-byte rows, %s down at %llu-byte rows), %.1f MiB a token at top-%lld",
-         (double) (l0.gate_exps.row_bytes() * (uint64_t) g.n_ff * 2 + l0.down_exps.row_bytes() * (uint64_t) g.n_embd) / 1048576.0,
-         l0.gate_exps.ok() ? l0.gate_exps.t->type_name() : "?", (unsigned long long) m.gu_row,
-         l0.down_exps.ok() ? l0.down_exps.t->type_name() : "?", (unsigned long long) m.down_row,
-         (double) (l0.gate_exps.row_bytes() * (uint64_t) g.n_ff * 2 + l0.down_exps.row_bytes() * (uint64_t) g.n_embd) *
-             (double) m.top_k * (double) g.n_layers / 1048576.0,
-         (long long) m.top_k);
+    line("  one expert's slab: %.2f MiB (%s gate/up, %s down), %.2f GiB a token at top-%lld over %lld layers",
+         (double) m.expert_slab_bytes() / 1048576.0, l0.gate_exps.ok() ? l0.gate_exps.t->type_name() : "?",
+         l0.down_exps.ok() ? l0.down_exps.t->type_name() : "?", (double) m.expert_bytes_per_token() / 1073741824.0,
+         (long long) m.top_k, (long long) g.n_layers);
     return s;
 }
 

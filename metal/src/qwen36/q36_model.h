@@ -79,8 +79,10 @@ struct Model {
     int64_t n_trunk() const { return g.n_layers; }
     int64_t n_mtp() const { return g.n_mtp_layers; }
 
-    /// Bytes one expert's [gate | up | down] slab takes: the unit a per-token stream reads, top_k times a layer.
-    uint64_t expert_slab_bytes() const { return gu_row * (uint64_t) g.n_ff * 2 + down_row * (uint64_t) g.n_embd; }
+    /// Bytes one expert's [gate | up | down] slab takes: the unit a per-token stream reads, top_k times a layer.  The expert tensors
+    /// are STACKED (`[n_embd, n_ff, n_expert]`), so their `row_bytes()` is the width of all 256 experts - the row of ONE expert is
+    /// the format's row for `n_embd` (gate/up) and for `n_ff` (down), and this is that arithmetic, the same as ExpertBlob::shape().
+    uint64_t expert_slab_bytes() const;
     /// Bytes a decoded token must read from the expert tensors alone (n_layers x top_k slabs): the number that decides
     /// whether streaming can be fast enough on this card.
     uint64_t expert_bytes_per_token() const { return expert_slab_bytes() * (uint64_t) top_k * (uint64_t) g.n_layers; }
