@@ -30,7 +30,9 @@ std::string detok(const std::vector<std::string>& vocab, uint32_t id, const std:
     for (size_t i = 0; i < vocab[id].size();) {
         const unsigned char c = (unsigned char) vocab[id][i];
         int len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xe ? 3 : 4;
-        uint32_t cp = len == 1 ? c : len == 2 ? ((c & 0x1f) << 6) : len == 3 ? ((c & 0x0f) << 12) : ((c & 0x07) << 18);
+        // the leading byte's payload WITHOUT a pre-shift: the continuation loop below shifts as it consumes, and pre-shifting here made
+        // 'Ġ' (U+0120) decode as 16416 - which is why every word token printed as <?> while punctuation (ASCII) printed fine.
+        uint32_t cp = len == 1 ? c : len == 2 ? (c & 0x1f) : len == 3 ? (c & 0x0f) : (c & 0x07);
         for (int k = 1; k < len && i + (size_t) k < vocab[id].size(); ++k) cp = (cp << 6) | ((unsigned char) vocab[id][i + (size_t) k] & 0x3f);
         i += (size_t) len;
         if ((size_t) cp < byte_of.size() && byte_of[(size_t) cp] >= 0) out.push_back((char) byte_of[(size_t) cp]);
