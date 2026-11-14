@@ -694,7 +694,17 @@ int main(int argc, char** argv) {
                 ref::dequant(L.v.type(), L.v.data(*m.file) + (size_t) r * rbv, row.data(), (size_t) N);
                 c0 += (double) row[0] * (double) h[(size_t) r];
             }
-            std::printf("attn layer %d v[0]: row-major %.6g | column-major %.6g | engine 1.8781\n", check_attn, r0, c0);
+            std::printf("attn layer %d v[0]: row-major %.6g | column-major %.6g\n", check_attn, r0, c0);
+            // the QUERY projection's first element, for the same comparison: qg[0] = (attn_q row 0) . h
+            {
+                const size_t rbq = ref::row_bytes(L.q.type(), N);
+                std::vector<float> rq((size_t) N);
+                ref::dequant(L.q.type(), L.q.data(*m.file), rq.data(), (size_t) N);
+                double q0 = 0.0;
+                for (int i = 0; i < N; ++i) q0 += (double) rq[(size_t) i] * (double) h[(size_t) i];
+                std::printf("attn layer %d qg[0]: host %.6g\n", check_attn, q0);
+                (void) rbq;
+            }
         }
         std::printf("attn layer %d host post-gate out[0..3]: %g %g %g %g\n", check_attn, yin[0], yin[1], yin[2], yin[3]);
         std::printf("attn layer %d host mixer y[0..3]:", check_attn);

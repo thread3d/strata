@@ -134,6 +134,12 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
     da.tg[1] = da.tg[2] = 1;
 
     cx.run({dq, dk_, dv, da});
+    if (const char* qp = std::getenv("Q36_DUMP_QG")) {   // the query projection: with v, the pair says whether h or one dispatch is wrong
+        if (FILE* fq = std::fopen(qp, "wb")) {
+            std::fwrite(s.qg.ptr, 4, 2 * hq, fq);
+            std::fclose(fq);
+        }
+    }
     if (const char* vp = std::getenv("Q36_DUMP_V")) {   // the value projection before the ring store
         if (FILE* fv = std::fopen(vp, "wb")) {
             std::fwrite(s.v_raw.ptr, 4, hkv, fv);
