@@ -683,6 +683,19 @@ int main(int argc, char** argv) {
             for (double t : vx) vmx = std::max(vmx, std::fabs(t));
             std::printf("attn layer %d host v[0..3]: %.5g %.5g %.5g %.5g  |v|max %.4g\n", check_attn, vx[0], vx[1], vx[2], vx[3], vmx);
         }
+        {
+            // WHICH LAYOUT: v[0] as a row-major dot (row 0 of attn_v against h) and as a column-major one (element 0 of every row).
+            const size_t rbv = ref::row_bytes(L.v.type(), N);
+            std::vector<float> row((size_t) N);
+            double r0 = 0.0, c0 = 0.0;
+            ref::dequant(L.v.type(), L.v.data(*m.file), row.data(), (size_t) N);
+            for (int i = 0; i < N; ++i) r0 += (double) row[(size_t) i] * (double) h[(size_t) i];
+            for (int r = 0; r < KVH; ++r) {
+                ref::dequant(L.v.type(), L.v.data(*m.file) + (size_t) r * rbv, row.data(), (size_t) N);
+                c0 += (double) row[0] * (double) h[(size_t) r];
+            }
+            std::printf("attn layer %d v[0]: row-major %.6g | column-major %.6g | engine 1.8781\n", check_attn, r0, c0);
+        }
         std::printf("attn layer %d host post-gate out[0..3]: %g %g %g %g\n", check_attn, yin[0], yin[1], yin[2], yin[3]);
         std::printf("attn layer %d host mixer y[0..3]:", check_attn);
         for (int r = 0; r < 4; ++r) {
