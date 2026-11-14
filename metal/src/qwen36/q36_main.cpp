@@ -303,6 +303,25 @@ int main(int argc, char** argv) {
             std::printf("  expert %d block 0: bytes %02x %02x %02x %02x ... %02x | scale-as-halves %g | max |w| of the 32 = %g\n", e2, q[0],
                         q[1], q[2], q[3], q[33], (double) (q[0] | (q[1] << 8)), fmax);
         }
+        // THE ROUTER'S OWN ANSWER, on the host: the same top-8 from ffn_gate_inp . h, in double.  The engine prints its plan
+        // (plan[TOKENT + k]); these two lists must be the same experts in the same order for the token to be routed right.
+        {
+            const size_t rr = ref::row_bytes(L0.gate_inp.type(), N);
+            std::vector<double> lg((size_t) m.g.n_expert);
+            std::vector<float> w((size_t) N);
+            for (int e = 0; e < (int) m.g.n_expert; ++e) {
+                ref::dequant(L0.gate_inp.type(), L0.gate_inp.data(*m.file) + (size_t) e * rr, w.data(), (size_t) N);
+                double acc = 0.0;
+                for (int i = 0; i < N; ++i) acc += (double) w[(size_t) i] * h[(size_t) i];
+                lg[(size_t) e] = acc;
+            }
+            std::vector<int> order((size_t) m.g.n_expert);
+            for (int e = 0; e < (int) m.g.n_expert; ++e) order[(size_t) e] = e;
+            std::sort(order.begin(), order.end(), [&](int a, int b) { return lg[(size_t) a] > lg[(size_t) b]; });
+            std::printf("  the router's own top-8 on the host:");
+            for (int k = 0; k < (int) m.top_k; ++k) std::printf(" %d", order[(size_t) k]);
+            std::printf("  (top logits %g %g %g)\n", lg[(size_t) order[0]], lg[(size_t) order[1]], lg[(size_t) order[2]]);
+        }
         return 0;
     }
 
