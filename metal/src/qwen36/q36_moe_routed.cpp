@@ -2,6 +2,7 @@
 #include "q36_moe_routed.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 namespace strata::qwen36 {
@@ -142,6 +143,14 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
         if (!picked.empty()) {
             err.clear();
             const int loaded = stream_load(*fill->m, *fill->L, *fill->pool, picked, err);
+            if (std::getenv("Q36_TRACE")) {
+                const uint32_t* m2 = fill->pool->smap.as<uint32_t>();
+                std::printf("Q36_TRACE layer: %d picks, %d loaded; smap[", (int) picked.size(), loaded);
+                for (size_t q = 0; q < picked.size() && q < 8; ++q) std::printf("%d:%u ", picked[q], m2[picked[q]]);
+                std::printf("] stride=%llu blob=%llu\n", (unsigned long long) fill->pool->stride,
+                            (unsigned long long) fill->pool->blob.blob);
+                std::fflush(stdout);
+            }
             if (loaded <= 0) {   // (0 with no message is a bug in the caller, so say which)
                 if (err.empty()) err = "the pool filled nothing from the router's picks";
                 return false;
