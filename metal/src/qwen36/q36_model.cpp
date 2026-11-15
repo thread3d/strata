@@ -55,7 +55,7 @@ bool expert_gu_ok(int t) {
 }
 bool expert_dn_ok(int t) {
     switch (t) {
-    case ref::Q2_0: case ref::Q5_0: case ref::Q5_1: case ref::Q8_0: case ref::IQ4_NL: case ref::IQ4_XS: case ref::IQ3_S:
+    case ref::Q2_0: case ref::Q5_0: case ref::Q5_1: case ref::Q8_0: case ref::IQ4_NL: case ref::IQ4_XS: case ref::IQ3_S: case ref::IQ3_XXS:
         return true;
     default:
         return false;

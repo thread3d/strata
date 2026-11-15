@@ -445,6 +445,7 @@ kernel void moe_combine(device const float* ye [[buffer(0)]], device float* y [[
 #define DN_SET(F) DN(F, 8, 1, 4) DN(F, 8, 2, 4) DN(F, 8, 4, 4) DN(F, 8, 1, 8) DN(F, 8, 2, 8) DN(F, 4, 1, 4) DN(F, 4, 2, 4) \
                   DN(F, 4, 4, 4) DN(F, 16, 1, 4) DN(F, 16, 2, 4) DN(F, 32, 1, 4) DN(F, 2, 2, 4)
 GU_SET(T_Q2_0)
+GU_SET(T_Q2_K)
 GU_SET(T_IQ3_XXS)
 GU_SET(T_IQ2_XXS)
 GU_SET(T_IQ2_XS)
@@ -457,6 +458,7 @@ DN_SET(T_Q5_0)   // the UD-IQ2_XS / Q2_K_XL / Q3_K_XL / IQ4_XS packs' down exper
 DN_SET(T_Q2_0)
 DN_SET(T_Q2_0R)
 DN_SET(T_IQ4_NL)
+DN_SET(T_IQ3_XXS)   // the UD-Q2_K_XL pack's down experts
 // UD files at expert widths divisible by 256: IQ4_XS / IQ3_S downs read raw h like the gate/up's raw-kind formats (the generic
 // X / Dec); the K-quants take moe_down_k (XD above).  Same host names, moe_down_<type>_<L>_<R>_<S>.
 #ifdef STRATA_KQ_DOWN   // the host defines it when a layer's down is one of these types (window.cpp kq_down_prelude): today's sets compile exactly what they did
