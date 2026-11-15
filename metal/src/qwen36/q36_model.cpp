@@ -46,7 +46,7 @@ bool dense_ok(int t) {
 // which expert_parity was run at on this card (h rel L2 1.52e-07 at one token, 1.47e-07 at eight).
 bool expert_gu_ok(int t) {
     switch (t) {
-    case ref::Q2_0: case ref::Q4_K: case ref::Q5_K: case ref::Q6_K: case ref::Q8_0:
+    case ref::Q2_0: case ref::Q2_K: case ref::Q4_K: case ref::Q5_K: case ref::Q6_K: case ref::Q8_0:
     case ref::IQ2_XXS: case ref::IQ2_XS: case ref::IQ2_S: case ref::IQ3_XXS: case ref::IQ3_S: case ref::IQ4_XS:
         return true;
     default:
