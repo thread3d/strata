@@ -2037,7 +2037,8 @@ bool index_score(const float* q, const float* wq, const void* kc, int heads, int
     // On by default: measured +7.7 to +12 % on the 32K prompt and +2 % at 3K, with the KL unchanged on both packs
     // (0.11018 and 0.17087).  DS4_NO_IDX_MMA=1 restores the scalar indexer; on the 2.00 pack the score hash moves
     // (e81282a3 -> 0800179d) because half rounding breaks token ties, while KL and top-1 are identical.
-    static const bool idx_mma = std::getenv("DS4_NO_IDX_MMA") == nullptr;
+    static const bool idx_mma = std::getenv("DS4_NO_IDX_MMA") == nullptr
+        && strata::dsv41::metal_host::device_addresses_real();   // simdgroup_matrix needs Metal 3's gpuAddress; on Metal 2 skip it
     if (idx_mma && cand == nullptr && kfmt == 3) {
         mtl::Pipeline pm;
         try { pm = g_cx->pipeline(g_lib, "ds4_index_score_mma"); } catch (...) { pm = mtl::Pipeline{}; }
