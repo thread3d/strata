@@ -5,17 +5,20 @@
 kernel void dsu_mkjob(device uchar* mem [[buffer(0)]], constant ulong* o [[buffer(1)]], constant int* a [[buffer(2)]]) {
     // o: job, w, xq, xd, y offsets; a: type, k, n, ncol, ld
     device Ds4MvJob& j = *(device Ds4MvJob*) (mem + o[0]);
-    j.w = mem + o[1];
+    // offsets into the bound allocations, not raw device addresses: Metal 2 has no gpuAddress so a
+    // device uchar* cannot be stored in a ulong field.  The kernel adds the offset to the base of
+    // its bound buffer (ds4_iq_mv: bws + b.w, bxs + b.xq, ...).
+    j.w = o[1];
     j.ld = ulong(a[4]);
     j.type = a[0];
     j.k = a[1];
     j.n = a[2];
     j.ncol = a[3];
-    j.xq = (device const char*) (mem + o[2]);
-    j.xd = (device const float*) (mem + o[3]);
-    j.y = (device float*) (mem + o[4]);
+    j.xq = o[2];
+    j.xd = o[3];
+    j.y = o[4];
     j.ycs = ulong(a[2]);
-    j.bias = nullptr;
+    j.bias = kNoBias;
     j.alpha = 1.0f;
 }
 #endif
