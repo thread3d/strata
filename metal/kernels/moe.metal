@@ -445,7 +445,6 @@ kernel void moe_combine(device const float* ye [[buffer(0)]], device float* y [[
 #define DN_SET(F) DN(F, 8, 1, 4) DN(F, 8, 2, 4) DN(F, 8, 4, 4) DN(F, 8, 1, 8) DN(F, 8, 2, 8) DN(F, 4, 1, 4) DN(F, 4, 2, 4) \
                   DN(F, 4, 4, 4) DN(F, 16, 1, 4) DN(F, 16, 2, 4) DN(F, 32, 1, 4) DN(F, 2, 2, 4)
 GU_SET(T_Q2_0)
-GU_SET(T_Q2_K)
 GU_SET(T_IQ3_XXS)
 GU_SET(T_IQ2_XXS)
 GU_SET(T_IQ2_XS)
