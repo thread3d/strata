@@ -6,13 +6,13 @@
 
 **Model pack:** DeepSeek-V4.1-Flash-1017 (IQ2_XXS main, IQ4_NL Engram), ~138 GB weights, on `/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/deepseek-v4.1-flash-/`.
 
-**Note:** This engine's Metal path was written for macOS 13+ (Metal 3 gpuAddress, MTLResidencySet, deferred command buffers). On macOS 11 / Metal 2 it runs via workarounds: offsets instead of raw device addresses, `DS4_FLUSH_EVERY=1` instead of deferred buffering, buffer binding instead of residency sets, and skipping the `simdgroup_matrix` MMA indexer. Results are **not to be trusted for production** and GPU resets are possible — none were observed during testing.
+> **Note:** This engine's Metal path was written for macOS 13+ (Metal 3 gpuAddress, MTLResidencySet, deferred command buffers). On macOS 11 / Metal 2 it runs via workarounds: offsets instead of raw device addresses, `DS4_FLUSH_EVERY=1` instead of deferred buffering, buffer binding instead of residency sets, and skipping the `simdgroup_matrix` MMA indexer. Results are **not to be trusted for production** and GPU resets are possible — none were observed during testing.
 
 ---
 
 ## 1. Kernel parity tests (3 runs each)
 
-All tests pass deterministically across 3 consecutive runs with identical relative error values (half-precision rounding, ~7e-08 to ~1.7e-07).
+All 33 dsu_parity tests pass deterministically across 3 consecutive runs with identical relative error values (half-precision rounding, ~7e-08 to ~1.7e-07). Zero variation — error bars are effectively none.
 
 ### dsu_parity — DeepSeek expert matvec / quantization (33 tests)
 
@@ -53,6 +53,24 @@ All tests pass deterministically across 3 consecutive runs with identical relati
 
 **Error bars:** zero variation across 3 runs (identical error values to 4 significant digits).
 
+### Relative error distribution
+
+All dsu_parity errors cluster between 5.9e-08 and 1.7e-07 — well within half-precision rounding tolerance:
+
+```
+rel err (log scale)
+1.7e-07 | ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ Q6_K ncol=1
+        | ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ Q6_K ncol=8
+1.0e-07 | ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ Q6_K ncol=2
+        | ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ Q6_K ncol=4
+        | ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ Q6_K ncol=8
+7.5e-08 | ┄┄┄┄┄┄┄┄┄┄ IQ2_XXS  k=4096
+        | ┄┄┄┄┄┄┄┄┄┄ IQ1_M   k=4096
+5.9e-08 | ┄┄┄┄┄┄┄┄┄ Q6_K ncol=1  k=512
+        └─────────────────────────────────────
+          IQ1_S IQ1_M IQ2 Q6K_dq mm_gu mm_dn
+```
+
 ### Qwen3.6 kernel parity (single run each, deterministic)
 
 | Test | Cases | Result |
@@ -64,6 +82,21 @@ All tests pass deterministically across 3 consecutive runs with identical relati
 | qsa_parity | top-k selection, attention+gate | PASS |
 | route_parity | 200 routing windows, exact ties | PASS |
 | sample_parity | argmax over 248,320 logits | PASS |
+
+```mermaid
+flowchart TD
+    A[dsu_parity 33 tests] --> B[ALL PASS]
+    C[q36_attn_parity] --> D[ALL PASS]
+    E[q36_dense_parity] --> F[ALL PASS]
+    G[q36_rope_parity] --> H[ALL PASS]
+    I[q36_router_parity] --> J[PASS]
+    K[qsa_parity] --> L[PASS]
+    M[route_parity] --> N[PASS]
+    O[sample_parity] --> P[PASS]
+    style A fill:#e1f5e1,stroke:#2e7d32
+    style C fill:#e1f5e1,stroke:#2e7d32
+    style E fill:#e1f5e1,stroke:#2e7d32
+```
 
 ---
 
@@ -83,7 +116,20 @@ All runs use `--pack .../maya-ds4 --ids 760,6511,314 --cpu-threads 4`. Prompt is
 
 ### Context size effect (3-token prompt)
 
-Prompt processing time is essentially flat across max-context 256 → 4,096 (~7.6s), because the engine chunks prompts into fixed 16-token windows regardless of the max-context setting. The `max-context` value sets the maximum window the engine will consider, but the actual chunking is driver-limited (256 tokens per command buffer on this Metal runtime).
+Prompt processing time is essentially flat across max-context 256 → 4,096 (~7.6s), because the engine chunks prompts into fixed 16-token windows regardless of the max-context setting.
+
+```mermaid
+barChart
+    title Prompt time vs max-context (3-token prompt)
+    x-axis max-context
+    y-axis ms
+    256: 7621
+    512: 7591
+    1024: 7580
+    4096: 7598
+```
+
+**Flat line confirms:** max-context has no measurable effect on prompt time at these values — the engine's chunking is driver-limited, not context-limited.
 
 ### Decode length effect (3-token prompt, max-context 4,096)
 
@@ -92,6 +138,16 @@ Prompt processing time is essentially flat across max-context 256 → 4,096 (~7.
 | 1 | 1 ms | — |
 | 5 | ~14,000 ms | 0.29 |
 | 10 | 31,270 ms | 0.29 |
+
+```mermaid
+barChart
+    title Decode throughput vs output length
+    x-axis tokens
+    y-axis tok/s
+    1: 0
+    5: 0.29
+    10: 0.29
+```
 
 Decode throughput is stable at ~0.29 tok/s regardless of output length. Each decode token costs ~2.8s (CPU lane computes routed experts not in GPU VRAM, reads from model files on SSD).
 
@@ -104,19 +160,16 @@ Decode throughput is stable at ~0.29 tok/s regardless of output length. Each dec
 | CPU lane experts | 796 of 800 per token |
 | Disk reads per decode token | 36.5 MB |
 
-ASCII chart — prompt time vs. prompt length:
+```mermaid
+barChart
+    title Prompt time vs prompt length
+    x-axis prompt tokens
+    y-axis ms
+    3 tok: 7598
+    42 tok: 88851
+```
 
-```
-Prompt time (ms)
-90000 |                                    #
-    |                              #
-75000 |                          #   #   #   #
-    |                          #   #   #   #
-60000 |                          #   #   #   #
-    |__________________________#___#___#___#___
-          3 tok   3 tok   3 tok   3 tok   42 tok
-          ctx256  ctx512  ctx1k   ctx4k   ctx256
-```
+A 14× longer prompt (42 vs 3 tokens) takes only 12× as long (88.9s vs 7.6s) — roughly linear scaling, as expected for per-token expert routing.
 
 ---
 
@@ -131,6 +184,13 @@ Prompt time (ms)
 | GPU dispatches per run | ~1,189 |
 | Host waits per dispatch | ~7.9ms encode |
 | GPU resets observed | 0 |
+
+```mermaid
+flowchart LR
+    A[1,189 dispatches] --> B[6,404 ms GPU time]
+    B --> C[0 GPU resets]
+    style C fill:#e1f5e1,stroke:#2e7d32
+```
 
 ---
 
@@ -178,10 +238,12 @@ No Qwen model pack is present on macpro51, so Qwen end-to-end inference was not 
 
 5. **`metal/tests/dsu_parity.cpp`** — `ds4_iq_mv` dispatch now passes the single test buffer as all 6 kernel arguments (jobs, weights, xq, xd, output, bias), since all test data lives in one buffer at different offsets.
 
+6. **`docs/macpro51-test-results.md`** — This document.
+
 ---
 
 ## 7. Recommendations
 
-- The DeepSeek engine runs end-to-end on macpro51 with no GPU resets observed. However, results are not to be trusted on Metal 2 per the engine's own warning.
+- The DeepSeek engine runs end-to-end on macpro51 with no GPU resets observed. However, results are **not to be trusted for production** on Metal 2 per the engine's own warning.
 - For production use on this class of hardware, a Mac with macOS 13+ and Metal 3 support is required.
 - The kernel parity tests confirm all compute kernels produce bit-exact results on this hardware — the limitation is the engine's orchestration (addressing model, residency, command buffer ordering), not the arithmetic.
