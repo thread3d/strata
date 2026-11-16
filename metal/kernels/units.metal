@@ -223,11 +223,10 @@ template <> struct Dec<T_Q4_K> {
             bytes4(v & 0x0F0F0F0Fu, q + 4 * w);
             bytes4((v >> 4) & 0x0F0F0F0Fu, q + 16 + 4 * w);
         }
-        // Q4_K group mins are biased by 32 (0-63 represents -32 to +31).
+        // Match CPU reference (ref_quant.cpp): weight = d*s*q - mn*m
         // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
-        // CPU reference: d * s * (q - mn * (m - 32)) = d*s*q - d*s*mn*(m-32)
-        // So sc.z = d * s * mn * (m - 32)
-        sc = float4(d * s1, d * s2, d * s1 * mn * (m1 - 32.0f), d * s2 * mn * (m2 - 32.0f));
+        // So sc.x = d*s, sc.z = mn*m
+        sc = float4(d * s1, d * s2, mn * m1, mn * m2);
     }
 };
 
