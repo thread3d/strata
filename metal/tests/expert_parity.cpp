@@ -465,8 +465,10 @@ int main(int argc, char** argv) {
 
     mtl::Buffer x = cx.alloc(4 * 8 * N_EMBD), h = cx.alloc(4 * 8 * TOPK * N_FF), ye = cx.alloc(4 * 8 * TOPK * N_EMBD),
                 y = cx.alloc(4 * 8 * N_EMBD);
-    mtl::Buffer XPX = cx.alloc(4 * (4 * PLANE_X + PLANE_X / 16) + (g_f16 ? 2 * 3 * PLANE_X : 0)),
-                XPH = cx.alloc(4 * (4 * PLANE_H + PLANE_H / 16)), h16 = g_f16 ? cx.alloc(2 * 8 * TOPK * N_FF) : mtl::Buffer{};
+    // 4 planes * n_tok * n_embd floats + half sums (n_tok * n_embd / 16)
+    const size_t xpx_floats = 4 * 8 * N_EMBD + 8 * N_EMBD / 16;
+    mtl::Buffer XPX = cx.alloc(4 * xpx_floats + (g_f16 ? 2 * 3 * 4 * N_EMBD : 0)),
+                XPH = cx.alloc(4 * (4 * 8 * N_FF + 8 * N_FF / 16)), h16 = g_f16 ? cx.alloc(2 * 8 * TOPK * N_FF) : mtl::Buffer{};
     g_xpx = &XPX;
     g_h16 = &h16;
     g_xph = &XPH;
