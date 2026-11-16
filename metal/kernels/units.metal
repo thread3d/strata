@@ -61,12 +61,13 @@ template <> struct X<T_Q2_0> {
     }
 };
 // Q4_K / Q5_K: unit (block b, chunk c, half m): run0 at 256b + 64c + 16m, run1 = run0 + 32
+// For raw plane (plane 0): contiguous layout, unit u at u * 32
 template <> struct X<T_Q4_K> {
     template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
         (void)s16;
-        const int p0 = 256 * (u >> 3) + 64 * ((u >> 1) & 3) + 16 * (u & 1);
-        load16(xp + p0, xs);
-        load16(xp + p0 + 32, xs + 16);
+        const int base = u * 32;
+        load16(xp + base, xs);
+        load16(xp + base + 16, xs + 16);
         float s0 = 0.0f, s1 = 0.0f;
         for (int j = 0; j < 16; ++j) { s0 += xs[j]; s1 += xs[16 + j]; }
         xsum[0] = s0; xsum[1] = s1;
@@ -75,9 +76,9 @@ template <> struct X<T_Q4_K> {
 template <> struct X<T_Q5_K> {
     template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
         (void)s16;
-        const int p0 = 256 * (u >> 3) + 64 * ((u >> 1) & 3) + 16 * (u & 1);
-        load16(xp + p0, xs);
-        load16(xp + p0 + 32, xs + 16);
+        const int base = u * 32;
+        load16(xp + base, xs);
+        load16(xp + base + 16, xs + 16);
         float s0 = 0.0f, s1 = 0.0f;
         for (int j = 0; j < 16; ++j) { s0 += xs[j]; s1 += xs[16 + j]; }
         xsum[0] = s0; xsum[1] = s1;
