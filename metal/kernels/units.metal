@@ -212,7 +212,8 @@ template <> struct Dec<T_Q4_K> {
     static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
         device const uchar* b = row + (u >> 3) * 144;
         const int c = (u >> 1) & 3, m = u & 1;
-        const float d = rdh(b), dm = rdh(b + 2);
+        const float d = rdh(b);
+        const float mn = rdh(b + 2);  // block min (fp16)
         float s1, m1, s2, m2;
         scale_min_k4(2 * c, b + 4, s1, m1);
         scale_min_k4(2 * c + 1, b + 4, s2, m2);
@@ -223,8 +224,10 @@ template <> struct Dec<T_Q4_K> {
             bytes4((v >> 4) & 0x0F0F0F0Fu, q + 16 + 4 * w);
         }
         // Q4_K group mins are biased by 32 (0-63 represents -32 to +31).
-        // unit_combine subtracts sc.z * xsum, so we need sc.z = d * s1 * (m1 - 32)
-        sc = float4(d * s1, d * s2, d * s1 * (m1 - 32.0f), d * s2 * (m2 - 32.0f));
+        // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
+        // CPU reference: d * s * (q - mn * (m - 32)) = d*s*q - d*s*mn*(m-32)
+        // So sc.z = d * s * mn * (m - 32)
+        sc = float4(d * s1, d * s2, d * s1 * mn * (m1 - 32.0f), d * s2 * mn * (m2 - 32.0f));
     }
 };
 
@@ -232,7 +235,8 @@ template <> struct Dec<T_Q5_K> {
     static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
         device const uchar* b = row + (u >> 3) * 176;
         const int c = (u >> 1) & 3, m = u & 1;
-        const float d = rdh(b), dm = rdh(b + 2);
+        const float d = rdh(b);
+        const float mn = rdh(b + 2);  // block min (fp16)
         float s1, m1, s2, m2;
         scale_min_k4(2 * c, b + 4, s1, m1);
         scale_min_k4(2 * c + 1, b + 4, s2, m2);
@@ -244,8 +248,10 @@ template <> struct Dec<T_Q5_K> {
             bytes4(((v >> 4) & 0x0F0F0F0Fu) | (((h >> (2 * c + 1)) & 0x01010101u) << 4), q + 16 + 4 * w);
         }
         // Q5_K group mins are biased by 32 (0-63 represents -32 to +31).
-        // unit_combine subtracts sc.z * xsum, so we need sc.z = d * s1 * (m1 - 32)
-        sc = float4(d * s1, d * s2, d * s1 * (m1 - 32.0f), d * s2 * (m2 - 32.0f));
+        // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
+        // CPU reference: d * s * (q - mn * (m - 32)) = d*s*q - d*s*mn*(m-32)
+        // So sc.z = d * s * mn * (m - 32)
+        sc = float4(d * s1, d * s2, d * s1 * mn * (m1 - 32.0f), d * s2 * mn * (m2 - 32.0f));
     }
 };
 
