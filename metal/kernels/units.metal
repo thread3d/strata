@@ -157,8 +157,8 @@ template <> struct Dec<T_Q2_0> {
         device const ushort* p = (device const ushort*)(b + 2 + 4 * (u & 3));
         const ushort a = p[0], c = p[1];
         for (int j = 0; j < 8; ++j) {
-            q[j] = float((a >> (2 * j)) & 3);
-            q[8 + j] = float((c >> (2 * j)) & 3);
+            q[j] = float(a & ushort(3u << (2 * j)));
+            q[8 + j] = float(c & ushort(3u << (2 * j)));
         }
         const float d = rdh(b);
         sc = float4(d, d, d, 0.0f);
