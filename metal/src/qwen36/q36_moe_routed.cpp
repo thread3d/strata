@@ -15,12 +15,7 @@ inline int xprep_plane(int ggml_type) {
     switch (ggml_type) {
         case 42:  // GGML_TYPE_Q2_0
             return 1;  // XK_Q2
-        case 11:  // GGML_TYPE_Q3_K
-        case 14:  // GGML_TYPE_Q6_K
-            return 3;  // XK_P2
-        case 12:  // GGML_TYPE_Q4_K
-        case 13:  // GGML_TYPE_Q5_K
-            return 2;  // XK_P4
+        // K-quants (Q4_K, Q5_K, Q6_K, Q3_K) use XD-like path with internal scaling from raw plane
         default:
             return 0;  // XK_RAW
     }

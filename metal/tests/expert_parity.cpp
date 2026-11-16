@@ -114,9 +114,9 @@ struct Kernels {
 };
 int xkind(int t) {
     switch (t) {
-        case ref::Q2_0: return 1;
-        case ref::Q4_K: case ref::Q5_K: return 2;
-        case ref::Q6_K: case ref::Q3_K: return 3;
+        case ref::Q2_0: return 1;  // Q2_0 uses plane 1 (XK_Q2)
+        case ref::Q3_K: case ref::Q6_K: return 3;  // Q3_K/Q6_K use plane 3 (XK_P2, p2s scaling)
+        // Q4_K/Q5_K use plane 0 (raw) with Dec matching CPU reference
         default: return 0;
     }
 }
@@ -163,6 +163,7 @@ void encode_layer(std::vector<mtl::Dispatch>& ds, const Kernels& K, const mtl::B
     if (with_gu) {
         mtl::Dispatch d;
         d.p = &K.gu;
+        printf("DEBUG: g_gu_type=%d, xkind=%d, offset=%zu\n", g_gu_type, xkind(g_gu_type), (size_t)(4 * PLANE_X * xkind(g_gu_type))); fflush(stdout);
         d.args = {mtl::Arg::B(W, w_off), mtl::Arg::B(XPX, 4 * PLANE_X * xkind(g_gu_type)), mtl::Arg::B(h),
                   mtl::Arg::B(plan, plan_off), mtl::Arg::V(a), mtl::Arg::B(XPX, 4 * PLANE_X * 4)};
         if (g_f16) {
@@ -493,6 +494,9 @@ int main(int argc, char** argv) {
         mtl::Pipeline pp = cx.pipeline(lib, "xprep", g_f16 ? mtl::Constants().b(25, true) : mtl::Constants());
         cx.run({prep_dispatch(pp, x, XPX, N_EMBD, 8)});
     }
+    // DEBUG: check XPX after xprep
+    printf("DEBUG: XPX after xprep - plane 0 (raw): %.4f %.4f %.4f %.4f\n", XPX.as<float>()[0], XPX.as<float>()[1], XPX.as<float>()[2], XPX.as<float>()[3]);
+    printf("DEBUG: XPX after xprep - plane 2 (P4): %.4f %.4f %.4f %.4f\n", XPX.as<float>()[2*PLANE_X], XPX.as<float>()[2*PLANE_X+1], XPX.as<float>()[2*PLANE_X+2], XPX.as<float>()[2*PLANE_X+3]);
 
     if (!bench) {
         // ---------------- parity ----------------

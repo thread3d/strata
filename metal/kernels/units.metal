@@ -65,6 +65,8 @@ template <> struct X<T_Q2_0> {
 template <> struct X<T_Q4_K> {
     template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
         (void)s16;
+        // xp points to RAW plane (plane 0). Q4_K uses contiguous layout.
+        // NO scaling - Dec<T_Q4_K> returns scales matching CPU reference.
         const int base = u * 32;
         load16(xp + base, xs);
         load16(xp + base + 16, xs + 16);
@@ -76,6 +78,8 @@ template <> struct X<T_Q4_K> {
 template <> struct X<T_Q5_K> {
     template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
         (void)s16;
+        // xp points to RAW plane (plane 0). Q5_K uses contiguous layout like Q4_K.
+        // NO scaling - Dec<T_Q5_K> returns scales matching CPU reference.
         const int base = u * 32;
         load16(xp + base, xs);
         load16(xp + base + 16, xs + 16);
