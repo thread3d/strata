@@ -63,16 +63,24 @@ template <> struct X<T_Q2_0> {
 // Q4_K / Q5_K: unit (block b, chunk c, half m): run0 at 256b + 64c + 16m, run1 = run0 + 32
 template <> struct X<T_Q4_K> {
     template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
+        (void)s16;
         const int p0 = 256 * (u >> 3) + 64 * ((u >> 1) & 3) + 16 * (u & 1);
         load16(xp + p0, xs);
         load16(xp + p0 + 32, xs + 16);
-        xsum[0] = s16[p0 >> 4];
-        xsum[1] = s16[(p0 >> 4) + 2];
+        float s0 = 0.0f, s1 = 0.0f;
+        for (int j = 0; j < 16; ++j) { s0 += xs[j]; s1 += xs[16 + j]; }
+        xsum[0] = s0; xsum[1] = s1;
     }
 };
 template <> struct X<T_Q5_K> {
     template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
-        X<T_Q4_K>::load(xp, s16, u, xs, xsum);
+        (void)s16;
+        const int p0 = 256 * (u >> 3) + 64 * ((u >> 1) & 3) + 16 * (u & 1);
+        load16(xp + p0, xs);
+        load16(xp + p0 + 32, xs + 16);
+        float s0 = 0.0f, s1 = 0.0f;
+        for (int j = 0; j < 16; ++j) { s0 += xs[j]; s1 += xs[16 + j]; }
+        xsum[0] = s0; xsum[1] = s1;
     }
 };
 // Q6_K: unit (block b, half n, m, p): run0 at 256b + 128n + 32p + 16m, run1 = run0 + 64
@@ -149,8 +157,8 @@ template <> struct Dec<T_Q2_0> {
         device const ushort* p = (device const ushort*)(b + 2 + 4 * (u & 3));
         const ushort a = p[0], c = p[1];
         for (int j = 0; j < 8; ++j) {
-            q[j] = float(a & ushort(3u << (2 * j)));
-            q[8 + j] = float(c & ushort(3u << (2 * j)));
+            q[j] = float((a >> (2 * j)) & 3);
+            q[8 + j] = float((c >> (2 * j)) & 3);
         }
         const float d = rdh(b);
         sc = float4(d, d, d, 0.0f);
@@ -214,7 +222,9 @@ template <> struct Dec<T_Q4_K> {
             bytes4(v & 0x0F0F0F0Fu, q + 4 * w);
             bytes4((v >> 4) & 0x0F0F0F0Fu, q + 16 + 4 * w);
         }
-        sc = float4(d * s1, d * s2, dm * m1, dm * m2);
+        // Q4_K group mins are biased by 32 (0-63 represents -32 to +31).
+        // unit_combine subtracts sc.z * xsum, so we need sc.z = d * s1 * (m1 - 32)
+        sc = float4(d * s1, d * s2, d * s1 * (m1 - 32.0f), d * s2 * (m2 - 32.0f));
     }
 };
 
@@ -233,7 +243,9 @@ template <> struct Dec<T_Q5_K> {
             bytes4((v & 0x0F0F0F0Fu) | (((h >> (2 * c)) & 0x01010101u) << 4), q + 4 * w);
             bytes4(((v >> 4) & 0x0F0F0F0Fu) | (((h >> (2 * c + 1)) & 0x01010101u) << 4), q + 16 + 4 * w);
         }
-        sc = float4(d * s1, d * s2, dm * m1, dm * m2);
+        // Q5_K group mins are biased by 32 (0-63 represents -32 to +31).
+        // unit_combine subtracts sc.z * xsum, so we need sc.z = d * s1 * (m1 - 32)
+        sc = float4(d * s1, d * s2, d * s1 * (m1 - 32.0f), d * s2 * (m2 - 32.0f));
     }
 };
 
@@ -402,7 +414,7 @@ template <> struct Dec16<T_Q4_K> {
             bytes4h(v & 0x0F0F0F0Fu, q + 4 * w);
             bytes4h((v >> 4) & 0x0F0F0F0Fu, q + 16 + 4 * w);
         }
-        sc = float4(d * s1, d * s2, dm * m1, dm * m2);
+        sc = float4(d * s1, d * s2, dm * (32.0f - m1), dm * (32.0f - m2));
     }
 };
 template <> struct Dec16<T_Q5_K> {
@@ -420,7 +432,7 @@ template <> struct Dec16<T_Q5_K> {
             bytes4h((v & 0x0F0F0F0Fu) | (((h >> (2 * c)) & 0x01010101u) << 4), q + 4 * w);
             bytes4h(((v >> 4) & 0x0F0F0F0Fu) | (((h >> (2 * c + 1)) & 0x01010101u) << 4), q + 16 + 4 * w);
         }
-        sc = float4(d * s1, d * s2, dm * m1, dm * m2);
+        sc = float4(d * s1, d * s2, dm * (32.0f - m1), dm * (32.0f - m2));
     }
 };
 template <> struct Dec16<T_Q6_K> {

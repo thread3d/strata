@@ -8,6 +8,23 @@
 namespace strata::qwen36 {
 namespace {
 
+// Map GGML quantization type to xprep plane index (matches units.metal XKind::K)
+// XK_RAW=0, XK_Q2=1, XK_P4=2, XK_P2=3
+inline int xprep_plane(int ggml_type) {
+    switch (ggml_type) {
+        case 42:  // GGML_TYPE_Q2_0
+            return 1;  // XK_Q2
+        case 11:  // GGML_TYPE_Q3_K
+        case 14:  // GGML_TYPE_Q6_K
+            return 3;  // XK_P2
+        case 12:  // GGML_TYPE_Q4_K
+        case 13:  // GGML_TYPE_Q5_K
+            return 2;  // XK_P4
+        default:
+            return 0;  // XK_RAW
+    }
+}
+
 // moe.metal's MoeArgs, field for field (expert_parity's copy is the same shape)
 struct MoeArgs {
     uint64_t gate_off, up_off, down_off, gu_stride, d_stride;
@@ -33,14 +50,19 @@ bool routed_init(mtl::Context& cx, RoutedKernels& k, const RoutedShape& sh, std:
     if (k.lib < 0) {
         try {
             // GEO_TOPK is the router's window (ROUTE_K): 8 for this family, and without it the default 10 reads past it
-            k.lib = cx.compile({"quant.metal", "units.metal", "moe.metal", "glue.metal"}, "#define GEO_TOPK 8\n", false);
+            k.lib = cx.compile({"quant.metal", "units.metal", "moe.metal", "glue.metal"}, "#define GEO_TOPK 8\n#define STRATA_KQ_DOWN 1\n", false);
         } catch (const std::exception& e) {
             err = std::string("the MoE kernels did not compile: ") + e.what();
             return false;
         }
     }
     const int want = arena ? 1 : 0;
-    if (k.arena == want) return true;   // (the two modes are different pipelines: function constant 20 changes the addressing)
+    if (k.arena == want && k.gu_type == sh.blob.gu_type && k.dn_type == sh.blob.down_type) {
+        std::fprintf(stderr, "routed_init: REUSE gu_type=%d down_type=%d arena=%d\n", k.gu_type, k.dn_type, k.arena);
+        return true;
+    }
+    std::fprintf(stderr, "routed_init: COMPILE gu_type=%d down_type=%d arena=%d (was gu_type=%d down_type=%d)\n",
+                 sh.blob.gu_type, sh.blob.down_type, want, k.gu_type, k.dn_type);
     try {
         const mtl::Constants fc = mtl::Constants().b(20, arena);
         k.route = cx.pipeline(k.lib, "moe_route");
@@ -48,6 +70,8 @@ bool routed_init(mtl::Context& cx, RoutedKernels& k, const RoutedShape& sh, std:
         k.dn = cx.pipeline(k.lib, tile("moe_down", sh.blob.down_type, kDn), fc);
         k.combine = cx.pipeline(k.lib, "moe_combine_sh");
         k.arena = want;
+        k.gu_type = sh.blob.gu_type;
+        k.dn_type = sh.blob.down_type;
     } catch (const std::exception& e) {
         err = std::string("a MoE kernel is missing for this model: ") + e.what();
         return false;
@@ -129,6 +153,7 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
     // 2b. STREAMING: the router's picks go back to the host, the pool is filled with those experts, and the experts then run
     // through the arena.  cx.run() has already waited, so the ids are the ones this token routed to.
     RoutedWeights we = w;
+    ExpertBlob layer_blob = b;  // default to sh.blob, overwritten in streaming mode
     if (fill != nullptr && fill->pool != nullptr) {
         if (fill->m == nullptr || fill->L == nullptr) {
             err = "a streamed block needs the model and the layer to fill from";
@@ -140,9 +165,9 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
             err = "a token routed to more experts than the pool holds";
             return false;
         }
-        if (!picked.empty()) {
-            err.clear();
-            const int loaded = stream_load(*fill->m, *fill->L, *fill->pool, picked, err);
+    if (!picked.empty()) {
+        err.clear();
+        const int loaded = stream_load(*fill->m, *fill->L, *fill->pool, picked, layer_blob, err);
             if (std::getenv("Q36_TRACE")) {
                 const uint32_t* m2 = fill->pool->smap.as<uint32_t>();
                 std::printf("Q36_TRACE layer: %d picks, %d loaded; smap[", (int) picked.size(), loaded);
@@ -160,16 +185,38 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
     }
 
     // 3. the grouped experts, their grids read out of the plan
-    const size_t plane = (size_t) n_embd * 4;
+    // In streaming mode, use the per-layer blob that was actually packed (layer_blob),
+    // which may differ from sh.blob in mixed-quant UD packs.
+    const ExpertBlob& kernel_blob = we.stream != nullptr ? layer_blob : b;
+    const size_t plane = (size_t) kernel_blob.n_embd * 4;
+    const uint32_t n_ff_k = (uint32_t) kernel_blob.n_ff, n_embd_k = (uint32_t) kernel_blob.n_embd;
     // In streaming mode the pool is buffer 0, the slot map is buffer 6, and W1..W3 are the pool again (a pool that spans more
     // than one buffer would use them; this one does not, so they are bound to the same buffer and never addressed).
     const mtl::Buffer& pool = we.stream != nullptr ? we.stream->slots : *we.blobs;
     const size_t pool_off = we.stream != nullptr ? 0 : we.blobs_off;
     const mtl::Buffer& smap = we.stream != nullptr ? we.stream->smap : s.plan;   // (unread when the arena is off)
+
+    MoeArgs ka{};
+    ka.gate_off = 0;
+    ka.up_off = kernel_blob.up_off;
+    ka.down_off = kernel_blob.down_off;
+    ka.gu_stride = kernel_blob.blob;
+    ka.d_stride = kernel_blob.blob;
+    ka.gu_row = (uint32_t) kernel_blob.gu_row;
+    ka.d_row = (uint32_t) kernel_blob.d_row;
+    ka.n_embd = n_embd_k;
+    ka.n_ff = n_ff_k;
+    ka.n_tok = (uint32_t) sh.n_tok;
+    ka.topk = (uint32_t) sh.top_k;
+    ka.n_expert = (uint32_t) sh.n_expert;
+    ka.gx_gu = n_ff_k / (uint32_t) rows_per_tg(kGu);
+    ka.gx_dn = n_embd_k / (uint32_t) rows_per_tg(kDn);
+
+    const int gu_plane = xprep_plane(sh.blob.gu_type);
     mtl::Dispatch dg;
     dg.p = &k.gu;
-    dg.args = {mtl::Arg::B(pool, pool_off), mtl::Arg::B(ds.xp, plane * 0), mtl::Arg::B(s.h), mtl::Arg::B(s.plan),
-               mtl::Arg::V(a), mtl::Arg::B(ds.xp, plane * 4), mtl::Arg::B(smap), mtl::Arg::B(pool), mtl::Arg::B(pool),
+    dg.args = {mtl::Arg::B(pool, pool_off), mtl::Arg::B(ds.xp, plane * gu_plane), mtl::Arg::B(s.h), mtl::Arg::B(s.plan),
+               mtl::Arg::V(ka), mtl::Arg::B(ds.xp, plane * 4), mtl::Arg::B(smap), mtl::Arg::B(pool), mtl::Arg::B(pool),
                mtl::Arg::B(pool)};
     dg.tg[0] = (uint32_t) (kGu.S * 32);
     dg.tg[1] = dg.tg[2] = 1;
@@ -178,13 +225,80 @@ bool routed_forward(mtl::Context& cx, RoutedKernels& k, DenseKernels& dk, DenseS
 
     mtl::Dispatch dd;
     dd.p = &k.dn;
-    dd.args = {mtl::Arg::B(pool, pool_off), mtl::Arg::B(s.h), mtl::Arg::B(s.ye), mtl::Arg::B(s.plan), mtl::Arg::V(a),
+    dd.args = {mtl::Arg::B(pool, pool_off), mtl::Arg::B(s.h), mtl::Arg::B(s.ye), mtl::Arg::B(s.plan), mtl::Arg::V(ka),
                mtl::Arg::B(ds.xp), mtl::Arg::B(smap), mtl::Arg::B(pool), mtl::Arg::B(pool), mtl::Arg::B(pool)};
     dd.tg[0] = (uint32_t) (kDn.S * 32);
     dd.tg[1] = dd.tg[2] = 1;
     dd.indirect = &s.plan;
     dd.ind_off = (size_t) P_IDN * 4;
-    cx.run({dg, dd});
+    cx.run({dg});
+    
+    // Trace s.h (output of moe_gu, input to moe_down)
+    if (std::getenv("Q36_TRACE")) {
+        std::printf("Q36_TRACE: after moe_gu, before moe_down\n");
+        std::fflush(stdout);
+    }
+    
+    // Trace s.h (output of moe_gu, input to moe_down) - read back to host
+    if (std::getenv("Q36_TRACE")) {
+        // Read back s.h for first expert (expert 0) first few values
+        float* h_host = (float*)s.h.ptr;
+        std::printf("Q36_TRACE: s.h[0..15] for expert 0: ");
+        for (int i = 0; i < 16; ++i) {
+            std::printf("%f ", h_host[i]);
+        }
+        std::printf("\n");
+        // Also read expert 4 (entry0=4 in trace)
+        std::printf("Q36_TRACE: s.h[0..15] for expert 4: ");
+        for (int i = 0; i < 16; ++i) {
+            std::printf("%f ", h_host[4 * (int)ka.n_ff + i]);
+        }
+        std::printf("\n");
+        std::fflush(stdout);
+    }
+    
+    // Hadamard rotation on h (required for Hadamard-folded experts in Qwen3.6)
+    // Using synthetic signs for testing (block 128, n_ff=512)
+    {
+        mtl::Pipeline had = cx.pipeline(k.lib, "had128_f32");
+        // Synthetic hadamard signs (random ±1, seed 5 like expert_parity)
+        static std::vector<float> h_signs;
+        if (h_signs.empty()) {
+            h_signs.resize(ka.n_ff);
+            std::mt19937 rng(5);
+            for (auto& v : h_signs) v = (rng() & 1) ? 1.0f : -1.0f;
+        }
+        mtl::Buffer h_signs_buf = cx.alloc(4 * ka.n_ff);
+        std::memcpy(h_signs_buf.ptr, h_signs.data(), 4 * ka.n_ff);
+        
+        struct HadArgs {
+            uint32_t width, x_stride, y_stride;
+            float scale;
+            uint32_t has_signs, pad;
+        } ha{ka.n_ff, ka.n_ff, ka.n_ff, 1.0f / std::sqrt(128.0f), 1u, 0u};
+        
+        mtl::Dispatch dh;
+        dh.p = &had;
+        dh.args = {mtl::Arg::B(s.h), mtl::Arg::B(s.h), mtl::Arg::B(h_signs_buf), mtl::Arg::V(ha)};
+        dh.grid[0] = ka.n_ff / 128;
+        dh.grid[1] = sh.n_tok * sh.top_k;  // number of expert entries
+        dh.tg[0] = 128;
+        cx.run({dh});
+    }
+    
+    cx.run({dd});
+    
+    // Trace ye (output of moe_down) - read back to host
+    if (std::getenv("Q36_TRACE")) {
+        float* ye_host = (float*)s.ye.ptr;
+        int* plan_host = (int*)s.plan.ptr;
+        std::printf("Q36_TRACE: ye[0..15] for expert 4 (entry 0): ");
+        for (int i = 0; i < 16; ++i) {
+            std::printf("%f ", ye_host[4 * (int)ka.n_embd + i]);
+        }
+        std::printf("\n");
+        std::fflush(stdout);
+    }
 
     if (std::getenv("Q36_TRACE")) {   // what the experts produced, in BOTH modes: the pool's answer must be the resident answer
         const float* ye = (const float*) s.ye.ptr;

@@ -336,33 +336,73 @@ static inline void xd16(device const float* p, thread float* xs, thread float& s
     for (int j = 0; j < 16; ++j) {
         const float v = p[j];
         s += v;
+        // Q4_K/Q5_K: scale per 4 values by 2^-(8 * (i % 4)); Q6_K/Q3_K: scale per 2 values by 2^-(8 * (i % 2))
+        // This matches xprep's scaling so that unit_combine with Dec's scales produces correct dequantized result
         xs[j] = kind == 4 ? v * (j & 3 ? (j & 3) == 1 ? 0.00390625f : (j & 3) == 2 ? 1.52587890625e-05f : 5.9604644775390625e-08f : 1.0f)
                           : ((j & 1) ? v * 0.00390625f : v);
     }
     sum = s;
 }
 template <int F> struct XD;
+// read_scale_min_qk removed - XD now loads raw activations
+
 template <> struct XD<T_Q4_K> {
-    static inline void load(device const float* h, int u, thread float* xs, thread float* xsum) {
-        const int p0 = 256 * (u >> 3) + 64 * ((u >> 1) & 3) + 16 * (u & 1);
-        xd16(h + p0, xs, xsum[0], 4);
-        xd16(h + p0 + 32, xs + 16, xsum[1], 4);
+    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
+        (void)weight_row;
+        const int base = u * 32;
+        float sum0 = 0.0f, sum1 = 0.0f;
+        for (int j = 0; j < 16; ++j) {
+            const float v0 = h[base + j];
+            const float v1 = h[base + 16 + j];
+            sum0 += v0; sum1 += v1;
+            xs[j] = v0;
+            xs[16 + j] = v1;
+        }
+        xsum[0] = sum0; xsum[1] = sum1;
     }
 };
 template <> struct XD<T_Q5_K> {
-    static inline void load(device const float* h, int u, thread float* xs, thread float* xsum) { XD<T_Q4_K>::load(h, u, xs, xsum); }
+    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
+        (void)weight_row;
+        const int base = u * 32;
+        float sum0 = 0.0f, sum1 = 0.0f;
+        for (int j = 0; j < 16; ++j) {
+            const float v0 = h[base + j];
+            const float v1 = h[base + 16 + j];
+            sum0 += v0; sum1 += v1;
+            xs[j] = v0;
+            xs[16 + j] = v1;
+        }
+        xsum[0] = sum0; xsum[1] = sum1;
+    }
 };
 template <> struct XD<T_Q6_K> {
-    static inline void load(device const float* h, int u, thread float* xs, thread float* xsum) {
-        const int p0 = 256 * (u >> 3) + 128 * ((u >> 2) & 1) + 32 * (u & 1) + 16 * ((u >> 1) & 1);
-        xd16(h + p0, xs, xsum[0], 2);
-        xd16(h + p0 + 64, xs + 16, xsum[1], 2);
+    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
+        (void)weight_row;
+        const int base = u * 32;
+        float sum0 = 0.0f, sum1 = 0.0f;
+        for (int j = 0; j < 16; ++j) {
+            const float v0 = h[base + j];
+            const float v1 = h[base + 16 + j];
+            sum0 += v0; sum1 += v1;
+            xs[j] = v0;
+            xs[16 + j] = v1;
+        }
+        xsum[0] = sum0; xsum[1] = sum1;
     }
 };
 template <> struct XD<T_Q3_K> {
-    static inline void load(device const float* h, int u, thread float* xs, thread float* xsum) {
-        xd16(h + 32 * u, xs, xsum[0], 2);
-        xd16(h + 32 * u + 16, xs + 16, xsum[1], 2);
+    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
+        (void)weight_row;
+        const int base = u * 32;
+        float sum0 = 0.0f, sum1 = 0.0f;
+        for (int j = 0; j < 16; ++j) {
+            const float v0 = h[base + j];
+            const float v1 = h[base + 16 + j];
+            sum0 += v0; sum1 += v1;
+            xs[j] = v0; xs[16 + j] = v1;
+        }
+        xsum[0] = sum0; xsum[1] = sum1;
     }
 };
 
@@ -379,9 +419,11 @@ static inline void dn_body_k(device const uchar* d0, device const float* h, devi
         float4 sc[NR];
         for (int r = 0; r < NR; ++r) Dec<F>::run(d0 + r * a.d_row, u, q[r], sc[r], tab);
         for (int t = 0; t < NE; ++t) {
-            float xs[UNIT], xsum[2];
-            XD<F>::load(h + (c + t) * int(a.n_ff), u, xs, xsum);
-            for (int r = 0; r < NR; ++r) ac[r][t] += unit_combine<UNIT>(q[r], sc[r], xs, xsum);
+            for (int r = 0; r < NR; ++r) {
+                float xs[UNIT], xsum[2];
+                XD<F>::load(h + (c + t) * int(a.n_ff), d0 + r * a.d_row, u, xs, xsum);
+                ac[r][t] += unit_combine<UNIT>(q[r], sc[r], xs, xsum);
+            }
         }
     }
     for (int r = 0; r < NR; ++r)
@@ -454,9 +496,13 @@ GU_SET(T_IQ4_XS)   // the IQ3_S pack's gate/up in one layer
 GU_SET(T_Q4_K) GU_SET(T_Q5_K) GU_SET(T_Q6_K) GU_SET(T_Q8_0)   // the UD-Q4/5/6_K_XL packs
 DN_SET(T_Q5_1) DN_SET(T_Q8_0)
 DN_SET(T_Q5_0)   // the UD-IQ2_XS / Q2_K_XL / Q3_K_XL / IQ4_XS packs' down experts (generic Dec: d * (code - 16))
+#ifndef STRATA_KQ_DOWN
+DN_SET(T_Q5_K)   // the UD-Q4_K_XL pack's down experts (generic path when KQ downs are not compiled)
+#endif
 DN_SET(T_Q2_0)
 DN_SET(T_Q2_0R)
 DN_SET(T_IQ4_NL)
+DN_SET(T_IQ3_XXS)   // the UD-Q2_K_XL pack's down experts
 // UD files at expert widths divisible by 256: IQ4_XS / IQ3_S downs read raw h like the gate/up's raw-kind formats (the generic
 // X / Dec); the K-quants take moe_down_k (XD above).  Same host names, moe_down_<type>_<L>_<R>_<S>.
 #ifdef STRATA_KQ_DOWN   // the host defines it when a layer's down is one of these types (window.cpp kq_down_prelude): today's sets compile exactly what they did

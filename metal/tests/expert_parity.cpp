@@ -495,6 +495,11 @@ int main(int argc, char** argv) {
     if (!bench) {
         // ---------------- parity ----------------
         const int NE = tg_ && experts_first ? std::max(experts_first, 2 * TOPK) : 64;
+        // DEBUG: print x[0][0..15]
+        printf("DEBUG: x[0][0..15]: ");
+        for (int k = 0; k < 16; ++k) printf(" %.4f", x.as<float>()[k]);
+        printf("\n");
+        fflush(stdout);
         mtl::Buffer W = cx.alloc(L.blob * NE);
         std::vector<int> pick;
         for (int e = 0; e < NE; ++e) {
@@ -555,6 +560,16 @@ int main(int argc, char** argv) {
             ref::dequant(gu, b + L.up_off, wu.data(), wu.size());
             ref::dequant(dn, b + L.down_off, wd.data(), wd.size());
             const float* xt = x.as<float>() + t * N_EMBD;
+            // DEBUG: print first few weights
+            if (i == 0) {
+                printf("DEBUG: wg[0..7]: ");
+                for (int k = 0; k < 8; ++k) printf(" %.4f", wg[k]);
+                printf("\n");
+                printf("DEBUG: wu[0..7]: ");
+                for (int k = 0; k < 8; ++k) printf(" %.4f", wu[k]);
+                printf("\n");
+                fflush(stdout);
+            }
             std::vector<double> hr(N_FF);
             const int ent = P[P_TOKENT + i];
             for (int r = 0; r < N_FF; ++r) {
@@ -571,7 +586,21 @@ int main(int argc, char** argv) {
                 strata::kernels::cpu::hadamard_rotate(hf.data(), N_FF, 128, sgh);
                 for (int r = 0; r < N_FF; ++r) hr[r] = hf[r];
             }
-            for (int r = 0; r < N_FF; ++r) eh.add(h.as<float>()[ent * N_FF + r], hr[r]);
+            for (int r = 0; r < N_FF; ++r) {
+                eh.add(h.as<float>()[ent * N_FF + r], hr[r]);
+                if (i == 0 && r < 8) {
+                    printf("DEBUG: h[ent=%d][%d]=%.4f hr[%d]=%.4f\n", ent, r, h.as<float>()[ent * N_FF + r], r, hr[r]);
+                }
+                if (i == 0 && r == N_FF - 1) {
+                    printf("DEBUG: first entry (ent=%d) h[0..7]: ", ent);
+                    for (int k = 0; k < 8; ++k) printf(" %.4f", h.as<float>()[ent * N_FF + k]);
+                    printf("\n");
+                    printf("DEBUG: first entry hr[0..7]: ");
+                    for (int k = 0; k < 8; ++k) printf(" %.4f", hr[k]);
+                    printf("\n");
+                    fflush(stdout);
+                }
+            }
             for (int r = 0; r < N_EMBD; ++r) {
                 double s = 0;
                 // the reference down uses the GPU's h (float) so that the y check isolates the down kernel ...

@@ -19,7 +19,7 @@ enum : int {
 const char* type_name(int t);
 int block_elems(int t);
 int block_bytes(int t);
-inline size_t row_bytes(int t, int n) { return (size_t)n / block_elems(t) * block_bytes(t); }
+inline size_t row_bytes(int t, int n) { return (size_t)((n + block_elems(t) - 1) / block_elems(t)) * block_bytes(t); }
 
 float f16_to_f32(uint16_t h);
 uint16_t f32_to_f16(float f);

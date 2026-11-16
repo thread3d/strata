@@ -14,8 +14,16 @@ ExpertBlob blob_of(const Model& m, const Layer& L) {
     b.n_embd = (int) m.g.n_embd;
     b.n_ff = (int) m.g.n_ff;
     if (L.gate_exps.ok()) b.gu_type = L.gate_exps.type();
+    if (L.up_exps.ok()) {
+        int up_t = L.up_exps.type();
+        if (b.gu_type != up_t) {
+            std::fprintf(stderr, "blob_of: layer gate_type=%d up_type=%d MISMATCH\n", b.gu_type, up_t);
+        }
+    }
     if (L.down_exps.ok()) b.down_type = L.down_exps.type();
     b.shape();
+    std::fprintf(stderr, "blob_of: gu_type=%d down_type=%d gu_row=%llu d_row=%llu blob=%llu\n",
+                 b.gu_type, b.down_type, (unsigned long long)b.gu_row, (unsigned long long)b.d_row, (unsigned long long)b.blob);
     return b;
 }
 
@@ -47,28 +55,20 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
         return false;
 
     // the expert slots: only if the caller's budget holds them all (the streaming path is what makes a real pack fit)
-    // EVERY layer's slots count towards the budget, not the first one's: a `break` here made the sum a fortieth of the truth
-    // (816 MiB instead of 33.5 GiB for the Q8_0 pack), which is why the resident plan was chosen against a 2 GiB budget and the run
-    // only survived because the slots are host-backed on a 96 GB machine.  The kernels are resolved once, from the first layer that
-    // has experts, because their instantiation depends on the types and every layer of a pack shares them.
     uint64_t resident = 0;
-    bool resolved = false;
+    ExpertBlob maxb;
+    bool haveb = false;
     for (const Layer& L : m.layers) {
         if (!L.gate_exps.ok()) continue;
         const ExpertBlob b = blob_of(m, L);
         resident += b.slots((int) m.g.n_expert);
-        if (!resolved) {
-            const RoutedShape rsh{b, (int) m.g.n_expert, (int) m.top_k, 1};
-            if (!routed_init(cx, f.rk, rsh, err, false)) return false;
-            resolved = true;
-        }
+        if (!haveb || slot_stride(b) > slot_stride(maxb)) { maxb = b; haveb = true; }
     }
-    if (resident > slot_budget_bytes && !m.layers.empty()) {
-        // STREAMING: top_k slots, filled per layer.  Every layer's experts share one pool because the layers run in sequence.
-        const ExpertBlob b = blob_of(m, m.layers[0]);
-        if (!stream_init(cx, f.stream, b, (int) m.top_k, (int) m.g.n_expert, err)) return false;
+    if (resident > slot_budget_bytes && haveb) {
+        // STREAMING: top_k slots, filled per layer.  Pool sized to the largest per-layer blob (UD packs can mix types).
+        if (!stream_init(cx, f.stream, maxb, (int) m.top_k, (int) m.g.n_expert, err)) return false;
         f.streaming = true;
-        const RoutedShape rsh{b, (int) m.g.n_expert, (int) m.top_k, 1};
+        const RoutedShape rsh{maxb, (int) m.g.n_expert, (int) m.top_k, 1};
         if (!routed_init(cx, f.rk, rsh, err, true) || !routed_scratch(cx, f.routed, rsh, err)) return false;
         err.clear();
     }
@@ -81,9 +81,8 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
         err = buf;
         return false;
     }
-    if (resident > 0) {
-        const ExpertBlob b = blob_of(m, m.layers[0]);
-        RoutedShape rsh{b, (int) m.g.n_expert, (int) m.top_k, 1};
+    if (resident > 0 && haveb) {
+        const RoutedShape rsh{f.streaming ? maxb : blob_of(m, m.layers[0]), (int) m.g.n_expert, (int) m.top_k, 1};
         if (!routed_scratch(cx, f.routed, rsh, err)) return false;
     }
 

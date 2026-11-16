@@ -44,7 +44,8 @@ bool stream_init(mtl::Context& cx, ExpertStream& s, const ExpertBlob& b, int n_s
 /// a token (the layers run in sequence), so an entry left from the previous layer would point at THAT layer's weights - the numbers
 /// stay finite and the answer is quietly wrong, expert by expert.  `loaded` is the number of blobs copied, which can be fewer than
 /// `ids.size()` when a token routes the same expert twice.
-int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids, std::string& err);
+int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids,
+                       ExpertBlob& out_blob, std::string& err);
 
 /// The same fill from three raw tensor mappings (the file's gate / up / down payloads), for a caller that already holds them - a
 /// test with a packed blob rather than a model, or an engine that streamed the slabs itself.

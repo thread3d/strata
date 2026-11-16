@@ -46,6 +46,7 @@ struct RoutedScratch {
 struct RoutedKernels {
     int lib = -1;
     int arena = -1;   // -1 unresolved, 0 resident, 1 streaming (function constant 20: the kernels read slots, not blobs)
+    int gu_type = -1, dn_type = -1;
     mtl::Pipeline route, gu, dn, combine;
 };
 

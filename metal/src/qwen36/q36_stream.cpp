@@ -41,13 +41,36 @@ void stream_ids(const mtl::Buffer& ids, int n_tok, int top_k, std::vector<int>& 
     }
 }
 
-int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids, std::string& err) {
-    return stream_load_raw(s.blob, s, ids, L.gate_exps.data(*m.file), L.up_exps.data(*m.file), L.down_exps.data(*m.file), err);
+int stream_load(const Model& m, const Layer& L, ExpertStream& s, const std::vector<int>& ids,
+                       ExpertBlob& out_blob, std::string& err) {
+    ExpertBlob b = s.blob;
+    b.n_embd = (int) m.g.n_embd;
+    b.n_ff = (int) m.g.n_ff;
+    int gate_t = L.gate_exps.ok() ? L.gate_exps.type() : b.gu_type;
+    int up_t = L.up_exps.ok() ? L.up_exps.type() : gate_t;
+    int down_t = L.down_exps.ok() ? L.down_exps.type() : b.down_type;
+    if (gate_t != up_t) {
+        std::fprintf(stderr, "stream_load: layer gate_type=%d up_type=%d MISMATCH\n", gate_t, up_t);
+    }
+    b.gu_type = gate_t;
+    b.down_type = down_t;
+    b.shape();
+    std::fprintf(stderr, "stream_load: gu_type=%d down_type=%d gu_row=%llu d_row=%llu blob=%llu stride=%llu\n",
+                 b.gu_type, b.down_type, (unsigned long long)b.gu_row, (unsigned long long)b.d_row, (unsigned long long)b.blob, (unsigned long long)s.stride);
+    if (b.blob > s.stride) {
+        err = "an expert blob does not fit the stream slot";
+        return 0;
+    }
+    out_blob = b;
+    return stream_load_raw(b, s, ids, L.gate_exps.data(*m.file), L.up_exps.data(*m.file), L.down_exps.data(*m.file), err);
 }
 
 int stream_load_raw(const ExpertBlob& b, ExpertStream& s, const std::vector<int>& ids, const uint8_t* gate, const uint8_t* up,
                     const uint8_t* down, std::string& err) {
-    (void) b;
+    if (b.blob > s.stride) {
+        err = "an expert blob does not fit the stream slot";
+        return 0;
+    }
     uint32_t* map = s.smap.as<uint32_t>();
     // every slot now belongs to THIS layer: forget which expert the previous one left in which slot
     for (int e = 0; e < s.n_expert; ++e) map[e] = kNotLoaded;
@@ -62,7 +85,7 @@ int stream_load_raw(const ExpertBlob& b, ExpertStream& s, const std::vector<int>
             err = "a token routed to more experts than the pool holds (" + std::to_string(s.n_slot) + ")";
             return 0;
         }
-        if (!pack(s.blob, e, gate, up, down, slot_ptr(s, slot), err)) return 0;
+        if (!pack(b, e, gate, up, down, slot_ptr(s, slot), err)) return 0;
         map[e] = slot_word(s, slot);
         ++slot;
         ++loaded;
