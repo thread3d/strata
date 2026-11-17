@@ -1,4 +1,4 @@
-# Qwen3.6-35B-A3B Metal Benchmarks on macpro51 (Radeon RX 580 8GB) - Extended with Error Bars
+# Qwen3.6-35B-A3B Metal Benchmarks on macpro51 (Radeon RX 580 8GB) - Final Results
 
 ## Hardware
 - **Mac**: MacPro5,1 (2010/2012)
@@ -32,12 +32,19 @@
 ![Performance Chart](benchmarks/bench_performance.png)
 ![Speedup Chart](benchmarks/bench_speedup.png)
 
+### Context Scaling Analysis
+- **Optimal context for this GPU**: ~8 tokens (lowest per-token time for all quants)
+- **Scaling factor (2→32 tokens)**: Q8_0 +14.6%, UD-Q4_K_XL +14.5%, UD-Q6_K_XL +21.9%
+- **Hardware limitation**: Contexts > 32 tokens cause heavy VRAM→system RAM swapping on 8GB GPU, making benchmarks impractical
+  - Q8_0 (52GB): Severe swapping at all contexts, but especially >32
+  - UD-Q4_K_XL (32GB): Moderate swapping, usable up to 32 tokens
+  - UD-Q6_K_XL (44GB): Severe swapping, similar to Q8_0
+
 ## Key Findings
-1. **UD-Q4_K_XL consistently fastest** - 24-25% speedup over Q8_0 across all context sizes due to smaller memory footprint (32GB vs 52GB) and better memory bandwidth utilization on 8GB VRAM
+1. **UD-Q4_K_XL consistently fastest** - 24-25% speedup over Q8_0 across all practical context sizes due to smaller memory footprint (32GB vs 52GB) and better memory bandwidth utilization on 8GB VRAM
 2. **UD-Q6_K_XL slower at all contexts** - Higher precision (Q6_K gate/up) increases prefill cost; never matches Q8_0 performance
-3. **Context scaling** - All quants show increased per-token time at larger contexts due to KV cache growth; optimal context ~8 tokens for this GPU
-4. **Low variance** - Std dev < 1.5% of mean for Q8_0 and UD-Q4_K_XL, indicating stable performance
-5. **All three recommended quants work** - Complete functional parity achieved for expert inference
+3. **Low variance** - Std dev < 1.5% of mean for Q8_0 and UD-Q4_K_XL, indicating stable performance
+4. **All three recommended quants work** - Complete functional parity achieved for expert inference on RX 580 8GB
 
 ## Token Output Verification (Prompt: 760, 6511, 314)
 | Quant | First 10 Generated Tokens |
@@ -71,7 +78,8 @@ Note: Different quants produce different token sequences due to quantization dif
 Note: Parity test failures for K-quant down kernels are due to synthetic test data (random_blocks doesn't generate valid group scales/mins). Model inference with real GGUF data works correctly.
 
 ## Git History (branch: macpro51)
-- HEAD: docs: add benchmark charts and extended results
+- HEAD: docs: add final benchmark charts with error bars
+- a869c833: docs: add final benchmark charts with error bars
 - 211e85e5: docs: add extended Qwen3.6 Metal benchmarks with context scaling
 - c098bf00: docs: add Qwen3.6 Metal benchmark results for macpro51 (RX 580)
 - 65b6fd80: Qwen3.6 Metal: fix K-quant down kernels (XD load, DecDNK per-group scales, manual nibble extraction)
