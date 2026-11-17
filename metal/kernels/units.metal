@@ -216,13 +216,13 @@ template <> struct Dec<T_Q5_1> {   // w = d q + m:  sum = d (q . x) + m (sum x)
 template <> struct Dec<T_Q4_K> {
     static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
         device const uchar* b = row + (u >> 3) * 144;
-        const int c = (u >> 1) & 3, m = u & 1;
+        const int c = (u >> 1) & 3, m_half = u & 1;
+        const int group = 2 * c + m_half;  // u % 8: which group (0-7) within the block
         const float d = rdh(b);
         const float mn = rdh(b + 2);  // block min (fp16)
-        float s1, m1, s2, m2;
-        scale_min_k4(2 * c, b + 4, s1, m1);
-        scale_min_k4(2 * c + 1, b + 4, s2, m2);
-        device const uint* qp = (device const uint*)(b + 16 + 32 * c + 16 * m);
+        float s, m;
+        scale_min_k4(group, b + 4, s, m);
+        device const uint* qp = (device const uint*)(b + 16 + 32 * c + 16 * m_half);
         for (int w = 0; w < 4; ++w) {
             const uint v = qp[w];
             bytes4(v & 0x0F0F0F0Fu, q + 4 * w);
@@ -230,22 +230,24 @@ template <> struct Dec<T_Q4_K> {
         }
         // Match CPU reference (ref_quant.cpp): weight = d*s*q - mn*m
         // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
-        // So sc.x = d*s, sc.z = mn*m
-        sc = float4(d * s1, d * s2, mn * m1, mn * m2);
+        // One group (32 elements) has one scale and one min for all 32 codes.
+        // sc.x = d*s for first 16, sc.y = d*s for second 16
+        // sc.z = mn*m for first 16, sc.w = mn*m for second 16
+        sc = float4(d * s, d * s, mn * m, mn * m);
     }
 };
 
 template <> struct Dec<T_Q5_K> {
     static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
         device const uchar* b = row + (u >> 3) * 176;
-        const int c = (u >> 1) & 3, m = u & 1;
+        const int c = (u >> 1) & 3, m_half = u & 1;
+        const int group = 2 * c + m_half;  // u % 8
         const float d = rdh(b);
         const float mn = rdh(b + 2);  // block min (fp16)
-        float s1, m1, s2, m2;
-        scale_min_k4(2 * c, b + 4, s1, m1);
-        scale_min_k4(2 * c + 1, b + 4, s2, m2);
-        device const uint* qp = (device const uint*)(b + 48 + 32 * c + 16 * m);
-        device const uint* hp = (device const uint*)(b + 16 + 16 * m);
+        float s, m;
+        scale_min_k4(group, b + 4, s, m);
+        device const uint* qp = (device const uint*)(b + 48 + 32 * c + 16 * m_half);
+        device const uint* hp = (device const uint*)(b + 16 + 16 * m_half);
         for (int w = 0; w < 4; ++w) {
             const uint v = qp[w], h = hp[w];
             bytes4((v & 0x0F0F0F0Fu) | (((h >> (2 * c)) & 0x01010101u) << 4), q + 4 * w);
@@ -254,8 +256,8 @@ template <> struct Dec<T_Q5_K> {
         // Q5_K group mins are biased by 32 (0-63 represents -32 to +31).
         // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
         // CPU reference: d * s * (q - mn * (m - 32)) = d*s*q - d*s*mn*(m-32)
-        // So sc.z = d * s * mn * (m - 32)
-        sc = float4(d * s1, d * s2, d * s1 * mn * (m1 - 32.0f), d * s2 * mn * (m2 - 32.0f));
+        // One group (32 elements) has one scale and one min for all 32 codes.
+        sc = float4(d * s, d * s, d * s * mn * (m - 32.0f), d * s * mn * (m - 32.0f));
     }
 };
 
@@ -330,6 +332,113 @@ template <> struct Dec<T_BF16> {
 };
 
 // acc += unit dot of decoded q / sc with one token's prepared slice
+
+// ---- DecDNK: for STRATA_KQ_DOWN kernels (moe_down_k) which use XD loading raw h
+// XD loads raw activations and forms raw xsum, so sc.z/sc.w = 0 (no min subtraction needed)
+template <int F> struct DecDNK {
+    static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint* tab) {
+        constexpr int UNIT = fmt<F>::UNIT, UPB = fmt<F>::QK / UNIT;
+        const float s = deq<F>(row + (u / UPB) * fmt<F>::BB, u % UPB, q, tab);
+        sc = float4(s, s, 0.0f, 0.0f);
+    }
+};
+
+// Q6_K DNK: raw h from XD, no p2s scaling compensation needed
+template <> struct DecDNK<T_Q6_K> {
+    static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
+        device const uchar* b = row + (u >> 3) * 210;
+        const int n = (u >> 2) & 1, m = (u >> 1) & 1, p = u & 1;
+        device const ushort* ql = (device const ushort*)(b + 64 * n + 32 * p + 16 * m);
+        device const ushort* qh = (device const ushort*)(b + 128 + 32 * n + 16 * m);
+        device const char* scs = (device const char*)(b + 192);
+        const float d = rdh(b + 208);
+        for (int w = 0; w < 8; ++w) {
+            const ushort l = ql[w], h = qh[w];
+            bytes2((l & 0x0F0F) | (((h >> (2 * p)) & 0x0303) << 4), q + 2 * w);
+            bytes2(((l >> 4) & 0x0F0F) | (((h >> (2 * p + 4)) & 0x0303) << 4), q + 16 + 2 * w);
+        }
+        const float d1 = d * float(scs[8 * n + m + 2 * p]), d2 = d * float(scs[8 * n + m + 2 * p + 4]);
+        // DNK: XD loads raw h, forms raw xsum, so no min subtraction (sc.z = sc.w = 0)
+        sc = float4(d1, d2, 0.0f, 0.0f);
+    }
+};
+
+// Q3_K DNK: raw h from XD
+template <> struct DecDNK<T_Q3_K> {
+    static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
+        device const uchar* b = row + (u >> 3) * 110;
+        const int n = (u >> 2) & 1, j = u & 3;
+        device const packed_ushort4* qv = (device const packed_ushort4*)(b + 32 + 32 * n);
+        device const packed_ushort4* hv = (device const packed_ushort4*)b;
+        ushort qq[16], hm[16];
+        for (int v = 0; v < 4; ++v) {
+            const ushort4 a4 = ushort4(qv[v]), h4 = ushort4(hv[v]);
+            qq[4 * v] = a4.x; qq[4 * v + 1] = a4.y; qq[4 * v + 2] = a4.z; qq[4 * v + 3] = a4.w;
+            hm[4 * v] = h4.x; hm[4 * v + 1] = h4.y; hm[4 * v + 2] = h4.z; hm[4 * v + 3] = h4.w;
+        }
+        device const uchar* s = b + 96;
+        const int i1 = 8 * n + 2 * j, i2 = i1 + 1;
+        const int l1 = (i1 < 8 ? s[i1] & 0xF : s[i1 - 8] >> 4) | (((s[8 + (i1 & 3)] >> (2 * (i1 >> 2))) & 3) << 4);
+        const int l2 = (i2 < 8 ? s[i2] & 0xF : s[i2 - 8] >> 4) | (((s[8 + (i2 & 3)] >> (2 * (i2 >> 2))) & 3) << 4);
+        const float d = rdh(b + 108);
+        const int hs = 4 * n + j;
+        for (int w = 0; w < 8; ++w) {
+            bytes2(((qq[w] >> (2 * j)) & 0x0303) | (((hm[w] >> hs) & 0x0101) << 2), q + 2 * w);
+            bytes2(((qq[w + 8] >> (2 * j)) & 0x0303) | (((hm[w + 8] >> hs) & 0x0101) << 2), q + 16 + 2 * w);
+        }
+        const float d1 = d * float(l1 - 32), d2 = d * float(l2 - 32);
+        // DNK: XD loads raw h, forms raw xsum
+        sc = float4(d1, d2, 0.0f, 0.0f);
+    }
+};
+
+// Q4_K DNK: raw h from XD, Dec matches CPU reference
+template <> struct DecDNK<T_Q4_K> {
+    static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
+        device const uchar* b = row + (u >> 3) * 144;
+        const int c = (u >> 1) & 3, m_half = u & 1;
+        const int group = 2 * c + m_half;  // u % 8
+        const float d = rdh(b);
+        const float mn = rdh(b + 2);
+        float s, m;
+        scale_min_k4(group, b + 4, s, m);
+        device const uint* qp = (device const uint*)(b + 48 + 32 * c + 16 * m_half);
+        for (int w = 0; w < 4; ++w) {
+            const uint v = qp[w];
+            bytes4(v & 0x0F0F0F0Fu, q + 4 * w);
+            bytes4((v >> 4) & 0x0F0F0F0Fu, q + 16 + 4 * w);
+        }
+        // DNK: XD loads raw h, forms raw xsum. CPU reference: d*s*q - mn*m
+        // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
+        sc = float4(d * s, d * s, mn * m, mn * m);
+    }
+};
+
+// Q5_K DNK: raw h from XD
+template <> struct DecDNK<T_Q5_K> {
+    static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
+        device const uchar* b = row + (u >> 3) * 176;
+        const int c = (u >> 1) & 3, m_half = u & 1;
+        const int group = 2 * c + m_half;  // u % 8
+        const float d = rdh(b);
+        const float mn = rdh(b + 2);
+        float s, m;
+        scale_min_k4(group, b + 4, s, m);
+        device const uint* qp = (device const uint*)(b + 48 + 32 * c + 16 * m_half);
+        device const uint* hp = (device const uint*)(b + 16 + 16 * m_half);
+        for (int w = 0; w < 4; ++w) {
+            const uint v = qp[w], h = hp[w];
+            bytes4((v & 0x0F0F0F0Fu) | (((h >> (2 * c)) & 0x01010101u) << 4), q + 4 * w);
+            bytes4(((v >> 4) & 0x0F0F0F0Fu) | (((h >> (2 * c + 1)) & 0x01010101u) << 4), q + 16 + 4 * w);
+        }
+        // DNK: XD loads raw h, forms raw xsum. CPU reference: d*s*(q - mn*(m-32))
+        // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
+        // CPU: d*s*q - d*s*mn*(m-32)
+        // One group (32 elements) has one scale and one min for all 32 codes.
+        sc = float4(d * s, d * s, d * s * mn * (m - 32.0f), d * s * mn * (m - 32.0f));
+    }
+};
+
 template <int UNIT>
 static inline float unit_combine(thread const float* q, float4 sc, thread const float* xs, thread const float* xsum) {
     constexpr int H = UNIT / 2;
@@ -413,36 +522,36 @@ static inline void bytes4h(uint w, thread half* q) {
 template <> struct Dec16<T_Q4_K> {
     static inline void run(device const uchar* row, int u, thread half* q, thread float4& sc, threadgroup const uint*) {
         device const uchar* b = row + (u >> 3) * 144;
-        const int c = (u >> 1) & 3, m = u & 1;
+        const int c = (u >> 1) & 3, m_half = u & 1;
+        const int group = 2 * c + m_half;  // u % 8
         const float d = rdh(b), dm = rdh(b + 2);
-        float s1, m1, s2, m2;
-        scale_min_k4(2 * c, b + 4, s1, m1);
-        scale_min_k4(2 * c + 1, b + 4, s2, m2);
-        device const uint* qp = (device const uint*)(b + 16 + 32 * c + 16 * m);
+        float s, m;
+        scale_min_k4(group, b + 4, s, m);
+        device const uint* qp = (device const uint*)(b + 16 + 32 * c + 16 * m_half);
         for (int w = 0; w < 4; ++w) {
             const uint v = qp[w];
             bytes4h(v & 0x0F0F0F0Fu, q + 4 * w);
             bytes4h((v >> 4) & 0x0F0F0F0Fu, q + 16 + 4 * w);
         }
-        sc = float4(d * s1, d * s2, dm * (32.0f - m1), dm * (32.0f - m2));
+        sc = float4(d * s, d * s, dm * (32.0f - m), dm * (32.0f - m));
     }
 };
 template <> struct Dec16<T_Q5_K> {
     static inline void run(device const uchar* row, int u, thread half* q, thread float4& sc, threadgroup const uint*) {
         device const uchar* b = row + (u >> 3) * 176;
-        const int c = (u >> 1) & 3, m = u & 1;
+        const int c = (u >> 1) & 3, m_half = u & 1;
+        const int group = 2 * c + m_half;  // u % 8
         const float d = rdh(b), dm = rdh(b + 2);
-        float s1, m1, s2, m2;
-        scale_min_k4(2 * c, b + 4, s1, m1);
-        scale_min_k4(2 * c + 1, b + 4, s2, m2);
-        device const uint* qp = (device const uint*)(b + 48 + 32 * c + 16 * m);
-        device const uint* hp = (device const uint*)(b + 16 + 16 * m);
+        float s, m;
+        scale_min_k4(group, b + 4, s, m);
+        device const uint* qp = (device const uint*)(b + 48 + 32 * c + 16 * m_half);
+        device const uint* hp = (device const uint*)(b + 16 + 16 * m_half);
         for (int w = 0; w < 4; ++w) {
             const uint v = qp[w], h = hp[w];
             bytes4h((v & 0x0F0F0F0Fu) | (((h >> (2 * c)) & 0x01010101u) << 4), q + 4 * w);
             bytes4h(((v >> 4) & 0x0F0F0F0Fu) | (((h >> (2 * c + 1)) & 0x01010101u) << 4), q + 16 + 4 * w);
         }
-        sc = float4(d * s1, d * s2, dm * (32.0f - m1), dm * (32.0f - m2));
+        sc = float4(d * s, d * s, dm * (32.0f - m), dm * (32.0f - m));
     }
 };
 template <> struct Dec16<T_Q6_K> {

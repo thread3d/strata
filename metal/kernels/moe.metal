@@ -417,7 +417,7 @@ static inline void dn_body_k(device const uchar* d0, device const float* h, devi
     for (int u = li; u < U; u += LPR) {
         float q[NR][UNIT];
         float4 sc[NR];
-        for (int r = 0; r < NR; ++r) Dec<F>::run(d0 + r * a.d_row, u, q[r], sc[r], tab);
+        for (int r = 0; r < NR; ++r) DecDNK<F>::run(d0 + r * a.d_row, u, q[r], sc[r], tab);
         for (int t = 0; t < NE; ++t) {
             for (int r = 0; r < NR; ++r) {
                 float xs[UNIT], xsum[2];
