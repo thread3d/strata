@@ -191,18 +191,18 @@ static inline void scale_min_k4(int j, device const uchar* q, thread float& d, t
         m = float(q[j + 4] & 63);
     } else {
         d = float((q[j + 4] & 0xF) | ((q[j - 4] >> 6) << 4));
-        m = float((q[j + 4] >> 4) | ((q[j] >> 6) << 4));
+        m = float((q[j + 4] >> 4) | ((q[j - 4] >> 6) << 4));
     }
 }
 static inline void bytes4(uint w, thread float* q) {
     q[0] = float(w & 0xFFu);
-    q[1] = float(w & 0xFF00u);
-    q[2] = float(w & 0xFF0000u);
-    q[3] = float(w & 0xFF000000u);
+    q[1] = float((w >> 8) & 0xFFu);
+    q[2] = float((w >> 16) & 0xFFu);
+    q[3] = float((w >> 24) & 0xFFu);
 }
 static inline void bytes2(ushort w, thread float* q) {
     q[0] = float(w & 0xFF);
-    q[1] = float(w & 0xFF00);
+    q[1] = float((w >> 8) & 0xFF);
 }
 
 template <> struct Dec<T_Q5_1> {   // w = d q + m:  sum = d (q . x) + m (sum x)
@@ -216,48 +216,52 @@ template <> struct Dec<T_Q5_1> {   // w = d q + m:  sum = d (q . x) + m (sum x)
 template <> struct Dec<T_Q4_K> {
     static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
         device const uchar* b = row + (u >> 3) * 144;
-        const int c = (u >> 1) & 3, m_half = u & 1;
-        const int group = 2 * c + m_half;  // u % 8: which group (0-7) within the block
+        const int c = (u >> 1) & 3, m = u & 1;
+        const int group = 2 * c + m;  // u % 8
         const float d = rdh(b);
-        const float mn = rdh(b + 2);  // block min (fp16)
-        float s, m;
-        scale_min_k4(group, b + 4, s, m);
-        device const uint* qp = (device const uint*)(b + 16 + 32 * c + 16 * m_half);
-        for (int w = 0; w < 4; ++w) {
+        const float mn = rdh(b + 2);
+        float s, mn_group;
+        scale_min_k4(group, b + 4, s, mn_group);
+        // Each pair of groups (m=0, m=1) shares 32 code bytes (8 uint32).
+        // Group m=0: low nibbles of 32 bytes. Group m=1: high nibbles of same 32 bytes.
+        device const uint* qp = (device const uint*)(b + 16 + 32 * c);
+        for (int w = 0; w < 8; ++w) {
             const uint v = qp[w];
-            bytes4(v & 0x0F0F0F0Fu, q + 4 * w);
-            bytes4((v >> 4) & 0x0F0F0F0Fu, q + 16 + 4 * w);
+            if (m == 0) {
+                bytes4(v & 0x0F0F0F0Fu, q + 4 * w);  // low nibbles
+            } else {
+                bytes4((v >> 4) & 0x0F0F0F0Fu, q + 4 * w);  // high nibbles
+            }
         }
-        // Match CPU reference (ref_quant.cpp): weight = d*s*q - mn*m
-        // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
-        // One group (32 elements) has one scale and one min for all 32 codes.
-        // sc.x = d*s for first 16, sc.y = d*s for second 16
-        // sc.z = mn*m for first 16, sc.w = mn*m for second 16
-        sc = float4(d * s, d * s, mn * m, mn * m);
+        sc = float4(d * s, d * s, mn * mn_group, mn * mn_group);
     }
 };
 
 template <> struct Dec<T_Q5_K> {
     static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
         device const uchar* b = row + (u >> 3) * 176;
-        const int c = (u >> 1) & 3, m_half = u & 1;
-        const int group = 2 * c + m_half;  // u % 8
+        const int c = (u >> 1) & 3, m = u & 1;
+        const int group = 2 * c + m;  // u % 8
         const float d = rdh(b);
-        const float mn = rdh(b + 2);  // block min (fp16)
-        float s, m;
-        scale_min_k4(group, b + 4, s, m);
-        device const uint* qp = (device const uint*)(b + 48 + 32 * c + 16 * m_half);
-        device const uint* hp = (device const uint*)(b + 16 + 16 * m_half);
-        for (int w = 0; w < 4; ++w) {
+        const float mn = rdh(b + 2);
+        float s, mn_group;
+        scale_min_k4(group, b + 4, s, mn_group);
+        // Each pair of groups shares 32 ql bytes (8 uint32) and 32 qh bytes (8 uint32).
+        // ql: low nibbles + high nibbles = 64 codes per 32 bytes. qh: 1 high bit per code.
+        // Group m=0: first 32 codes (ql low nibble + qh bit 0). Group m=1: next 32 codes (ql high nibble + qh bit 1).
+        device const uint* qp = (device const uint*)(b + 48 + 32 * c);
+        device const uint* hp = (device const uint*)(b + 16);
+        for (int w = 0; w < 8; ++w) {
             const uint v = qp[w], h = hp[w];
-            bytes4((v & 0x0F0F0F0Fu) | (((h >> (2 * c)) & 0x01010101u) << 4), q + 4 * w);
-            bytes4(((v >> 4) & 0x0F0F0F0Fu) | (((h >> (2 * c + 1)) & 0x01010101u) << 4), q + 16 + 4 * w);
+            if (m == 0) {
+                bytes4((v & 0x0F0F0F0Fu) | (((h >> (2 * c)) & 0x01010101u) << 4), q + 4 * w);
+                bytes4(((v >> 4) & 0x0F0F0F0Fu) | (((h >> (2 * c + 1)) & 0x01010101u) << 4), q + 16 + 4 * w);
+            } else {
+                bytes4((v & 0x0F0F0F0Fu) | (((h >> (2 * c)) & 0x01010101u) << 4), q + 4 * w);
+                bytes4(((v >> 4) & 0x0F0F0F0Fu) | (((h >> (2 * c + 1)) & 0x01010101u) << 4), q + 16 + 4 * w);
+            }
         }
-        // Q5_K group mins are biased by 32 (0-63 represents -32 to +31).
-        // unit_combine: sc.x * sum(q*xs) - sc.z * xsum
-        // CPU reference: d * s * (q - mn * (m - 32)) = d*s*q - d*s*mn*(m-32)
-        // One group (32 elements) has one scale and one min for all 32 codes.
-        sc = float4(d * s, d * s, d * s * mn * (m - 32.0f), d * s * mn * (m - 32.0f));
+        sc = float4(d * s, d * s, d * s * mn * (mn_group - 32.0f), d * s * mn * (mn_group - 32.0f));
     }
 };
 
