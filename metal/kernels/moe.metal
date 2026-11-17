@@ -263,6 +263,109 @@ kernel void moe_gu(device const uchar* W [[buffer(0)]], device const float* x [[
 }
 
 // ---- down ---------------------------------------------------------------------------------------------------------
+template <int F> struct XD;
+// read_scale_min_qk removed - XD now loads raw activations
+
+template <> struct XD<T_Q4_K> {
+    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
+        (void)weight_row;
+        // Load raw h values (like X<T_Q4_K> with RAW plane)
+        const int base = u * 32;
+        float sum0 = 0.0f, sum1 = 0.0f;
+        for (int j = 0; j < 16; ++j) {
+            const float v0 = h[base + j];
+            const float v1 = h[base + 16 + j];
+            sum0 += v0; sum1 += v1;
+            xs[j] = v0;
+            xs[16 + j] = v1;
+        }
+        xsum[0] = sum0; xsum[1] = sum1;
+    }
+};
+template <> struct XD<T_Q5_K> {
+    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
+        (void)weight_row;
+        // Load raw h values (like X<T_Q5_K> with RAW plane)
+        const int base = u * 32;
+        float sum0 = 0.0f, sum1 = 0.0f;
+        for (int j = 0; j < 16; ++j) {
+            const float v0 = h[base + j];
+            const float v1 = h[base + 16 + j];
+            sum0 += v0; sum1 += v1;
+            xs[j] = v0;
+            xs[16 + j] = v1;
+        }
+        xsum[0] = sum0; xsum[1] = sum1;
+    }
+};
+template <> struct XD<T_Q6_K> {
+    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
+        (void)weight_row;
+        // Load raw h values (like X<T_Q6_K> with RAW plane)
+        const int base = u * 32;
+        float sum0 = 0.0f, sum1 = 0.0f;
+        for (int j = 0; j < 16; ++j) {
+            const float v0 = h[base + j];
+            const float v1 = h[base + 16 + j];
+            sum0 += v0; sum1 += v1;
+            xs[j] = v0;
+            xs[16 + j] = v1;
+        }
+        xsum[0] = sum0; xsum[1] = sum1;
+    }
+};
+template <> struct XD<T_Q3_K> {
+    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
+        (void)weight_row;
+        // Load raw h values (like X<T_Q3_K> with RAW plane)
+        const int base = u * 32;
+        float sum0 = 0.0f, sum1 = 0.0f;
+        for (int j = 0; j < 16; ++j) {
+            const float v0 = h[base + j];
+            const float v1 = h[base + 16 + j];
+            sum0 += v0; sum1 += v1;
+            xs[j] = v0;
+            xs[16 + j] = v1;
+        }
+        xsum[0] = sum0; xsum[1] = sum1;
+    }
+};
+
+template <int F, int LPR, int NR, int NE>
+static inline void dn_body_k(device const uchar* d0, device const float* h, device float* ye, device const int* plan, int c,
+                             int row0, int li, constant MoeArgs& a, threadgroup const uint* tab) {
+    constexpr int UNIT = fmt<F>::UNIT;
+    float ac[NR][NE];
+    for (int r = 0; r < NR; ++r)
+        for (int t = 0; t < NE; ++t) ac[r][t] = 0.0f;
+    const int U = int(a.n_ff) / UNIT;
+    for (int u = li; u < U; u += LPR) {
+        float q[NR][UNIT];
+        float4 sc[NR];
+        for (int r = 0; r < NR; ++r) DecDNK<F>::run(d0 + r * a.d_row, u, q[r], sc[r], tab);
+        for (int t = 0; t < NE; ++t) {
+            for (int r = 0; r < NR; ++r) {
+                float xs[UNIT], xsum[2];
+                XD<F>::load(h + (c + t) * int(a.n_ff), d0 + r * a.d_row, u, xs, xsum);
+                ac[r][t] += unit_combine<UNIT>(q[r], sc[r], xs, xsum);
+            }
+        }
+    }
+    for (int r = 0; r < NR; ++r)
+        for (int t = 0; t < NE; ++t) {
+            const float v = lane_sum<LPR>(ac[r][t]);
+            if (li == 0) ye[(c + t) * int(a.n_embd) + row0 + r] = as_type<float>(plan[P_EW + c + t]) * v;
+        }
+}
+
+// same arguments and plan walk as moe_down (buffer 5, the prepared sums, is unused: the sums are formed from h)
+
+// Helper to detect K-quant types at compile time
+template <int F>
+constexpr bool is_kquant() {
+    return (F == 11) || (F == 12) || (F == 13) || (F == 14);  // Q3_K, Q4_K, Q5_K, Q6_K
+};
+
 template <int F, int LPR, int NR, int NE>
 static inline void dn_body(device const uchar* d0, device const float* h, device const float* hs16, device float* ye,
                            device const int* plan, int c, int row0, int li, constant MoeArgs& a,
@@ -275,10 +378,20 @@ static inline void dn_body(device const uchar* d0, device const float* h, device
     for (int u = li; u < U; u += LPR) {
         float q[NR][UNIT];
         float4 sc[NR];
-        for (int r = 0; r < NR; ++r) Dec<F>::run(d0 + r * a.d_row, u, q[r], sc[r], tab);
+        for (int r = 0; r < NR; ++r) {
+            if constexpr (is_kquant<F>()) {
+                DecDNK<F>::run(d0 + r * a.d_row, u, q[r], sc[r], tab);
+            } else {
+                Dec<F>::run(d0 + r * a.d_row, u, q[r], sc[r], tab);
+            }
+        }
         for (int t = 0; t < NE; ++t) {
             float xs[UNIT], xsum[2];
-            X<F>::load(h + (c + t) * int(a.n_ff), hs16 + (c + t) * int(a.n_ff / 16), u, xs, xsum);
+            if constexpr (is_kquant<F>()) {
+                XD<F>::load(h + (c + t) * int(a.n_ff), nullptr, u, xs, xsum);
+            } else {
+                X<F>::load(h + (c + t) * int(a.n_ff), hs16 + (c + t) * int(a.n_ff / 16), u, xs, xsum);
+            }
             for (int r = 0; r < NR; ++r) ac[r][t] += unit_combine<UNIT>(q[r], sc[r], xs, xsum);
         }
     }
@@ -297,7 +410,7 @@ kernel void moe_down(device const uchar* W [[buffer(0)]], device const float* h 
                      device const uchar* W2 [[buffer(8)]], device const uchar* W3 [[buffer(9)]],
                      uint3 tg [[threadgroup_position_in_grid]], ushort sg_ [[simdgroup_index_in_threadgroup]],
                      ushort lane_ [[thread_index_in_simdgroup]], ushort tid [[thread_index_in_threadgroup]]) {
-    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);
     constexpr int RG = 32 / LPR;
     threadgroup uint tab[fmt<F>::TAB];
     load_tab<F>(tab, tid, SG * 32);
@@ -343,97 +456,6 @@ static inline void xd16(device const float* p, thread float* xs, thread float& s
     }
     sum = s;
 }
-template <int F> struct XD;
-// read_scale_min_qk removed - XD now loads raw activations
-
-template <> struct XD<T_Q4_K> {
-    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
-        (void)weight_row;
-        const int base = u * 32;
-        float sum0 = 0.0f, sum1 = 0.0f;
-        for (int j = 0; j < 16; ++j) {
-            const float v0 = h[base + j];
-            const float v1 = h[base + 16 + j];
-            sum0 += v0; sum1 += v1;
-            xs[j] = v0;
-            xs[16 + j] = v1;
-        }
-        xsum[0] = sum0; xsum[1] = sum1;
-    }
-};
-template <> struct XD<T_Q5_K> {
-    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
-        (void)weight_row;
-        const int base = u * 32;
-        float sum0 = 0.0f, sum1 = 0.0f;
-        for (int j = 0; j < 16; ++j) {
-            const float v0 = h[base + j];
-            const float v1 = h[base + 16 + j];
-            sum0 += v0; sum1 += v1;
-            xs[j] = v0;
-            xs[16 + j] = v1;
-        }
-        xsum[0] = sum0; xsum[1] = sum1;
-    }
-};
-template <> struct XD<T_Q6_K> {
-    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
-        (void)weight_row;
-        const int base = u * 32;
-        float sum0 = 0.0f, sum1 = 0.0f;
-        for (int j = 0; j < 16; ++j) {
-            const float v0 = h[base + j];
-            const float v1 = h[base + 16 + j];
-            sum0 += v0; sum1 += v1;
-            xs[j] = v0;
-            xs[16 + j] = v1;
-        }
-        xsum[0] = sum0; xsum[1] = sum1;
-    }
-};
-template <> struct XD<T_Q3_K> {
-    static inline void load(device const float* h, device const uchar* weight_row, int u, thread float* xs, thread float* xsum) {
-        (void)weight_row;
-        const int base = u * 32;
-        float sum0 = 0.0f, sum1 = 0.0f;
-        for (int j = 0; j < 16; ++j) {
-            const float v0 = h[base + j];
-            const float v1 = h[base + 16 + j];
-            sum0 += v0; sum1 += v1;
-            xs[j] = v0; xs[16 + j] = v1;
-        }
-        xsum[0] = sum0; xsum[1] = sum1;
-    }
-};
-
-template <int F, int LPR, int NR, int NE>
-static inline void dn_body_k(device const uchar* d0, device const float* h, device float* ye, device const int* plan, int c,
-                             int row0, int li, constant MoeArgs& a, threadgroup const uint* tab) {
-    constexpr int UNIT = fmt<F>::UNIT;
-    float ac[NR][NE];
-    for (int r = 0; r < NR; ++r)
-        for (int t = 0; t < NE; ++t) ac[r][t] = 0.0f;
-    const int U = int(a.n_ff) / UNIT;
-    for (int u = li; u < U; u += LPR) {
-        float q[NR][UNIT];
-        float4 sc[NR];
-        for (int r = 0; r < NR; ++r) DecDNK<F>::run(d0 + r * a.d_row, u, q[r], sc[r], tab);
-        for (int t = 0; t < NE; ++t) {
-            for (int r = 0; r < NR; ++r) {
-                float xs[UNIT], xsum[2];
-                XD<F>::load(h + (c + t) * int(a.n_ff), d0 + r * a.d_row, u, xs, xsum);
-                ac[r][t] += unit_combine<UNIT>(q[r], sc[r], xs, xsum);
-            }
-        }
-    }
-    for (int r = 0; r < NR; ++r)
-        for (int t = 0; t < NE; ++t) {
-            const float v = lane_sum<LPR>(ac[r][t]);
-            if (li == 0) ye[(c + t) * int(a.n_embd) + row0 + r] = as_type<float>(plan[P_EW + c + t]) * v;
-        }
-}
-
-// same arguments and plan walk as moe_down (buffer 5, the prepared sums, is unused: the sums are formed from h)
 template <int F, int LPR, int NR, int SG>
 kernel void moe_down_k(device const uchar* W [[buffer(0)]], device const float* h [[buffer(1)]],
                        device float* ye [[buffer(2)]], device const int* plan [[buffer(3)]],
