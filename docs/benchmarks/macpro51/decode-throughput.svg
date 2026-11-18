@@ -49,9 +49,13 @@
 <circle cx="454.2" cy="195.1" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <text x="460.9" y="202.7" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">1.03</text>
 <text x="460.9" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 460.9 490.0)">UD-Q2_K_XL</text>
-<rect x="535.7" y="254.5" width="61.1" height="215.5" fill="#2563eb" opacity="0.86"/>
-<circle cx="566.3" cy="254.5" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
-<text x="566.3" y="245.5" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.86</text>
+<rect x="535.7" y="234.3" width="61.1" height="235.7" fill="#2563eb" opacity="0.86"/>
+<line x1="566.3" y1="205.8" x2="566.3" y2="262.8" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="555.3" y1="205.8" x2="577.3" y2="205.8" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="555.3" y1="262.8" x2="577.3" y2="262.8" stroke="#1f2933" stroke-width="1.4"/>
+<circle cx="552.9" cy="254.5" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
+<circle cx="559.6" cy="214.2" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
+<text x="566.3" y="225.3" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.94</text>
 <text x="566.3" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 566.3 490.0)">UD-Q4_K_XL</text>
 <rect x="641.1" y="293.7" width="61.1" height="176.3" fill="#2563eb" opacity="0.86"/>
 <circle cx="671.7" cy="293.7" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
