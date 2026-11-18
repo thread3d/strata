@@ -98,6 +98,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 7 | 2 | `Q2_0` | 9.29 | 30.31 | 1.06 | later round |
 | 8 | 3 | `Q2_0` | 9.24 | 30.35 | 1.05 | later round |
 | 9 | 3 | `IQ3_XXS` | 11.91 | 36.12 | 0.886 | later round |
+| 10 | 3 | `IQ2_XS` | — | — | — | failed: strata generate: PCIe probe failed -> pcie_frac default 0.55 |
 
 ## Limits recorded here
 
