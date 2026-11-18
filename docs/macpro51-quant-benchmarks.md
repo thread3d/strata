@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 08:47 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 08:50 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -10,7 +10,7 @@ _Generated 2026-11-18 08:47 UTC by `bench/macpro51/run_bench.py`. Every number b
 | GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |
 | OS | macOS 11.7.11 (Big Sur, 20G1443) |
 | Engine | `strata-q36-metal` (Qwen3.6) and `strata_ds4` (DeepSeek V4.1-Flash), built Release with Ninja |
-| Branch / commit at the last run | `macpro51` / `83d2da3218` |
+| Branch / commit at the last run | `macpro51` / `2c4ac2dcd7` |
 
 The Metal runtime here is the workaround path: kernels take buffer offsets instead of raw device addresses, the DeepSeek engine flushes command buffers one at a time (`DS4_FLUSH_EVERY`), and `simdgroup_matrix`/Metal 3 features are skipped. Numbers are therefore this card's, not a Metal 3 Mac's.
 
@@ -21,7 +21,7 @@ Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next a
 | Family | Pack | On disk | Result |
 | --- | --- | ---: | --- |
 | qwen36 | Q4_K_M | 19.7 GiB | no completed run yet |
-| qwen36 | Q6_K | 26.6 GiB | no completed run yet |
+| qwen36 | Q6_K | 26.6 GiB | 1 run(s), 0.82 tok/s decode |
 | qwen36 | Q8_0 | 35.2 GiB | no completed run yet |
 | qwen36 | UD-Q2_K_XL | 11.7 GiB | no completed run yet |
 | qwen36 | UD-Q4_K_XL | 21.3 GiB | no completed run yet |
@@ -46,6 +46,7 @@ Two Qwen3.6 packs were refused when this sweep started, and the refusals were re
 
 | Family | Pack | Runs | Decode tok/s (mean ± sd) | Range | Prefill tok/s (mean ± sd) |
 | --- | --- | ---: | ---: | ---: | ---: |
+| qwen36 | Q6_K | 1 | 0.82 ± 0.00 | 0.82 – 0.82 | 1.01 ± 0.00 |
 | qwen36 | UD-Q8_K_XL | 1 | 0.64 ± 0.00 | 0.64 – 0.64 | 0.83 ± 0.00 |
 
 ## Prompt (prefill) throughput
@@ -60,6 +61,11 @@ Prefill is read one token at a time by the Qwen engine, so it is a per-token lat
 
 On this card a token streams its routed experts from RAM/SSD through an 8 GB window, so the pack's size is only one of the things that decide its speed: the number of bytes a token actually reads, the format's decode cost, and how much of the dense side stays resident all matter as much.
 
+## What the numbers say
+
+- **Fastest decode:** `Q6_K` at 0.82 tok/s; **slowest:** `UD-Q8_K_XL` at 0.64 tok/s (1.29× between them).
+- **Fastest prompt read:** `Q6_K` at 1.01 tok/s; slowest `UD-Q8_K_XL` at 0.83 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
+
 ## Run order (mixing)
 
 ![Every run in execution order](benchmarks/macpro51/run-order.svg)
@@ -71,6 +77,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results.jsonl` is ski
 | # | Round | Family | Pack | Prefill s | Decode s | Decode tok/s | Note |
 | ---: | ---: | --- | --- | ---: | ---: | ---: | --- |
 | 1 | 1 | qwen36 | UD-Q8_K_XL | 38.71 | 48.67 | 0.64 | first round (cold cache) |
+| 2 | 1 | qwen36 | Q6_K | 31.60 | 37.77 | 0.82 | first round (cold cache) |
 
 ## Engine fixes made to run the matrix
 
