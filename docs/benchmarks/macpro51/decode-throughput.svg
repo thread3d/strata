@@ -79,15 +79,16 @@
 <circle cx="678.4" cy="285.5" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <text x="671.7" y="261.4" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.79</text>
 <text x="671.7" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 671.7 490.0)">UD-Q6_K_XL</text>
-<rect x="746.5" y="283.1" width="61.1" height="186.9" fill="#2563eb" opacity="0.86"/>
-<line x1="777.1" y1="265.4" x2="777.1" y2="300.7" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="766.1" y1="265.4" x2="788.1" y2="265.4" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="766.1" y1="300.7" x2="788.1" y2="300.7" stroke="#1f2933" stroke-width="1.4"/>
+<rect x="746.5" y="281.4" width="61.1" height="188.6" fill="#2563eb" opacity="0.86"/>
+<line x1="777.1" y1="265.7" x2="777.1" y2="297.1" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="766.1" y1="265.7" x2="788.1" y2="265.7" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="766.1" y1="297.1" x2="788.1" y2="297.1" stroke="#1f2933" stroke-width="1.4"/>
 <circle cx="763.7" cy="309.5" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="770.4" cy="273.2" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="777.1" cy="274.8" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="783.8" cy="274.7" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
-<text x="777.1" y="274.1" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.74</text>
+<circle cx="790.5" cy="274.7" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
+<text x="777.1" y="272.4" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.75</text>
 <text x="777.1" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 777.1 490.0)">UD-Q8_K_XL</text>
 <rect x="1062.7" y="396.9" width="61.1" height="73.1" fill="#c2410c" opacity="0.86"/>
 <circle cx="1079.9" cy="396.9" r="2.6" fill="white" stroke="#c2410c" stroke-width="1.0" opacity="0.95"/>
