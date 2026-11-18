@@ -72,6 +72,9 @@ CONFIGS = [
     ("UD-Q5_K_XL", "UD-Q5_K_XL", "UD-Q5_K_XL (Unsloth)", "unsloth", "5-bit K-quant experts"),
     ("UD-Q6_K_XL", "UD-Q6_K_XL", "UD-Q6_K_XL (Unsloth)", "unsloth", "6-bit K-quant experts"),
     ("Q8_0", "Q8_0", "Q8_0 (Unsloth)", "unsloth", "8-bit, the reference quality"),
+    # Gyro: one GGUF each, the n-gram table inside the file, trellis experts (TQ2_T / TQK6 / TQK7), no repack
+    ("Gyro-S", "Gyro-S", "Gyro-S (TQ1_0, agentionai)", "agentionai", "1.58-bit trellis experts"),
+    ("Gyro-M", "Gyro-M", "Gyro-M (TQ2_0, agentionai)", "agentionai", "2-bit trellis experts"),
 ]
 
 

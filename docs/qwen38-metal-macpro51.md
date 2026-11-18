@@ -150,8 +150,9 @@ Measured on UD-Q4_K_XL (111 GB downloaded, 76.9 GiB repacked) in the same mixed 
 bytes.  The first smoke, run while the rest of the set was still downloading, gave 0.61 / 1.57; its first tokens
 are Q2_0's, so the 4.5-bit pack answers the same way the 2-bit one does.
 
-Gyro is one file with the n-gram table inside, and its TQ expert kernels are the `stubs_gyro` path on this branch —
-check before promising it.
+Gyro is one file with the n-gram table inside (no repack), and its trellis experts are covered in the window after
+all: `moe.metal` instantiates `GU_SET(T_TQK6)`, `GU_SET(T_TQ2T)`, `DN_SET(T_TQK7)` and `DN_SET(T_TQ2T)`, with their
+`fmt`/`load_tab` in `quant.metal`.  It is untested here only because the pack has not landed yet.
 
 `bench/macpro51/run_bench_qwen38.py` is the sweep: one process per run, the pack's own 32-token prompt + 32 greedy
 tokens, a fresh shuffled order each round, mean ± 1 sample standard deviation over the steady rounds, SVG charts and
