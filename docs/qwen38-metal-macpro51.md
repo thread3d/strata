@@ -1,10 +1,9 @@
 # Qwen3.8-Flash-Next on macpro51: the Metal bring-up
 
-_Measured 2026-11-18 on the machine below. This page records what runs, what does not, and the evidence for each. It is
-a bring-up record, not a benchmark: no throughput number here is a usable quantisation comparison yet._
-
-> The pack matrix this page feeds is [macpro51-qwen38-benchmarks.md](macpro51-qwen38-benchmarks.md), which the sweep
-> rewrites after every completed run. The page below says why that sweep has not started.
+_Measured 2026-11-18 on the machine below. Qwen3.8-Flash-Next now runs on the RX 580: it reads a prompt, decodes
+coherent tokens, and the quantisation matrix is in [macpro51-qwen38-benchmarks.md](macpro51-qwen38-benchmarks.md).
+This page records the bring-up: what it took to get there, the two defects that blocked it, and what is still out of
+reach._
 
 ## The machine
 
@@ -30,14 +29,19 @@ reads the prompt, and reaches the decode window. Measured on the card:
 | --- | --- |
 | dense side read into host memory | 789 tensors, 2.36 GB, 1.8 s |
 | expert arena | 2.20 GB, 1578 slots of the profile's top experts, filled in 1.0 s (2.25 GB/s) |
-| decode window ready (kernels compiled) | 41.3 s the first time, 3.4 s once the pipeline cache is warm |
-| prompt of 31 tokens | 9.5 s → 3.2 tok/s, read as one chunk through the engine's prompt path |
-| decode | 1.00 tok/s (three tokens in 3.0 s, one window each) |
+| decode window ready (kernels compiled) | 3.4 – 41 s depending on the kernel cache |
+| prompt of 31 tokens | 9.3 s → 3.33 tok/s, read as one chunk through the engine's prompt path |
+| decode | 1.06 tok/s (32 greedy tokens, one window each, ± 0.001 over four steady runs) |
 | expert reads per decode window | 3.1 GB in 2,213 reads (Q2_0, with the shipped profile; hit rate 1.9%) |
 
-So the Metal 2 path on this card is alive end to end: it streams a 37.6 GB model through an 8 GB card, it reads the
-prompt at 3.2 tok/s, and it decodes a token in about a second. The values are finite now (the fix below); the
-**answers are not right yet**, and multi-token decoding crashes at the fourth window (also below).
+And it answers. With the pack's own tokenizer for the prompt, a 16-token greedy run on Q2_0 continues
+
+```
+\n\n thinking\nThe user wants a concise explanation in two short sentences about why the
+```
+
+which is the model reasoning about the question it was asked. The three quantisations the branch runs (Q2_0,
+IQ3_XXS, IQ3_S) decode at 1.06, 0.90 and 0.84 tok/s; the matrix is [here](macpro51-qwen38-benchmarks.md).
 
 ## The first non-finite value: found and fixed
 
@@ -64,10 +68,16 @@ with `sum32`. Measured after it, on Q2_0:
 | 3 greedy tokens | 1.00 tok/s, output `32946 13 248046`, no non-finite values |
 | prompt (31 tokens) | 3.2 tok/s |
 
-The first three tokens are not yet a coherent answer, and **the fourth decode window crashes** with
-SIGSEGV at address 0x0 in a worker thread (`--max-new 3` is clean, `--max-new 4` is not; it is independent of
-the graph cache, the CPU share, the PLE I/O mode and the fold's laziness). That is the open blocker now:
-multi-token decoding on this card.
+The second defect surfaced right after it: the **fourth decode window** died with SIGSEGV at address 0x0 in a
+worker thread. The one-shot loop starts its expert-adaptation thread when `(rounds + 1) % --adapt-every` is due —
+the fourth window at the default interval — and `adapt()` indexes `host_res`, the host residency table, which the
+Metal window never has (it streams its own experts). The thread read address 0. It is now started only when that
+table is non-empty (all three spawn sites), and 8, 16 and 32 tokens decode end to end.
+
+A third, quieter defect was in the benchmark, not the engine: the prompt ids were Qwen3.6's. The two vocabularies
+share a size (248 320) but not their order, so those ids render as punctuation in Qwen3.8 and the model was
+answering gibberish. The harness now encodes its prompt with the pack's own tokenizer
+(`tools/strata_tokenizer.py`), which is also why the 16-token sample above is coherent.
 
 ## What was ruled out along the way
 
@@ -98,6 +108,11 @@ These are on the branch, all behind `STRATA_GPU_METAL`, so the CUDA/HIP paths ar
 3. **A token id outside the vocabulary is refused, not dereferenced.** A head whose logits are all non-finite returns
    `0x7fffffff` from its argmax; the window then read that row from the embedding tensor and crashed (SIGSEGV). It now
    stops with `the token id … is outside the vocabulary` instead.
+4. **`gr.metal`'s `gr_norm2` takes its 32-lane group from the thread index** (`sg32`/`lane32`/`sum32`), like every
+   other kernel in the window. This was the non-finite forward; see above.
+5. **No adaptation thread without a host residency table.** `adapt()` indexes `host_res`; the Metal window has none.
+   All three spawn sites (the one-shot loop and the two serve loops) now require it, which also stops the fourth
+   decode window's SIGSEGV.
 
 The pack tools also needed two Python 3.8 fixes (`Path.write_text(..., newline=...)` is 3.10's), which is the Python
 macOS 11 ships: `tools/strata_tokenizer.py` and `tools/iq_pack.py` now open the file themselves.
@@ -109,14 +124,19 @@ because it is the same bytes):
 
 | pack | size | state |
 | --- | ---: | --- |
-| `Q2_0` | 66.4 GB | verified, runs to the QSA layer (above) |
-| `IQ2_XS` | 68.0 GB | verified |
-| `IQ3_XXS` | 75.8 GB | verified |
-| `IQ3_S` | 83.6 GB | downloading |
+| `Q2_0` | 66.4 GB | verified; **1.06 tok/s decode**, 3.33 tok/s prompt |
+| `IQ3_XXS` | 75.8 GB | verified; 0.90 tok/s decode, 2.63 tok/s prompt |
+| `IQ3_S` | 83.6 GB | verified; 0.84 tok/s decode, 2.53 tok/s prompt |
+| `IQ2_XS` | 68.0 GB | verified, but **refused on this branch**: some gate/up experts are IQ1_M and `moe.metal` has no `moe_gu_29_*` |
 
-`bench/macpro51/run_bench_qwen38.py` is the sweep for them: one process per run, 32 prompt ids + 32 greedy tokens, a
-fresh shuffled order each round, mean ± 1 sample standard deviation over the steady rounds, an SVG chart and a
-commit+push after every run. It is ready and waiting on the fix above.
+The Unsloth and Gyro packs are not downloaded yet. An Unsloth pack is 3–6 shards whose dense tensors and experts are
+cut across them, so the Metal window (which opens one GGUF) needs `metal/tools/metal_repack.py` first; Gyro is one
+file with the n-gram table inside, and its TQ expert kernels are the `stubs_gyro` path on this branch — check before
+promising it.
+
+`bench/macpro51/run_bench_qwen38.py` is the sweep: one process per run, the pack's own 32-token prompt + 32 greedy
+tokens, a fresh shuffled order each round, mean ± 1 sample standard deviation over the steady rounds, SVG charts and
+a commit+push after every run. The matrix is [macpro51-qwen38-benchmarks.md](macpro51-qwen38-benchmarks.md).
 
 ## Reproduce
 
@@ -124,13 +144,14 @@ commit+push after every run. It is ready and waiting on the fix above.
 cd ~/strata-bench
 python3 tools/iq_pack.py --gguf ~/models/qwen38/Q2_0/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00001-of-00002.gguf \
     --out ~/models/qwen38/Q2_0/pack
-STRATA_METAL_STREAM=1 STRATA_WIN_LAYERCHECK=1 ./build-bench/strata \
+STRATA_METAL_STREAM=1 ./build-bench/strata \
     --pack ~/models/qwen38/Q2_0/pack \
     --native ~/models/qwen38/Q2_0/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00001-of-00002.gguf \
     --ple-gguf ~/models/qwen38/Q2_0/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00002-of-00002.gguf \
-    --tokens 3,1,42498,456,11,303,1330,2716,22157,11,3069,279,12515,5686,6105,2261,279,1834,321,2438,506,41564,13,4844,1910,3069,279,16820,5686,18016,3043,279 \
-    --max-new 1 --max-context 256 --spec 1 --suffix-draft 0 --lookup-max-t 0 --prefill 32
+    --tokens 814,20139,11,303,1330,2716,22157,11,3069,279,12515,5686,6105,2261,279,1834,321,2438,506,41564,13,4844,1910,3069,279,16820,5686,18016,3043,279,32946,13 \
+    --max-new 16 --max-context 512 --spec 1 --suffix-draft 0 --lookup-max-t 0 --prefill 32
 ```
 
-`STRATA_WIN_LAYERCHECK=1` is the per-layer residual check; it is a bring-up diagnostic and not meant for a benchmark
-run (each cut waits for the GPU and reads 10,240 floats).
+The ids are that sentence in the **pack's** vocabulary; `tools/strata_tokenizer.py`'s `Tokenizer.from_gguf` encodes
+them. `STRATA_WIN_LAYERCHECK=1` adds the per-layer residual check (a bring-up diagnostic: each cut waits for the
+GPU and reads 10,240 floats, so never in a timed run).

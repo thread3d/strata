@@ -27,7 +27,7 @@ Use the guide for your GPU and operating system. Model and feature support can d
 | Intel Arc on Linux | [Intel Arc](INTEL_ARC.md) |
 | Apple Silicon | [Mac / Metal](MAC.md) |
 | Intel Mac, experimental (Qwen3.6 and DeepSeek, every installed pack) | [macpro51 pack matrix](macpro51-quant-benchmarks.md) |
-| Intel Mac, Qwen3.8-Flash-Next Metal bring-up (runs, not yet answering) | [Qwen3.8 on macpro51](qwen38-metal-macpro51.md) |
+| Intel Mac, Qwen3.8-Flash-Next on Metal (measured: 1.06 tok/s decode) | [Qwen3.8 on macpro51](qwen38-metal-macpro51.md) |
 | More than one GPU | [Multiple GPUs](MULTI_GPU.md) |
 | Two cards: one reads the prompt, one makes the answer (opt-in) | [Split serving](SPLIT_SERVE.md) |
 | Older GPUs | [Experimental hardware](OLDER_GPUS.md) |

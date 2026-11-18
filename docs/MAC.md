@@ -287,9 +287,9 @@ The code is in `metal/` (the engine's side in `metal/src/engine`, the kernels in
 The engine **builds** on an Intel Mac, and Strata's app and setup path still do not **run** there: running needs three things the
 Intel Mac does not have (below), and the build no longer stands in the way of finding that out.  One model family is the exception -
 Qwen3.6-35B-A3B on Metal runs, measured, and [is below](#qwen36-35b-a3b-runs-here-measured-2026-11-14) - because it needs none of the three.
-Qwen3.8-Flash-Next also loads and reads a prompt on the same card now (2.36 GB dense side read, 2.2 GB expert arena, 5.0 tok/s
-prompt), but its first full-attention layer produces non-finite values at the query projection, so it does not answer yet:
-[the bring-up record](qwen38-metal-macpro51.md) has the measurements and the checks that were ruled out.
+Qwen3.8-Flash-Next also runs on the same card now: 1.06 tok/s decode and 3.3 tok/s prompt on the Q2_0 pack, with coherent
+answers (the quantisation matrix is [here](macpro51-qwen38-benchmarks.md)); [the bring-up record](qwen38-metal-macpro51.md)
+has the two defects that had to be fixed first.
 
 Measured on: an Intel Mac Pro (2 × 6-core Xeon X5675, 24 threads), 96 GB, Radeon RX 580 8 GB (Metal 2), macOS 11.7.11, Command
 Line Tools 13 (Apple clang 13.0.0, macOS 12.1 SDK). Built there from a git checkout: the engine (`build-metal/strata`), the
