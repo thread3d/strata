@@ -71,15 +71,16 @@
 <circle cx="579.7" cy="199.3" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <text x="566.3" y="190.7" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">1.07</text>
 <text x="566.3" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 566.3 490.0)">UD-Q4_K_XL</text>
-<rect x="641.1" y="236.3" width="61.1" height="233.7" fill="#2563eb" opacity="0.86"/>
-<line x1="671.7" y1="235.0" x2="671.7" y2="237.6" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="660.7" y1="235.0" x2="682.7" y2="235.0" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="660.7" y1="237.6" x2="682.7" y2="237.6" stroke="#1f2933" stroke-width="1.4"/>
+<rect x="641.1" y="237.4" width="61.1" height="232.6" fill="#2563eb" opacity="0.86"/>
+<line x1="671.7" y1="234.7" x2="671.7" y2="240.0" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="660.7" y1="234.7" x2="682.7" y2="234.7" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="660.7" y1="240.0" x2="682.7" y2="240.0" stroke="#1f2933" stroke-width="1.4"/>
 <circle cx="658.3" cy="235.3" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="665.0" cy="235.2" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="671.7" cy="236.7" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="678.4" cy="238.0" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
-<text x="671.7" y="227.3" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.93</text>
+<circle cx="685.1" cy="241.6" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
+<text x="671.7" y="228.4" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.92</text>
 <text x="671.7" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 671.7 490.0)">UD-Q6_K_XL</text>
 <rect x="746.5" y="261.3" width="61.1" height="208.7" fill="#2563eb" opacity="0.86"/>
 <line x1="777.1" y1="260.6" x2="777.1" y2="262.1" stroke="#1f2933" stroke-width="1.4"/>
