@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 10:11 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 10:14 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -10,7 +10,7 @@ _Generated 2026-11-18 10:11 UTC by `bench/macpro51/run_bench.py`. Every number b
 | GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |
 | OS | macOS 11.7.11 (Big Sur, 20G1443) |
 | Engine | `strata-q36-metal` (Qwen3.6) and `strata_ds4` (DeepSeek V4.1-Flash), built Release with Ninja |
-| Branch / commit at the last run | `macpro51` / `2c4ac2dcd7` |
+| Branch / commit at the last run | `macpro51` / `6f647aa095` |
 
 The Metal runtime here is the workaround path: kernels take buffer offsets instead of raw device addresses, the DeepSeek engine flushes command buffers one at a time (`DS4_FLUSH_EVERY`), and `simdgroup_matrix`/Metal 3 features are skipped. Numbers are therefore this card's, not a Metal 3 Mac's.
 
@@ -20,14 +20,14 @@ Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next a
 
 | Family | Pack | On disk | Result |
 | --- | --- | ---: | --- |
-| qwen36 | Q4_K_M | 19.7 GiB | 5 run(s), 0.79 tok/s decode |
-| qwen36 | Q6_K | 26.6 GiB | 5 run(s), 0.86 tok/s decode |
-| qwen36 | Q8_0 | 35.2 GiB | 5 run(s), 0.70 tok/s decode |
-| qwen36 | UD-Q2_K_XL | 11.7 GiB | 5 run(s), 1.01 tok/s decode |
-| qwen36 | UD-Q4_K_XL | 21.3 GiB | 5 run(s), 0.97 tok/s decode |
-| qwen36 | UD-Q6_K_XL | 30.4 GiB | 5 run(s), 0.77 tok/s decode |
-| qwen36 | UD-Q8_K_XL | 36.4 GiB | 5 run(s), 0.75 tok/s decode |
-| dsv41 | IQ2_XXS | 239.2 GiB | 5 run(s), 0.29 tok/s decode |
+| qwen36 | Q4_K_M | 19.7 GiB | 5 run(s), 0.80 tok/s decode (steady state) |
+| qwen36 | Q6_K | 26.6 GiB | 5 run(s), 0.87 tok/s decode (steady state) |
+| qwen36 | Q8_0 | 35.2 GiB | 5 run(s), 0.72 tok/s decode (steady state) |
+| qwen36 | UD-Q2_K_XL | 11.7 GiB | 5 run(s), 1.02 tok/s decode (steady state) |
+| qwen36 | UD-Q4_K_XL | 21.3 GiB | 5 run(s), 1.00 tok/s decode (steady state) |
+| qwen36 | UD-Q6_K_XL | 30.4 GiB | 5 run(s), 0.79 tok/s decode (steady state) |
+| qwen36 | UD-Q8_K_XL | 36.4 GiB | 5 run(s), 0.78 tok/s decode (steady state) |
+| dsv41 | IQ2_XXS | 239.2 GiB | 5 run(s), 0.29 tok/s decode (steady state) |
 | dsv41 | UD-Q8_K_XL | — | refused: the dense weights (attention, shared experts, output head) need 15.61 GB of VRAM and the RX 580 has 8.59 GB |
 
 Two Qwen3.6 packs were refused when this sweep started, and the refusals were real defects rather than hardware limits; they were fixed on the branch before the sweep (see [Engine fixes](#engine-fixes)). The DeepSeek UD-Q8_K_XL pack is refused by the engine on this card because its dense weights alone need 15.61 GB of VRAM against the RX 580's 8.59 GB; that is a hardware limit, recorded here rather than worked around.
@@ -36,24 +36,24 @@ Two Qwen3.6 packs were refused when this sweep started, and the refusals were re
 
 - **One process per run.** The engine loads the model, warms every pipeline with one full pass, resets the sequence state in place, then times a fresh pass. Model load time is reported separately and is not part of either throughput.
 - **Fixed workload.** Qwen3.6: 32 prompt tokens read one at a time, then 32 greedy tokens. DeepSeek: 16 prompt tokens, then 16 greedy tokens, with its own chunked prompt path and its reported prompt/decode times. The same token ids are used for every pack of a family.
-- **Mixed order.** Each round contains every runnable pack once, in a fresh shuffled order (seed in `bench/macpro51/meta.json`). No pack is always first or always last, so thermal or page-cache drift is spread across the matrix.
-- **Error bars.** Mean ± 1 sample standard deviation over the completed runs of that pack; the individual runs are drawn as dots on the charts. With 5 rounds the bars describe run-to-run spread on this machine, not a confidence interval for another one.
+- **Mixed order.** Each round contains every runnable pack once, in a fresh shuffled order (seed in `bench/macpro51/meta.json`). No pack is always first or always last, so thermal or page-cache drift is spread across the matrix. The DeepSeek pack is 239 GiB and its runs can evict Qwen pages from the 128 GiB page cache; that is one reason every pack is measured in every round and why the error bars, not a single run, are the result.
+- **Error bars.** Mean ± 1 sample standard deviation over the steady-state runs of that pack (rounds 2 and later; round 1 is each pack's first pass, with a cold page cache, and is priced separately below). The individual runs are drawn as dots on the charts. With 5 rounds the bars describe run-to-run spread on this machine, not a confidence interval for another one.
 - **Steady state.** Qwen runs use a 2 GiB expert-slot budget, which selects the streaming path for every pack here; the warm-up pass is what fills the OS page cache and compiles the pipelines before the first measured token.
 
 ## Decode throughput
 
 ![Decode throughput by quantisation](benchmarks/macpro51/decode-throughput.svg)
 
-| Family | Pack | Runs | Decode tok/s (mean ± sd) | Range | Prefill tok/s (mean ± sd) |
-| --- | --- | ---: | ---: | ---: | ---: |
-| qwen36 | Q4_K_M | 5 | 0.79 ± 0.07 | 0.73 – 0.87 | 0.94 ± 0.00 |
-| qwen36 | Q6_K | 5 | 0.86 ± 0.07 | 0.76 – 0.92 | 0.97 ± 0.02 |
-| qwen36 | Q8_0 | 5 | 0.70 ± 0.08 | 0.64 – 0.81 | 0.86 ± 0.01 |
-| qwen36 | UD-Q2_K_XL | 5 | 1.01 ± 0.07 | 0.96 – 1.09 | 1.14 ± 0.01 |
-| qwen36 | UD-Q4_K_XL | 5 | 0.97 ± 0.07 | 0.86 – 1.02 | 1.07 ± 0.01 |
-| qwen36 | UD-Q6_K_XL | 5 | 0.77 ± 0.09 | 0.70 – 0.87 | 0.92 ± 0.01 |
-| qwen36 | UD-Q8_K_XL | 5 | 0.75 ± 0.06 | 0.64 – 0.78 | 0.83 ± 0.00 |
-| dsv41 | IQ2_XXS | 5 | 0.29 ± 0.00 | 0.29 – 0.29 | 0.48 ± 0.00 |
+| Family | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| qwen36 | Q4_K_M | 4 | 0.80 ± 0.08 | 0.79 | 0.73 – 0.87 | 0.94 ± 0.00 |
+| qwen36 | Q6_K | 4 | 0.87 ± 0.08 | 0.86 | 0.76 – 0.92 | 0.96 ± 0.01 |
+| qwen36 | Q8_0 | 4 | 0.72 ± 0.09 | 0.70 | 0.64 – 0.81 | 0.86 ± 0.01 |
+| qwen36 | UD-Q2_K_XL | 4 | 1.02 ± 0.07 | 1.01 | 0.96 – 1.09 | 1.14 ± 0.01 |
+| qwen36 | UD-Q4_K_XL | 4 | 1.00 ± 0.01 | 0.97 | 0.99 – 1.02 | 1.07 ± 0.01 |
+| qwen36 | UD-Q6_K_XL | 4 | 0.79 ± 0.09 | 0.77 | 0.70 – 0.87 | 0.92 ± 0.01 |
+| qwen36 | UD-Q8_K_XL | 4 | 0.78 ± 0.00 | 0.75 | 0.77 – 0.78 | 0.83 ± 0.00 |
+| dsv41 | IQ2_XXS | 4 | 0.29 ± 0.00 | 0.29 | 0.29 – 0.29 | 0.48 ± 0.00 |
 
 ## Prompt (prefill) throughput
 
@@ -69,12 +69,12 @@ On this card a token streams its routed experts from RAM/SSD through an 8 GB win
 
 ## What the numbers say
 
-- **Fastest decode:** `UD-Q2_K_XL` at 1.01 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (3.48× between them).
-- **Run-to-run spread:** largest for `Q8_0` at 11.9% of its mean (coefficient of variation), smallest for `IQ2_XXS` at 0.0%. A spread this small is what a fixed workload on one machine should show; a bar that is much wider is a pack whose expert streaming is not in steady state.
+- **Fastest decode:** `UD-Q2_K_XL` at 1.02 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (3.57× between them).
+- **Run-to-run spread:** largest for `Q8_0` at 12.2% of its mean (coefficient of variation), smallest for `IQ2_XXS` at 0.2%. A spread this small is what a fixed workload on one machine should show; a bar that is much wider is a pack whose expert streaming is not in steady state.
 - **Fastest prompt read:** `UD-Q2_K_XL` at 1.14 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
-- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.01, `Q4_K_M` 0.79, `UD-Q4_K_XL` 0.97, `Q6_K` 0.86, `UD-Q6_K_XL` 0.77, `Q8_0` 0.70, `UD-Q8_K_XL` 0.75 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
+- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.02, `Q4_K_M` 0.80, `UD-Q4_K_XL` 1.00, `Q6_K` 0.87, `UD-Q6_K_XL` 0.79, `Q8_0` 0.72, `UD-Q8_K_XL` 0.78 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
 
-The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack:
+The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages +10.7% over these 8 pack(s).
 
 | Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |
 | --- | ---: | ---: | ---: |
@@ -85,7 +85,7 @@ The first round is the first pass over each pack (cold page cache, cold GPU cloc
 | UD-Q4_K_XL | 0.86 | 1.00 | +17.2% |
 | UD-Q6_K_XL | 0.70 | 0.79 | +13.1% |
 | UD-Q8_K_XL | 0.64 | 0.78 | +21.9% |
-| IQ2_XXS | 0.29 | 0.29 | +0.0% |
+| IQ2_XXS | 0.29 | 0.29 | -0.5% |
 
 ## Run order (mixing)
 

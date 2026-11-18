@@ -1,7 +1,7 @@
 {
  "host": "macpro51",
  "machine": "MacPro5,1, Xeon X5675 x2, 128 GB, Radeon RX 580 8 GB, macOS 11.7.11",
- "git_head": "2c4ac2dcd7",
+ "git_head": "6f647aa095",
  "rounds": 5,
  "seed": 20261118,
  "qwen_prefill": 32,
@@ -74,5 +74,5 @@
    "reason": "refused: the dense weights (attention, shared experts, output head) need 15.61 GB of VRAM and the RX 580 has 8.59 GB"
   }
  ],
- "started": "2026-11-18T08:49:00+00:00"
+ "started": "2026-11-18T10:14:46+00:00"
 }
