@@ -385,6 +385,58 @@ def render_doc(agg, records, meta):
                  "actually reads, the format's decode cost, and how much of the dense side stays resident all "
                  "matter as much.")
     lines.append("")
+    lines.append("## What the numbers say")
+    lines.append("")
+    done = [(cfg[1], agg[cfg[1]]) for cfg in CONFIGS if agg.get(cfg[1]) and agg[cfg[1]]["n"]]
+    if len(done) >= 2:
+        dec = sorted(((lbl, mean(a["decode"])) for lbl, a in done), key=lambda x: -x[1])
+        lines.append(f"- **Fastest decode:** `{dec[0][0]}` at {dec[0][1]:.2f} tok/s; **slowest:** "
+                     f"`{dec[-1][0]}` at {dec[-1][1]:.2f} tok/s "
+                     f"({dec[0][1] / max(1e-9, dec[-1][1]):.2f}× between them).")
+        cvs = [(lbl, 100.0 * stdev(a["decode"]) / mean(a["decode"]))
+               for lbl, a in done if a["n"] > 1 and mean(a["decode"]) > 0]
+        if cvs:
+            cvs.sort(key=lambda x: -x[1])
+            lines.append(f"- **Run-to-run spread:** largest for `{cvs[0][0]}` at {cvs[0][1]:.1f}% of its mean "
+                         f"(coefficient of variation), smallest for `{cvs[-1][0]}` at {cvs[-1][1]:.1f}%. "
+                         f"A spread this small is what a fixed workload on one machine should show; a bar "
+                         f"that is much wider is a pack whose expert streaming is not in steady state.")
+        pre = sorted(((lbl, mean(a["prefill"])) for lbl, a in done), key=lambda x: -x[1])
+        lines.append(f"- **Fastest prompt read:** `{pre[0][0]}` at {pre[0][1]:.2f} tok/s; slowest "
+                     f"`{pre[-1][0]}` at {pre[-1][1]:.2f} tok/s. Prefill is per-token latency on this engine, "
+                     f"not just bandwidth, so its ranking need not follow decode's.")
+        qwen = [(lbl, mean(a["decode"]), pack_bytes(dict((c[1], c) for c in CONFIGS)[lbl][4]) / 1073741824.0)
+                for lbl, a in done if a["family"] == "qwen36"]
+        if len(qwen) >= 3:
+            qwen.sort(key=lambda x: x[2])
+            lines.append("- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode "
+                         f"at {', '.join(f'`{l}` {v:.2f}' for l, v, _ in qwen)} tok/s; the formats a pack uses "
+                         "for its routed experts and its dense side matter as much as its GiB.")
+        later = [a for _, a in done if any(r.get("round", 0) > 0 and r.get("rc") == 0 for r in a["runs"])]
+        first = [a for _, a in done if any(r.get("round", 0) == 0 and r.get("rc") == 0 for r in a["runs"])]
+        if later and first:
+            rows = []
+            for cfg in CONFIGS:
+                a = agg.get(cfg[1])
+                if not a or not a["n"]:
+                    continue
+                r1 = [r["decode_tok_s"] for r in a["runs"] if r.get("round") == 0 and r.get("rc") == 0]
+                rn = [r["decode_tok_s"] for r in a["runs"] if r.get("round", 0) > 0 and r.get("rc") == 0]
+                if r1 and rn:
+                    rows.append((cfg[1], mean(r1), mean(rn)))
+            if rows:
+                lines.append("")
+                lines.append("The first round is the first pass over each pack (cold page cache, cold GPU "
+                             "clocks); the later rounds are the steady state. The difference is the price of "
+                             "a first run, not a property of the pack:")
+                lines.append("")
+                lines.append("| Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |")
+                lines.append("| --- | ---: | ---: | ---: |")
+                for lbl, a, b in rows:
+                    lines.append(f"| {lbl} | {a:.2f} | {b:.2f} | {100.0 * (b - a) / max(1e-9, a):+.1f}% |")
+    else:
+        lines.append("_Not enough completed packs yet; this section fills in as the rounds finish._")
+    lines.append("")
     lines.append("## Run order (mixing)")
     lines.append("")
     lines.append(f"![Every run in execution order](benchmarks/macpro51/run-order.svg)")
