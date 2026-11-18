@@ -341,7 +341,8 @@ def render_doc(agg, records, meta):
                  "Qwen3.6-35B-A3B. This branch's Metal engine has paths for Qwen3.6 (`src/qwen36`) and "
                  "DeepSeek V4.1-Flash (`src/dsv41`); Qwen3.8 has no Metal path here and the docs place it on "
                  "Apple silicon, so it is not runnable on this Intel Mac. Every installed pack of the two "
-                 "runnable families was tested.")
+                 "runnable families was attempted; the one that the engine refuses on this card is listed "
+                 "with its reason rather than dropped.")
     lines.append("")
     lines.append("| Family | Pack | On disk | Result |")
     lines.append("| --- | --- | ---: | --- |")
@@ -352,7 +353,8 @@ def render_doc(agg, records, meta):
         if not a or not a["n"]:
             verdict = "no completed run yet"
         else:
-            verdict = f"{a['n']} run(s), {mean(a['decode']):.2f} tok/s decode (steady state)"
+            verdict = (f"{a['n']} run{'s' if a['n'] != 1 else ''}, "
+                       f"{mean(a['decode']):.2f} tok/s decode (steady state)")
         lines.append(f"| {family} | {label} | {size/1073741824.0:.1f} GiB | {verdict} |")
     for family, label, quant, reason in UNSUPPORTED:
         lines.append(f"| {family} | {label} | — | {reason} |")
@@ -471,7 +473,7 @@ def render_doc(agg, records, meta):
                 lines.append("The first round is the first pass over each pack (cold page cache, cold GPU "
                              "clocks); the later rounds are the steady state. The difference is the price of "
                              f"a first run, not a property of the pack: it averages {mean(changes):+.1f}% "
-                             f"over these {len(rows)} pack(s).")
+                             f"over these {len(rows)} pack{'s' if len(rows) != 1 else ''}.")
                 lines.append("")
                 lines.append("| Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |")
                 lines.append("| --- | ---: | ---: | ---: |")
