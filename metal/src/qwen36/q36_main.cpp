@@ -73,6 +73,23 @@ std::vector<uint32_t> parse_ids(const char* s) {
     return out;
 }
 
+// A JSON string field's text: the label and path can hold a quote or a backslash on a filesystem that allows them.
+std::string json_esc(const std::string& s) {
+    std::string o;
+    o.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+        case '"': o += "\\\""; break;
+        case '\\': o += "\\\\"; break;
+        case '\n': o += "\\n"; break;
+        case '\r': o += "\\r"; break;
+        case '\t': o += "\\t"; break;
+        default: o += c; break;
+        }
+    }
+    return o;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -91,6 +108,9 @@ int main(int argc, char** argv) {
     bool chat = false;
     std::string check_gemv;
     std::string x_file;
+    bool bench = false;
+    std::string bench_ids, bench_label;
+    int bench_prefill = 16, bench_decode = 16;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&] { return i + 1 < argc ? std::string(argv[++i]) : (std::fprintf(stderr, "%s needs a value\n", a.c_str()), std::exit(2), std::string()); };
@@ -119,6 +139,11 @@ int main(int argc, char** argv) {
     else if (a == "--x-file") x_file = next();
     else if (a == "--check-attn") check_attn = (int) std::atoi(next().c_str());
     else if (a == "--check-gemv") check_gemv = next();
+        else if (a == "--bench") bench = true;
+        else if (a == "--bench-ids") bench_ids = next();
+        else if (a == "--bench-label") bench_label = next();
+        else if (a == "--bench-prefill") bench_prefill = (int) std::atoi(next().c_str());
+        else if (a == "--bench-decode") bench_decode = (int) std::atoi(next().c_str());
         else if (a == "--no-stream") no_stream = true;
         else { std::fprintf(stderr, "strata-q36-metal: unknown argument %s\n", a.c_str()); return 2; }
     }
@@ -160,6 +185,76 @@ int main(int argc, char** argv) {
     std::printf("engine: %s experts, %d-slot pool, %.1f MiB of state and scratch, %.1f s\n",
                 f.streaming ? "STREAMED (a pool filled per layer)" : "resident", f.streaming ? (int) m.top_k : 0,
                 (double) f.resident_bytes() / 1048576.0, init_s);
+
+    if (bench) {
+        // One prompt, a fixed id list, measured twice: a warm-up pass through every pipeline (timed nowhere), then a
+        // fresh sequence (forward_reset zeroes the state in place) whose prompt and decode steps are timed separately.
+        // The point is a number that separates prefill from decode and does not carry the first dispatch's cost.
+        if (bench_prefill < 1) bench_prefill = 1;
+        if (bench_decode < 2) bench_decode = 2;
+        std::vector<uint32_t> src = parse_ids(bench_ids.c_str());
+        if (src.empty()) src = {760, 6511, 314, 9338, 369, 2972, 57590, 279, 220, 17, 24, 23, 13, 271, 248068, 248069};
+        std::vector<uint32_t> prompt;
+        for (int i = 0; i < bench_prefill; ++i) prompt.push_back(src[(size_t) i % src.size()]);
+        if (prompt.size() + (size_t) bench_decode > (size_t) kv_cap) {
+            std::printf("--bench needs --kv-cap >= prefill + decode (%zu > %d)\n", prompt.size() + (size_t) bench_decode, kv_cap);
+            return 1;
+        }
+        auto now = [] { return std::chrono::steady_clock::now(); };
+        auto secs = [](std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
+            return std::chrono::duration<double>(b - a).count();
+        };
+        for (int i = 0; i < (int) prompt.size(); ++i)
+            if (!strata::qwen36::forward_token(cx, m, d, f, prompt[(size_t) i], i, i + 1, err)) {
+                std::printf("bench warm-up: %s\n", err.c_str());
+                return 1;
+            }
+        const uint32_t warm_next = strata::qwen36::argmax((const float*) f.logits.ptr, (int) m.g.n_vocab);
+        if (!strata::qwen36::forward_token(cx, m, d, f, warm_next, (int) prompt.size(), (int) prompt.size() + 1, err)) {
+            std::printf("bench warm-up decode: %s\n", err.c_str());
+            return 1;
+        }
+        strata::qwen36::forward_reset(f);
+
+        const auto t_pre0 = now();
+        for (int i = 0; i < (int) prompt.size(); ++i)
+            if (!strata::qwen36::forward_token(cx, m, d, f, prompt[(size_t) i], i, i + 1, err)) {
+                std::printf("bench prefill: %s\n", err.c_str());
+                return 1;
+            }
+        const auto t_pre1 = now();
+
+        std::vector<uint32_t> out;
+        std::vector<double> step_s;
+        uint32_t next = strata::qwen36::argmax((const float*) f.logits.ptr, (int) m.g.n_vocab);
+        out.push_back(next);
+        for (int s = 1; s < bench_decode; ++s) {
+            const auto a = now();
+            if (!strata::qwen36::forward_token(cx, m, d, f, next, (int) prompt.size() + s - 1, (int) prompt.size() + s, err)) {
+                std::printf("bench decode: %s\n", err.c_str());
+                return 1;
+            }
+            const auto b = now();
+            step_s.push_back(secs(a, b));
+            next = strata::qwen36::argmax((const float*) f.logits.ptr, (int) m.g.n_vocab);
+            out.push_back(next);
+        }
+        double decode_s = 0.0;
+        for (double v : step_s) decode_s += v;
+        const double prefill_s = secs(t_pre0, t_pre1);
+        std::printf("BENCH_JSON {\"label\":\"%s\",\"model\":\"%s\",\"prefill_tokens\":%d,\"decode_tokens\":%d,"
+                    "\"prefill_s\":%.6f,\"decode_s\":%.6f,\"prefill_tok_s\":%.4f,\"decode_tok_s\":%.4f,"
+                    "\"load_s\":%.3f,\"streaming\":%s,\"resident_mib\":%.1f,\"tensor_bytes\":%llu,\"step_s\":[",
+                    json_esc(bench_label).c_str(), json_esc(model).c_str(), (int) prompt.size(), bench_decode, prefill_s,
+                    decode_s, prefill_s > 0 ? (double) prompt.size() / prefill_s : 0.0,
+                    decode_s > 0 ? (double) (bench_decode - 1) / decode_s : 0.0, load_s, f.streaming ? "true" : "false",
+                    (double) f.resident_bytes() / 1048576.0, (unsigned long long) m.total_bytes);
+        for (size_t i = 0; i < step_s.size(); ++i) std::printf("%s%.6f", i ? "," : "", step_s[i]);
+        std::printf("],\"generated\":[");
+        for (size_t i = 0; i < out.size(); ++i) std::printf("%s%u", i ? "," : "", out[i]);
+        std::printf("]}\n");
+        return 0;
+    }
 
     if (check_embed >= 0) {
         // The embedding gather against the file's own bytes: the row decoded on the host and compared with what the kernel produced.
