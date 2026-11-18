@@ -26,14 +26,15 @@
 <circle cx="144.7" cy="284.8" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <text x="144.7" y="264.3" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.78</text>
 <text x="144.7" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 144.7 490.0)">Q4_K_M</text>
-<rect x="219.5" y="247.4" width="61.1" height="222.6" fill="#2563eb" opacity="0.86"/>
-<line x1="250.1" y1="233.8" x2="250.1" y2="261.1" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="239.1" y1="233.8" x2="261.1" y2="233.8" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="239.1" y1="261.1" x2="261.1" y2="261.1" stroke="#1f2933" stroke-width="1.4"/>
+<rect x="219.5" y="255.4" width="61.1" height="214.6" fill="#2563eb" opacity="0.86"/>
+<line x1="250.1" y1="235.9" x2="250.1" y2="274.9" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="239.1" y1="235.9" x2="261.1" y2="235.9" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="239.1" y1="274.9" x2="261.1" y2="274.9" stroke="#1f2933" stroke-width="1.4"/>
 <circle cx="236.7" cy="263.2" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="243.4" cy="239.8" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="250.1" cy="239.3" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
-<text x="250.1" y="238.4" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.88</text>
+<circle cx="256.8" cy="279.4" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
+<text x="250.1" y="246.4" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.85</text>
 <text x="250.1" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 250.1 490.0)">Q6_K</text>
 <rect x="324.9" y="297.1" width="61.1" height="172.9" fill="#2563eb" opacity="0.86"/>
 <line x1="355.5" y1="277.1" x2="355.5" y2="317.0" stroke="#1f2933" stroke-width="1.4"/>
