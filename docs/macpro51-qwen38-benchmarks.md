@@ -1,5 +1,10 @@
 # Qwen3.8-Flash-Next prompt-throughput benchmarks on macpro51 (RX 580, Metal 2)
 
+> **Superseded 2026-11-18 20:50 UTC:** these prompt numbers were measured before the gr_norm2 64-lane fix,
+> on a forward whose routing was not the model's (its values were non-finite at the first attention layer).
+> They are kept as the record of the first matrix and will be replaced by a full prefill+decode sweep once
+> multi-token decoding is stable. See [the bring-up record](qwen38-metal-macpro51.md).
+
 _Generated 2026-11-18 18:54 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 > **The engine does not answer yet.** Its forward pass goes non-finite at the first full-attention layer, so

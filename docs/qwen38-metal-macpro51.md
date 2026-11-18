@@ -31,53 +31,59 @@ reads the prompt, and reaches the decode window. Measured on the card:
 | dense side read into host memory | 789 tensors, 2.36 GB, 1.8 s |
 | expert arena | 2.20 GB, 1578 slots of the profile's top experts, filled in 1.0 s (2.25 GB/s) |
 | decode window ready (kernels compiled) | 41.3 s the first time, 3.4 s once the pipeline cache is warm |
-| prompt of 31 tokens | 6.22 s → 5.0 tok/s, read as one chunk through the engine's prompt path |
-| one decode window (1 token) | 1.09 – 2.81 s, of which the GPU's own work is 1.04 – 1.12 s |
-| expert reads per decode window | 731.6 MB in 2,049 reads (Q2_0), hit rate 0.75 |
+| prompt of 31 tokens | 9.5 s → 3.2 tok/s, read as one chunk through the engine's prompt path |
+| decode | 1.00 tok/s (three tokens in 3.0 s, one window each) |
+| expert reads per decode window | 3.1 GB in 2,213 reads (Q2_0, with the shipped profile; hit rate 1.9%) |
 
 So the Metal 2 path on this card is alive end to end: it streams a 37.6 GB model through an 8 GB card, it reads the
-prompt at 5 tok/s, and it returns a decode window in about a second. The **answers are not usable**: every head logit
-is non-finite, so the sampler returns `2147483647` (its "no finite maximum" value).
+prompt at 3.2 tok/s, and it decodes a token in about a second. The values are finite now (the fix below); the
+**answers are not right yet**, and multi-token decoding crashes at the fourth window (also below).
 
-## Where the forward first goes non-finite
+## The first non-finite value: found and fixed
 
-The window's residual stream is checked after every layer (`STRATA_WIN_LAYERCHECK`, a host read of `R` at each
-streaming segment boundary). On Q2_0:
+The forward used to go non-finite at the first full-attention layer (layer 3): `qcur`, `qidx` and every
+projection after them were NaN, while the residual stream stayed finite. A runtime probe at the norm that
+feeds that layer (a cut inserted after `gr_read(hc_attn)`) showed the norm's own inputs finite — the
+residual 1.26, `bo` 2.38, the inject 25.9 — and its output NaN. That is the signature of a bad reduction:
+the kernel's total is a sum over threadgroup partials, and the partials were not all written.
 
-| layer | kind | residual |
-| ---: | --- | --- |
-| 0 | GDN | finite, max 0.19 – 0.51 |
-| 1 | GDN + PLE | finite, max 0.67 – 0.69 |
-| 2 | GDN | finite |
-| 3 | **QSA (first full-attention layer)** | **non-finite** |
-| 4 … 47 | | non-finite from here on |
+`gr_norm2` (the HC read the window uses by default, `STRATA_METAL_LDB`) declared `threadgroup float part[8]`
+but took its group and lane from the hardware simdgroup. A 256-thread threadgroup on this card is four
+64-lane simdgroups, not eight 32-lane ones, so only `part[0..3]` were written and the total added four words
+of threadgroup memory left over from earlier dispatches. When those held a NaN bit pattern, `rsqrt` of the
+total was NaN and the normed row — and every projection after it — was NaN; the fold into the residual is a
+separate store, so the residual stayed finite. That also explains why the first bad layer moved between
+builds: the stale words depend on which kernels ran before.
 
-At layer 3 the query buffer `qcur` (24 heads × 256) and the indexer query `qidx` (4 × 128) are already non-finite
-before the attention is computed; `part` (the attention partials) inherits them. That places the first failure in the
-full-attention layer's preparation (`qsa_prep`: the `attn_q` / `indexer.q_proj` GEMVs, the q/k RMS norms and RoPE), not
-in the GDN layers, the hyper-connections, the MoE, the head or the sampler.
+The fix is the same one the rest of the port already carries: `gr_norm2` takes `sg32`/`lane32` and reduces
+with `sum32`. Measured after it, on Q2_0:
 
-## What was ruled out
+| check | result |
+| --- | --- |
+| residual after all 48 layers | finite, max 0.44 at layer 3 (`STRATA_WIN_LAYERCHECK`) |
+| 3 greedy tokens | 1.00 tok/s, output `32946 13 248046`, no non-finite values |
+| prompt (31 tokens) | 3.2 tok/s |
 
-Every check below was run on this card and passed, so none of them explains the non-finite query:
+The first three tokens are not yet a coherent answer, and **the fourth decode window crashes** with
+SIGSEGV at address 0x0 in a worker thread (`--max-new 3` is clean, `--max-new 4` is not; it is independent of
+the graph cache, the CPU share, the PLE I/O mode and the fold's laziness). That is the open blocker now:
+multi-token decoding on this card.
 
-- **The hyper-connection kernels** (`gr_norm`, `gr_down`, `gr_up`): `build-bench/gr_parity` and `gr2_parity` **ALL PASS**
-  for 1, 3 and 8 tokens, apply 0 and 1, Q8_0 and BF16 (relative L2 1e-07).
-- **The GDN layer**: `gdn_parity` **ALL PASS** (relative L2 1.6e-07), including the state/history contract.
-- **The prompt path and the fused hyper-connection read**: `prompt_parity` **ALL PASS**.
-- **Q2_0 expert and GEMV kernels**: `pair_parity` **ALL PASS**, including the "Q2_0 raw-x GEMV 640 → 2560" case.
-- **The RoPE table**: built on the host as `cos/sin[p][32]` with `base = qwen4exp.rope.freq_base` (1e7), all finite.
-- **The F32 weights** (all RMS/norm tensors, including `attn_q_norm`, `attn_k_norm`, `indexer.q_norm`): a scan of every
-  F32 tensor in the file after the dense load found **0 non-finite values**.
-- **The Q2_0 row layout**: `blk.3.attn_q.weight` occupies exactly 12,288 × 720 bytes in the file, the row size
-  `ref::row_bytes(Q2_0, 2560)` the GEMV uses, so the rows are not misaligned.
-- **The 64-lane hazards** the other kernels needed: every kernel the window dispatches derives its group and lane
-  from `sg32`/`lane32`; `qsa_prep` uses `sum32` for its reductions.
+## What was ruled out along the way
 
-The narrowest open question is therefore inside the QSA preparation at layer 3 on this card: the query projection is
-non-finite while its inputs (the residual, the attention norm weights, the RoPE table) are finite. The next probe
-saved for that is `w/window-instrumented.cpp` (a copy of `window.cpp` with per-layer buffer dumps), and the first thing
-to read with it is `qfull` (the `attn_q` GEMV output) *before* `qsa_prep`, which the shipped window overwrites in place.
+Every check below was run on this card and passed, so none of them was the cause (the list is kept because
+it is the fastest way for the next person to stop re-testing them):
+
+- **The hyper-connection kernels**: `gr_parity` and `gr2_parity` **ALL PASS** for 1, 3 and 8 tokens, apply 0
+  and 1, Q8_0 and BF16. (The parity test passes *because* fresh threadgroup memory is zero there — the
+  fault needs a stale NaN in the four words that were never written.)
+- **The GDN layer**: `gdn_parity` ALL PASS; **the prompt path**: `prompt_parity` ALL PASS; **the Q2_0 expert
+  and GEMV kernels**: `pair_parity` ALL PASS, including "Q2_0 raw-x GEMV 640 → 2560".
+- **The RoPE table** (cos/sin, base 1e7) and **every F32 tensor** in the file (all norms incl.
+  `blk.3.attn_q_norm`): 0 non-finite values.
+- **The Q2_0 weight data**: `blk.3.attn_q.weight` occupies exactly 12,288 × 720 bytes and every one of its
+  491,520 block scales is finite (max 0.88).
+- **The device's simdgroup width**: 64 lanes (the runtime's own probe).
 
 ## Engine changes made for this card
 
