@@ -36,8 +36,11 @@
 <text x="161.2" y="227.8" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q4_K_M</text>
 <circle cx="173.1" cy="208.9" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="182.1" y="201.9" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q6_K</text>
-<circle cx="199.5" cy="265.0" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="208.5" y="258.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q8_0</text>
+<line x1="199.5" y1="213.3" x2="199.5" y2="273.8" stroke="#2563eb" stroke-width="1.2"/>
+<line x1="191.5" y1="213.3" x2="207.5" y2="213.3" stroke="#2563eb" stroke-width="1.2"/>
+<line x1="191.5" y1="273.8" x2="207.5" y2="273.8" stroke="#2563eb" stroke-width="1.2"/>
+<circle cx="199.5" cy="243.6" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="208.5" y="236.6" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q8_0</text>
 <circle cx="127.8" cy="166.2" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="136.8" y="159.2" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q2_K_XL</text>
 <circle cx="157.0" cy="198.3" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
