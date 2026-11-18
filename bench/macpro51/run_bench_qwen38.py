@@ -151,9 +151,12 @@ def run_one(cfg, round_no, order):
         rec.update(rc=-2, error=prepared)
         return rec
     ids = ",".join(str(i) for i in IDS[:PREFILL])
-    cmd = [str(BIN), "generate", "--pack", str(pack_dir(label) / "pack"), "--native", str(one),
+    # One token per verify window, no drafter: every pack runs the same policy, and the window path is the
+    # quantisation's own cost.  The prompt goes through the engine's prompt path in one chunk of PREFILL.
+    cmd = [str(BIN), "--pack", str(pack_dir(label) / "pack"), "--native", str(one),
            "--ple-gguf", str(two), "--tokens", ids, "--max-new", str(DECODE),
-           "--max-context", "512"]
+           "--max-context", "512", "--spec", "1", "--suffix-draft", "0", "--lookup-max-t", "0",
+           "--prefill", str(PREFILL)]
     env = dict(os.environ)
     env.setdefault("STRATA_METAL_STREAM", "1")
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5400, env=env)
