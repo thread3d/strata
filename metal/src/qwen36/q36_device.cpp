@@ -38,12 +38,11 @@ bool up(mtl::Context& cx, const Model& m, const TensorRef& r, mtl::Buffer& out, 
         err = buf;
         return false;
     }
-    out = cx.alloc((size_t) bytes);
+    out = cx.alloc((size_t) bytes, src);
     if (out.ptr == nullptr) {
         err = std::string("the device refused ") + r.name() + " (" + std::to_string(bytes) + " bytes)";
         return false;
     }
-    std::memcpy(out.ptr, src, (size_t) bytes);
     total += bytes;
     return true;
 }

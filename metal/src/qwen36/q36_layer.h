@@ -27,7 +27,7 @@ namespace strata::qwen36 {
 
 struct LayerKernels {
     int glue_lib = -1;
-    mtl::Pipeline add_rms, add;
+    mtl::Pipeline add_rms, add, embed;
 };
 
 struct LayerWeights {

@@ -64,8 +64,15 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
         }
     }
     if (resident > slot_budget_bytes && !m.layers.empty()) {
-        // STREAMING: top_k slots, filled per layer.  Every layer's experts share one pool because the layers run in sequence.
-        const ExpertBlob b = blob_of(m, m.layers[0]);
+        // STREAMING: top_k slots, filled per layer.  Every layer's experts share one pool because the layers run in sequence,
+        // so the pool's slot stride must fit the LARGEST layer blob - a mixed pack (Q4_K_M) changes the down format from
+        // layer 5 on and with it the blob's size.
+        ExpertBlob b = blob_of(m, m.layers[0]);
+        for (const Layer& L : m.layers)
+            if (L.gate_exps.ok()) {
+                const ExpertBlob bl = blob_of(m, L);
+                if (bl.blob > b.blob) b = bl;
+            }
         if (!stream_init(cx, f.stream, b, (int) m.top_k, (int) m.g.n_expert, err)) return false;
         f.streaming = true;
         const RoutedShape rsh{b, (int) m.g.n_expert, (int) m.top_k, 1};
@@ -91,18 +98,22 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
     f.xh = cx.alloc(4 * (size_t) N);
     f.logits = cx.alloc(4 * (size_t) m.g.n_vocab);
     const int pos_rows = kv_cap + 16;
-    f.cs = cx.alloc(4 * (size_t) pos_rows * 32 * 2);
-    if (f.x.ptr == nullptr || f.xh.ptr == nullptr || f.logits.ptr == nullptr || f.cs.ptr == nullptr) {
-        err = "the device refused the forward's buffers";
-        return false;
-    }
-    float* tab = f.cs.as<float>();
+    // Rope cosine/sine table: computed on the host, then uploaded through the vm_allocate + blit path
+    // so the GPU sees it (CPU-written Shared memory is invisible to the GPU on this card).
+    const size_t cs_bytes = (size_t) 4 * pos_rows * 32 * 2;
+    std::vector<float> cs_table(cs_bytes / sizeof(float));
+    float* tab = cs_table.data();
     for (int p = 0; p < pos_rows; ++p)
         for (int i = 0; i < 32; ++i) {
             const double th = (double) p * std::pow((double) m.rope_base, -2.0 * (double) i / 64.0);
             tab[(p * 32 + i) * 2] = (float) std::cos(th);
             tab[(p * 32 + i) * 2 + 1] = (float) std::sin(th);
         }
+    f.cs = cx.alloc(cs_bytes, cs_table.data());
+    if (f.x.ptr == nullptr || f.xh.ptr == nullptr || f.logits.ptr == nullptr || f.cs.ptr == nullptr) {
+        err = "the device refused the forward's buffers";
+        return false;
+    }
 
     f.slots.assign(m.layers.size(), mtl::Buffer{});
     f.state.assign(m.layers.size(), mtl::Buffer{});
@@ -145,7 +156,7 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
     return true;
 }
 
-bool embed_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, std::string& err) {
+bool embed_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, uint32_t etype, std::string& err) {
     const int N = (int) m.g.n_embd;
     mtl::Pipeline emb;
     try {
@@ -156,7 +167,7 @@ bool embed_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward
     }
     mtl::Dispatch de;
     de.p = &emb;
-    de.args = {mtl::Arg::B(d.embed), mtl::Arg::B(f.x), mtl::Arg::V((uint32_t) N), mtl::Arg::V(token)};
+    de.args = {mtl::Arg::B(d.embed), mtl::Arg::B(f.x), mtl::Arg::V((uint32_t) N), mtl::Arg::V(token), mtl::Arg::V(etype)};
     de.tg[0] = 64;
     de.tg[1] = de.tg[2] = 1;
     de.grid[0] = (uint32_t) ((N + 63) / 64);
@@ -172,14 +183,7 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
     const AttnShape ash{N, (int) m.g.n_head, (int) m.g.n_head_kv, (int) m.g.head_dim, m.eps};
     const SharedShape ssh{N, (int) m.g.n_ff_shexp};
 
-    if (!embed_token(cx, m, d, f, token, err)) return false;
-    if (std::getenv("Q36_TRACE")) {
-        const float* xv = (const float*) f.x.ptr;
-        size_t bad = 0;
-        for (int e = 0; e < N; ++e) if (!std::isfinite(xv[e])) ++bad;
-        std::printf("Q36_TRACE embed: x[0..2] = %g %g %g, non-finite %zu\n", (double) xv[0], (double) xv[1], (double) xv[2], bad);
-        std::fflush(stdout);
-    }
+    if (!embed_token(cx, m, d, f, token, m.embed.type(), err)) return false;
 
     for (size_t i = 0; i < m.layers.size(); ++i) {
         // The in-file MTP block is a DRAFT HEAD, not a trunk layer: the engine runs the trunk, and the MTP block is what a
@@ -245,20 +249,6 @@ bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forwa
                     std::fclose(fh);
                 }
             }
-        }
-        // Q36_TRACE=1: the residual after each layer, with the count of non-finite values - the trace that found the
-        // round-27 defect (a norm weight read from a fixture byte pattern), and cheap enough to keep
-        if (std::getenv("Q36_TRACE")) {
-            const float* xv = (const float*) f.x.ptr;
-            size_t bad = 0, first = 0;
-            for (int e = 0; e < N; ++e)
-                if (!std::isfinite(xv[e])) {
-                    if (!bad) first = (size_t) e;
-                    ++bad;
-                }
-            std::printf("Q36_TRACE layer %zu (%s): x[0..2] = %g %g %g, non-finite %zu (first %zu)\n", i,
-                        w.attention ? "attention" : "gdn", (double) xv[0], (double) xv[1], (double) xv[2], bad, first);
-            std::fflush(stdout);
         }
     }
 

@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
     if (check_embed >= 0) {
         // The embedding gather against the file's own bytes: the row decoded on the host and compared with what the kernel produced.
         // A real pack's row of 248,320 has no fixture to vouch for it, and everything downstream starts here.
-        if (!strata::qwen36::embed_token(cx, m, d, f, (uint32_t) check_embed, err)) {
+        if (!strata::qwen36::embed_token(cx, m, d, f, (uint32_t) check_embed, m.embed.type(), err)) {
             std::printf("embed: %s\n", err.c_str());
             return 1;
         }
@@ -768,6 +768,8 @@ int main(int argc, char** argv) {
         if (T == nullptr || !T->ok()) { std::printf("--check-gemv: no tensor %s\\n", check_gemv.c_str()); return 1; }
         const int N = (int) m.g.n_embd;
         const int NOUT = (int) (T->t->shape.size() > 1 ? T->t->shape[1] : 1);
+        std::printf("layer %d: N=%d NOUT=%d type=%d shape0=%zu shape1=%zu\n", gdn_layer, N, NOUT, (int)T->type(),
+                    T->t->shape.size() > 0 ? T->t->shape[0] : 0, T->t->shape.size() > 1 ? T->t->shape[1] : 0);
         std::vector<float> hf((size_t) N);
         FILE* fh = std::fopen(h_file.c_str(), "rb");
         if (fh == nullptr || std::fread(hf.data(), 4, (size_t) N, fh) != (size_t) N) { std::printf("--check-gemv: bad h file\\n"); return 1; }
@@ -782,7 +784,7 @@ int main(int argc, char** argv) {
         const strata::qwen36::DeviceLayer& D = d2.layers[(size_t) gdn_layer];
         const mtl::Buffer* tb = check_gemv == "q" ? &D.q : check_gemv == "v" ? &D.v : check_gemv == "k" ? &D.k : check_gemv == "o" ? &D.o : &D.qkv;
         M = strata::qwen36::bind(*T, *tb);
-        mtl::Buffer bh = cx.alloc(4 * (size_t) N), by = cx.alloc(4 * (size_t) NOUT);
+        mtl::Buffer bh = cx.alloc(4 * (size_t) N), by = cx.alloc(4 * (size_t)(NOUT + 61));
         std::memcpy(bh.ptr, hf.data(), 4 * (size_t) N);
         if (!strata::qwen36::dense_gemv(cx, dk, M, bh, by, ds, e2)) { std::printf("dense_gemv: %s\\n", e2.c_str()); return 1; }
         const float* y = (const float*) by.ptr;
@@ -790,6 +792,17 @@ int main(int argc, char** argv) {
         ref::dequant(T->type(), T->data(*m.file), row.data(), (size_t) N);
         double host0 = 0.0;
         for (int i = 0; i < N; ++i) host0 += (double) row[(size_t) i] * (double) hf[(size_t) i];
+        float dot_ref0 = 0;
+        for (int j = 0; j < 32; ++j) dot_ref0 += row[(size_t)j] * 1.0f;
+        float dot_ref1 = 0;
+        for (int j = 32; j < 64; ++j) dot_ref1 += row[(size_t)j] * 1.0f;
+        float dot_ref2 = 0;
+        for (int j = 64; j < 96; ++j) dot_ref2 += row[(size_t)j] * 1.0f;
+        std::printf("METAL unit0 dot (y[NOUT]): %.6g | q[0][0..7]: %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g | REF unit0 dot: %.6g | engine y[0]: %.6g | host row0: %.6g | METAL unit1 dot (y[NOUT+16]): %.6g | q[1][0..7]: %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g | REF unit1 dot: %.6g | METAL unit2 dot (y[NOUT+52]): %.6g | q[2][0..7]: %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g | lane pre-acc: %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g %.6g | post-reduction v: %.6g\n",
+                    (double)y[NOUT], (double)y[NOUT+1], (double)y[NOUT+2], (double)y[NOUT+3], (double)y[NOUT+4], (double)y[NOUT+5], (double)y[NOUT+6], (double)y[NOUT+7], (double)y[NOUT+8], (double)dot_ref0, (double)y[0], host0,
+                    (double)y[NOUT+16], (double)y[NOUT+17], (double)y[NOUT+18], (double)y[NOUT+19], (double)y[NOUT+20], (double)y[NOUT+21], (double)y[NOUT+22], (double)y[NOUT+23], (double)y[NOUT+24],                     (double)dot_ref1,
+                    (double)y[NOUT+52], (double)y[NOUT+53], (double)y[NOUT+54], (double)y[NOUT+55], (double)y[NOUT+56], (double)y[NOUT+57], (double)y[NOUT+58], (double)y[NOUT+59], (double)y[NOUT+60], (double)dot_ref2,
+                    (double)y[NOUT+32], (double)y[NOUT+33], (double)y[NOUT+34], (double)y[NOUT+35], (double)y[NOUT+36], (double)y[NOUT+37], (double)y[NOUT+38], (double)y[NOUT+39], (double)y[NOUT+40], (double)y[NOUT+41], (double)y[NOUT+42], (double)y[NOUT+43], (double)y[NOUT+44], (double)y[NOUT+45], (double)y[NOUT+46], (double)y[NOUT+47], (double)y[NOUT+48]);
         double nrm = 0.0, dnm = 0.0;
         for (int r = 0; r < NOUT; ++r) {
             ref::dequant(T->type(), T->data(*m.file) + (size_t) r * ref::row_bytes(T->type(), N), row.data(), (size_t) N);
@@ -834,14 +847,14 @@ int main(int argc, char** argv) {
             return 1;
         }
         const std::vector<int> bt = byte_table();
+        // The vocabulary as strings, built ONCE.  detok needs the whole token table to decode a byte-level piece, and
+        // rebuilding it per token made the encoder O(tokens^2): with this pack's 248320 tokens it ran for hours.
+        std::vector<std::string> vs;
+        vs.reserve(tv->items.size());
+        for (const auto& it : tv->items) vs.push_back(it.s);
         std::vector<std::string> piece;
-        piece.reserve(tv->items.size());
-        for (const auto& it : tv->items) piece.push_back(detok(([&] {
-            static std::vector<std::string> v;
-            v.clear();
-            for (const auto& x : tv->items) v.push_back(x.s);
-            return v;
-        })(), (uint32_t) piece.size(), bt));
+        piece.reserve(vs.size());
+        for (size_t i = 0; i < vs.size(); ++i) piece.push_back(detok(vs, (uint32_t)i, bt));
         size_t at = 0;
         while (at < prompt_text.size()) {
             size_t best = 0, bid = 0;

@@ -17,12 +17,13 @@ namespace mtl {
 
 struct Buffer {
     void* handle = nullptr;   // id<MTLBuffer> (retained); the first chunk of a chunked buffer
-    void* ptr = nullptr;      // CPU address (shared storage)
+    void* ptr = nullptr;      // CPU address (shared storage); may point to vm_allocate'd host memory
     size_t bytes = 0;
     // a buffer longer than maxBufferLength: overlapping chunks every `stride` bytes (see Context::wrap)
     std::shared_ptr<std::vector<void*>> chunks;
     size_t stride = 0;
     size_t bias = 0;          // bytes from the MTLBuffer's start to ptr (a view onto an allocation the runtime owns)
+    void* vm_alloc = nullptr; // if non-null, vm_deallocate this in free()
     template <class T> T* as() const { return static_cast<T*>(ptr); }
 };
 
@@ -107,12 +108,15 @@ public:
     int compile_try(const std::vector<std::string>& files, const std::string& prelude, bool fast_math, std::string* why);
     Pipeline pipeline(int lib, const std::string& fn, const Constants& c = {});
 
-    Buffer alloc(size_t bytes);                  // shared storage, zeroed
+    Buffer alloc(size_t bytes, const void* src = nullptr);   // shared storage; if src != nullptr, Metal copies src's bytes at creation
+    Buffer alloc_private(size_t bytes);                      // private (GPU-only) storage, coherent for compute kernels
     Buffer wrap(void* page_aligned, size_t bytes);  // no-copy wrap (page-aligned, size multiple of page)
     // the same, also when bytes > maxBufferLength: then overlapping chunks, each holding any range of up to
     // max_span bytes that starts in it (max_span = the largest tensor bound at one offset)
     Buffer wrap(void* page_aligned, size_t bytes, size_t max_span);
     void free(Buffer& b);
+    // blit_copy: copy bytes from src to dst on the GPU (works around CPU->GPU invisibility on AMD cards)
+    void blit_copy(Buffer& dst, const Buffer& src);
 
     // Encodes `ds` into ONE compute encoder (serial or concurrent dispatch type) and ONE command buffer, `reps`
     // times over; commits and waits.  Returns the GPU time (GPUEndTime - GPUStartTime) in seconds.

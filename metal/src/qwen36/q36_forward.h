@@ -62,7 +62,7 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
 /// `f.logits` (n_vocab floats).
 /// A token's embedding row into `f.x` - the first step of forward_token, on its own so a caller can check it against the file's
 /// own bytes (a real pack's row 3 of 248,320 has no fixture to vouch for it).
-bool embed_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, std::string& err);
+bool embed_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, uint32_t etype, std::string& err);
 
 bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, int pos, int n_kv,
                    std::string& err);

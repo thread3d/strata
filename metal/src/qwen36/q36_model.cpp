@@ -56,6 +56,7 @@ bool expert_gu_ok(int t) {
 bool expert_dn_ok(int t) {
     switch (t) {
     case ref::Q2_0: case ref::Q5_0: case ref::Q5_1: case ref::Q5_K: case ref::Q8_0: case ref::IQ4_NL: case ref::IQ4_XS: case ref::IQ3_S: case ref::IQ3_XXS:
+    case ref::Q4_K: case ref::Q6_K: case ref::Q3_K:
         return true;
     default:
         return false;
@@ -162,6 +163,12 @@ bool open(const std::string& path, Model& m, std::string& err) {
     m.output_norm = r.get("output_norm.weight");
     if (!r.err.empty()) {
         err = r.err;
+        return false;
+    }
+    // q36_embed dequantizes Q8_0, Q6_K and Q4_K; a table in another format is refused here rather than silently mis-read.
+    if (m.embed.ok() && m.embed.type() != ref::Q8_0 && m.embed.type() != ref::Q6_K && m.embed.type() != ref::Q4_K) {
+        err = "token_embd.weight is " + std::string(ref::type_name(m.embed.type())) +
+              ", q36_embed only supports Q8_0, Q6_K and Q4_K";
         return false;
     }
 

@@ -46,6 +46,10 @@ struct RoutedScratch {
 struct RoutedKernels {
     int lib = -1;
     int arena = -1;   // -1 unresolved, 0 resident, 1 streaming (function constant 20: the kernels read slots, not blobs)
+    // the formats gu/dn were resolved for: a pack may stack layers of different quant types (Q4_K_M puts a Q6_K down in
+    // layers 0-4 and a Q4_K one from layer 5), and a down kernel built for the wrong format reads the rows at the wrong
+    // stride, so the two are part of what makes the resolved set current
+    int gu_type = -1, dn_type = -1;
     mtl::Pipeline route, gu, dn, combine;
 };
 

@@ -78,14 +78,72 @@ kernel void q36_add(device float* x [[buffer(0)]], device const float* y [[buffe
 // n_embd contiguous values at t * row_bytes, and the format is the pack's (Q8_0 here: an fp16 scale a 32 values).  Written as
 // its own kernel because the alternative - a one-hot multiply through gemv - would produce n_vocab values to throw away.
 //
-// Q8_0 only, deliberately: it is the format this port's target pack keeps its table in, and a table in another format is refused
-// at open (q36_model.cpp's dense gate) rather than silently mis-read here.
+// Supported formats: Q8_0 (34 bytes per 32 values: fp16 scale + 32 int8), Q6_K (210 bytes per 256 values: 6-bit codes).
 kernel void q36_embed(device const uchar* table [[buffer(0)]], device float* x [[buffer(1)]],
                       constant uint& n_embd [[buffer(2)]], constant uint& token [[buffer(3)]],
-                      uint gid [[thread_position_in_grid]]) {
+                      constant uint& etype [[buffer(4)]], uint gid [[thread_position_in_grid]]) {
     if (gid >= n_embd) return;
-    device const uchar* row = table + (size_t) token * ((size_t) n_embd / 32u) * 34u;
-    device const uchar* blk = row + (size_t) (gid / 32u) * 34u;
-    const float d = float(as_type<half>(ushort(blk[0] | (blk[1] << 8))));
-    x[gid] = d * float((int) (signed char) blk[2 + (gid & 31u)]);
+    if (etype == 8) {   // Q8_0
+        device const uchar* row = table + (size_t) token * ((size_t) n_embd / 32u) * 34u;
+        device const uchar* blk = row + (size_t) (gid / 32u) * 34u;
+        const float d = float(as_type<half>(ushort(blk[0] | (blk[1] << 8))));
+        x[gid] = d * float((int) (signed char) blk[2 + (gid & 31u)]);
+    } else if (etype == 14) {   // Q6_K: 210 bytes per 256 values; matches dequantize_q6_K
+        const size_t row_bytes = ((size_t) n_embd / 256u) * 210u;
+        device const uchar* row = table + (size_t) token * row_bytes;
+        int bid = (int) (gid / 256);          // super-block index within row
+        int off = (int) (gid % 256);          // offset within super-block (0-255)
+        device const uchar* b = row + (size_t) bid * 210u;
+        int hf = off / 128;                 // 0 = first 128, 1 = second 128
+        int pos_in_half = off % 128;          // 0-127
+        int l = pos_in_half % 32;             // 0-31
+        int group = pos_in_half / 32;         // 0-3 → q1,q2,q3,q4
+        int is = l / 16;                      // 0 or 1
+        device const uchar* ql = b + (size_t) hf * 64u;   // ql advances by 64 per half
+        device const uchar* qh = b + 128u + (size_t) hf * 32u; // qh advances by 32 per half
+        uchar ql_byte = (group == 1 || group == 3) ? ql[l + 32] : ql[l];
+        uint8_t nibble = (group == 0 || group == 2) ? (ql_byte & 0x0Fu) : (ql_byte >> 4);
+        int qh_shift = group * 2;
+        int qh_bits = ((int)qh[l] >> qh_shift) & 3;
+        int code = (int)(nibble | (uint8_t)(qh_bits << 4)) - 32;
+        device const signed char* scs = (device const signed char*)(b + 192);
+        int sc_index = hf * 8 + is + group * 2;
+        const float d = float(as_type<half>(ushort(b[208] | (b[209] << 8))));
+        x[gid] = d * (float)scs[sc_index] * (float)code;
+    } else if (etype == 12) {   // Q4_K: 144 bytes per 256 values; d*scale*nibble - dmin*min_scale
+        const size_t row_bytes = ((size_t) n_embd / 256u) * 144u;
+        device const uchar* row = table + (size_t) token * row_bytes;
+        int bid = (int) (gid / 256);          // super-block index within row
+        int off = (int) (gid % 256);          // offset within super-block (0-255)
+        device const uchar* b = row + (size_t) bid * 144u;
+        const float d  = float(as_type<half>(ushort(b[0] | (b[1] << 8))));
+        const float mn = float(as_type<half>(ushort(b[2] | (b[3] << 8))));
+        device const uchar* scales = b + 4;   // 12 bytes of packed 6-bit scale/min
+        device const uchar* qs = b + 16;      // 128 bytes of 4-bit quantized values
+        int j4 = off / 64;                    // which 64-value group (0-3)
+        int pos = off % 64;                   // offset within group (0-63)
+        int li = pos / 32;                    // 0 = low nibbles, 1 = high nibbles
+        int lj = pos % 32;                    // position within 32 (0-31)
+        int is = j4 * 2 + li;                 // scale index (0-7)
+        uchar sc, mm;
+        if (is < 4) {
+            sc = scales[is] & 63;
+            mm = scales[is + 4] & 63;
+        } else {
+            sc = (scales[is + 4] & 0x0F) | ((scales[is - 4] >> 6) << 4);
+            mm = (scales[is + 4] >> 4) | ((scales[is] >> 6) << 4);
+        }
+        const float d1 = d * (float)sc;
+        const float m1 = mn * (float)mm;
+        device const uchar* qb = qs + (size_t) j4 * 32u + (size_t) lj;
+        uint8_t nibble = (li == 0) ? (*qb & 0x0Fu) : (*qb >> 4);
+        x[gid] = d1 * (float)nibble - m1;
+    }
+}
+
+// Debug: copy first n values of src to dst, to verify GPU can read src.
+kernel void q36_debug_copy(device const float* src [[buffer(0)]], device float* dst [[buffer(1)]],
+                           constant uint& n [[buffer(2)]], uint gid [[thread_position_in_grid]]) {
+    if (gid >= n) return;
+    dst[gid] = src[gid];
 }

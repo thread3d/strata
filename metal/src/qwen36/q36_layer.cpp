@@ -25,6 +25,21 @@ bool join(mtl::Context& cx, LayerKernels& lk, mtl::Buffer& x, const mtl::Buffer*
     return true;
 }
 
+// x = dequant(token_embd row token)  (q36_glue.metal's q36_embed, Q8_0 only)
+bool embed_row(mtl::Context& cx, LayerKernels& lk, const mtl::Buffer& table, mtl::Buffer& x,
+               int n_embd, uint32_t token, std::string& err) {
+    mtl::Dispatch d;
+    d.p = &lk.embed;
+    d.args = {mtl::Arg::B(table), mtl::Arg::B(x), mtl::Arg::V((uint32_t) n_embd), mtl::Arg::V(token)};
+    d.tg[0] = 64;
+    d.tg[1] = d.tg[2] = 1;
+    d.grid[0] = (uint32_t) ((n_embd + 63) / 64);
+    d.grid[1] = d.grid[2] = 1;
+    cx.run({d});
+    (void) err;
+    return true;
+}
+
 }  // namespace
 
 bool layer_init(mtl::Context& cx, LayerKernels& lk, std::string& err) {
@@ -33,6 +48,7 @@ bool layer_init(mtl::Context& cx, LayerKernels& lk, std::string& err) {
         lk.glue_lib = cx.compile({"../src/qwen36/msl/q36_glue.metal"}, "", false);
         lk.add_rms = cx.pipeline(lk.glue_lib, "q36_add_rms");
         lk.add = cx.pipeline(lk.glue_lib, "q36_add");
+        lk.embed = cx.pipeline(lk.glue_lib, "q36_embed");
     } catch (const std::exception& e) {
         err = std::string("the q36 glue kernels did not compile: ") + e.what();
         return false;
@@ -64,10 +80,7 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
     }
     if (!layer_scratch(cx, s, n, err)) return false;
 
-    // 1. h = rms(x) * attn_norm, with NO add - always.  A layer is a closed unit: its last step adds the MoE's output to x, so
-    // the residual already holds everything up to this point and the next layer has nothing to add.  (This was wrong first time:
-    // the join was given a null source and added x to itself on every layer after the first, which the second-layer case below
-    // caught - the residual doubled a layer, rms went to inf and everything downstream was NaN.)
+    // 1. h = rms(x) * attn_norm, with NO add - always.
     (void) from_embedding;
     if (!join(cx, lk, x, nullptr, *w.attn_norm, w.attn_norm_off, s.h, n, eps, false, err)) return false;
     {   // Q36_DUMP_H2: the normed row this layer's mixer read, for Q36_DUMP_LAYER - the calibration input a host reference needs
@@ -93,18 +106,6 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
             return false;
     }
     const mtl::Buffer& mix = w.attention ? io.attn_scratch->y : io.gdn_scratch->out;
-    if (std::getenv("Q36_TRACE")) {
-        auto scan = [](const mtl::Buffer& b, int n, const char* what) {
-            const float* v = (const float*) b.ptr;
-            size_t bad = 0;
-            for (int i = 0; i < n; ++i) if (!std::isfinite(v[i])) ++bad;
-            std::printf("Q36_TRACE   %s: %g %g %g, non-finite %zu of %d\n", what, (double) v[0], (double) v[1], (double) v[2], bad, n);
-            std::fflush(stdout);
-        };
-        scan(s.h, n, "h after the first norm");
-        scan(mix, n, "the mixer's output");
-        scan(x, n, "x after the mixer join");
-    }
 
     // 3. x += mixer; h = rms(x) * post_attention_norm
     if (!join(cx, lk, x, &mix, *w.post_norm, w.post_norm_off, s.h, n, eps, true, err)) return false;

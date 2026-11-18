@@ -508,6 +508,9 @@ static inline float max32(float v) {
     for (ushort o = 16; o > 0; o >>= 1) v = max(v, simd_shuffle_xor(v, o));
     return v;
 }
+// (no sum_lpr: an XOR shuffle with o < 32 already stays inside the lane's own 32-lane half, and an
+// unconditional `v += shuffle` is what leaves the total in every lane.  A directional/masked form is not
+// equivalent: for LPR = 4 it leaves lanes 2 and 3 with a partial sum.)
 // The exclusive prefix sum over the thread's 32-lane group (lane: lane32(tid, lane_)).  simd_prefix_exclusive_sum scans the
 // whole hardware group, so on a 64-lane GPU the second logical group would start from the first one's total; a
 // Hillis-Steele scan over the low lane bits gives each group its own.
@@ -781,20 +784,21 @@ void require_fit(const Pipeline& p, uint32_t threads, const char* where) {
     std::exit(6);
 }
 
-Buffer Context::alloc(size_t bytes) {
+Buffer Context::alloc(size_t bytes, const void* src) {
 #if defined(STRATA_DS4_RUNTIME)
-    // Metal returns the new buffer with one more reference parked in the calling thread's autorelease pool.  The engine's host
-    // threads have no pool (only Context::run opens one), so that reference was never given back: every buffer made here lived for
-    // the rest of the process, free() or not (a 16 KB job array per expert matvec, ~90K a request: +1.3 GB and a slower queue every
-    // call, 16 -> 3 tok/s after a few requests on a big Mac).
     Buffer r;
     @autoreleasepool {
-        id<MTLBuffer> b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        id<MTLBuffer> b;
+        if (src) {
+            b = [impl_->dev newBufferWithBytes:src length:bytes options:MTLResourceStorageModeShared];
+        } else {
+            b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+            std::memset([b contents], 0, bytes);
+        }
         if (!b) {
             std::fprintf(stderr, "mtl: alloc %zu failed\n", bytes);
             std::exit(4);
         }
-        std::memset([b contents], 0, bytes);
         r.handle = (__bridge_retained void*)b;
         r.ptr = [b contents];
     }
@@ -802,12 +806,101 @@ Buffer Context::alloc(size_t bytes) {
     r.bytes = bytes;
     return r;
 #else
-    id<MTLBuffer> b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+    // llama.cpp macpro51 pattern: on AMD RX 580 / macOS 11, CPU writes to ordinary Shared memory
+    // are invisible to GPU compute kernels.  Use vm_allocate for page-aligned wired host memory,
+    // wrap it with newBufferWithBytesNoCopy (Shared staging), then blit to a Private destination
+    // (GPU-coherent) via MTLBlitCommandEncoder.  Compute kernels read from Private.
+    if (src) {
+        const size_t page_size = (size_t) sysconf(_SC_PAGESIZE);
+        const size_t size_aligned = (bytes + page_size - 1) & ~(page_size - 1);
+        void* host_mem = nullptr;
+        kern_return_t kr = vm_allocate(mach_task_self(), (vm_address_t*)&host_mem, size_aligned, VM_FLAGS_ANYWHERE);
+        if (kr != KERN_SUCCESS || host_mem == nullptr) {
+            std::fprintf(stderr, "mtl: vm_allocate %zu failed (kr=%d)\n", size_aligned, (int)kr);
+            std::exit(4);
+        }
+        std::memcpy(host_mem, src, bytes);
+        id<MTLBuffer> staging = [impl_->dev newBufferWithBytesNoCopy:host_mem
+                                                                 length:size_aligned
+                                                            options:MTLResourceStorageModeShared
+                                                        deallocator:nil];
+        if (!staging) {
+            // macpro51 fallback: newBufferWithBytesNoCopy rejected (e.g. non-page-aligned).
+            // Copy instead; the blit below is unchanged.
+            staging = [impl_->dev newBufferWithBytes:host_mem length:bytes options:MTLResourceStorageModeShared];
+            if (!staging) {
+                vm_deallocate(mach_task_self(), (vm_address_t)host_mem, size_aligned);
+                std::fprintf(stderr, "mtl: alloc staging %zu failed\n", bytes);
+                std::exit(4);
+            }
+        }
+        id<MTLBuffer> b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModePrivate];
+        if (!b) {
+            vm_deallocate(mach_task_self(), (vm_address_t)host_mem, size_aligned);
+            std::fprintf(stderr, "mtl: alloc_private %zu failed\n", bytes);
+            std::exit(4);
+        }
+        // Blit staging -> Private destination
+        {
+            @autoreleasepool {
+                id<MTLCommandBuffer> cb = [impl_->q commandBuffer];
+                id<MTLBlitCommandEncoder> enc = [cb blitCommandEncoder];
+                [enc copyFromBuffer:staging sourceOffset:0 toBuffer:b destinationOffset:0 size:bytes];
+                [enc endEncoding];
+                [cb commit];
+                [cb waitUntilCompleted];
+                if (cb.status != MTLCommandBufferStatusCompleted) {
+                    std::fprintf(stderr, "mtl: alloc blit failed: %s\n", [[cb.error localizedDescription] UTF8String]);
+                    vm_deallocate(mach_task_self(), (vm_address_t)host_mem, size_aligned);
+                    std::exit(5);
+                }
+            }
+        }
+        vm_deallocate(mach_task_self(), (vm_address_t)host_mem, size_aligned);
+        allocated_ += bytes;
+        Buffer r;
+        r.handle = (__bridge_retained void*)b;
+        r.ptr = r.handle;   // Private storage has no CPU address; non-null sentinel passes upload checks
+        r.bytes = bytes;
+        return r;
+    } else {
+        id<MTLBuffer> b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        if (!b) {
+            std::fprintf(stderr, "mtl: alloc_shared %zu failed\n", bytes);
+            std::exit(4);
+        }
+        std::memset([b contents], 0, bytes);
+        allocated_ += bytes;
+        Buffer r;
+        r.handle = (__bridge_retained void*)b;
+        r.ptr = [b contents];
+        r.bytes = bytes;
+        return r;
+    }
+#endif
+}
+
+Buffer Context::alloc_private(size_t bytes) {
+#if defined(STRATA_DS4_RUNTIME)
+    Buffer r;
+    @autoreleasepool {
+        id<MTLBuffer> b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModePrivate];
+        if (!b) {
+            std::fprintf(stderr, "mtl: alloc_private %zu failed\n", bytes);
+            std::exit(4);
+        }
+        r.handle = (__bridge_retained void*)b;
+        r.ptr = [b contents];
+    }
+    allocated_ += bytes;
+    r.bytes = bytes;
+    return r;
+#else
+    id<MTLBuffer> b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModePrivate];
     if (!b) {
-        std::fprintf(stderr, "mtl: alloc %zu failed\n", bytes);
+        std::fprintf(stderr, "mtl: alloc_private %zu failed\n", bytes);
         std::exit(4);
     }
-    std::memset([b contents], 0, bytes);
     allocated_ += bytes;
     Buffer r;
     r.handle = (__bridge_retained void*)b;
@@ -815,6 +908,23 @@ Buffer Context::alloc(size_t bytes) {
     r.bytes = bytes;
     return r;
 #endif
+}
+
+void Context::blit_copy(Buffer& dst, const Buffer& src) {
+    @autoreleasepool {
+        id<MTLCommandBuffer> cb = [impl_->q commandBuffer];
+        id<MTLBlitCommandEncoder> enc = [cb blitCommandEncoder];
+        id<MTLBuffer> sb = (__bridge id<MTLBuffer>)src.handle;
+        id<MTLBuffer> db = (__bridge id<MTLBuffer>)dst.handle;
+        [enc copyFromBuffer:sb sourceOffset:0 toBuffer:db destinationOffset:0 size:src.bytes];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        if (cb.status != MTLCommandBufferStatusCompleted) {
+            std::fprintf(stderr, "mtl: blit_copy failed: %s\n", [[cb.error localizedDescription] UTF8String]);
+            std::exit(5);
+        }
+    }
 }
 
 Buffer Context::wrap(void* p, size_t bytes, size_t max_span) {
@@ -1035,6 +1145,10 @@ void Context::free(Buffer& b) {
         id<MTLBuffer> x = (__bridge_transfer id<MTLBuffer>)b.handle;
         x = nil;
 #endif
+    }
+    if (b.vm_alloc) {
+        vm_deallocate(mach_task_self(), (vm_address_t)b.vm_alloc, ((b.bytes + (size_t) sysconf(_SC_PAGESIZE) - 1) & ~((size_t) sysconf(_SC_PAGESIZE) - 1)));
+        b.vm_alloc = nullptr;
     }
     b = Buffer{};
 }
