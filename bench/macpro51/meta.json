@@ -1,0 +1,78 @@
+{
+ "host": "macpro51",
+ "machine": "MacPro5,1, Xeon X5675 x2, 128 GB, Radeon RX 580 8 GB, macOS 11.7.11",
+ "git_head": "83d2da3218",
+ "rounds": 5,
+ "seed": 20261118,
+ "qwen_prefill": 32,
+ "qwen_decode": 32,
+ "ds_prefill": 16,
+ "ds_decode": 16,
+ "configs": [
+  {
+   "family": "qwen36",
+   "label": "Q4_K_M",
+   "quant": "Q4_K_M",
+   "kind": "q36",
+   "path": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q4_K_M.gguf"
+  },
+  {
+   "family": "qwen36",
+   "label": "Q6_K",
+   "quant": "Q6_K",
+   "kind": "q36",
+   "path": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q6_K.gguf"
+  },
+  {
+   "family": "qwen36",
+   "label": "Q8_0",
+   "quant": "Q8_0",
+   "kind": "q36",
+   "path": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf"
+  },
+  {
+   "family": "qwen36",
+   "label": "UD-Q2_K_XL",
+   "quant": "Q2_K_XL",
+   "kind": "q36",
+   "path": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf"
+  },
+  {
+   "family": "qwen36",
+   "label": "UD-Q4_K_XL",
+   "quant": "Q4_K_XL",
+   "kind": "q36",
+   "path": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
+  },
+  {
+   "family": "qwen36",
+   "label": "UD-Q6_K_XL",
+   "quant": "Q6_K_XL",
+   "kind": "q36",
+   "path": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf"
+  },
+  {
+   "family": "qwen36",
+   "label": "UD-Q8_K_XL",
+   "quant": "Q8_K_XL",
+   "kind": "q36",
+   "path": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf"
+  },
+  {
+   "family": "dsv41",
+   "label": "IQ2_XXS",
+   "quant": "IQ2_XXS (GSQ-RCO)",
+   "kind": "ds4",
+   "path": "/Volumes/Sonnet Raid/Users/threaded/models/deepseek-v4.1-flash/maya-ds4"
+  }
+ ],
+ "unsupported": [
+  {
+   "family": "dsv41",
+   "label": "UD-Q8_K_XL",
+   "quant": "MXFP4",
+   "reason": "refused: the dense weights (attention, shared experts, output head) need 15.61 GB of VRAM and the RX 580 has 8.59 GB"
+  }
+ ],
+ "started": "2026-11-18T08:44:31+00:00"
+}
