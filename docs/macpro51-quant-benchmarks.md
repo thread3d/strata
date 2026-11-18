@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 10:15 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 10:17 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -10,24 +10,24 @@ _Generated 2026-11-18 10:15 UTC by `bench/macpro51/run_bench.py`. Every number b
 | GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |
 | OS | macOS 11.7.11 (Big Sur, 20G1443) |
 | Engine | `strata-q36-metal` (Qwen3.6) and `strata_ds4` (DeepSeek V4.1-Flash), built Release with Ninja |
-| Branch / commit at the last run | `macpro51` / `7085178a1b` |
+| Branch / commit at the last run | `macpro51` / `046c6c26c1` |
 
 The Metal runtime here is the workaround path: kernels take buffer offsets instead of raw device addresses, the DeepSeek engine flushes command buffers one at a time (`DS4_FLUSH_EVERY`), and `simdgroup_matrix`/Metal 3 features are skipped. Numbers are therefore this card's, not a Metal 3 Mac's.
 
 ## What ran, and what could not
 
-Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next and Qwen3.6-35B-A3B. This branch's Metal engine has paths for Qwen3.6 (`src/qwen36`) and DeepSeek V4.1-Flash (`src/dsv41`); Qwen3.8 has no Metal path here and the docs place it on Apple silicon, so it is not runnable on this Intel Mac. Every installed pack of the two runnable families was tested.
+Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next and Qwen3.6-35B-A3B. This branch's Metal engine has paths for Qwen3.6 (`src/qwen36`) and DeepSeek V4.1-Flash (`src/dsv41`); Qwen3.8 has no Metal path here and the docs place it on Apple silicon, so it is not runnable on this Intel Mac. Every installed pack of the two runnable families was attempted; the one that the engine refuses on this card is listed with its reason rather than dropped.
 
 | Family | Pack | On disk | Result |
 | --- | --- | ---: | --- |
-| qwen36 | Q4_K_M | 19.7 GiB | 5 run(s), 0.80 tok/s decode (steady state) |
-| qwen36 | Q6_K | 26.6 GiB | 5 run(s), 0.87 tok/s decode (steady state) |
-| qwen36 | Q8_0 | 35.2 GiB | 5 run(s), 0.72 tok/s decode (steady state) |
-| qwen36 | UD-Q2_K_XL | 11.7 GiB | 5 run(s), 1.02 tok/s decode (steady state) |
-| qwen36 | UD-Q4_K_XL | 21.3 GiB | 5 run(s), 1.00 tok/s decode (steady state) |
-| qwen36 | UD-Q6_K_XL | 30.4 GiB | 5 run(s), 0.79 tok/s decode (steady state) |
-| qwen36 | UD-Q8_K_XL | 36.4 GiB | 5 run(s), 0.78 tok/s decode (steady state) |
-| dsv41 | IQ2_XXS | 239.2 GiB | 5 run(s), 0.29 tok/s decode (steady state) |
+| qwen36 | Q4_K_M | 19.7 GiB | 5 runs, 0.80 tok/s decode (steady state) |
+| qwen36 | Q6_K | 26.6 GiB | 5 runs, 0.87 tok/s decode (steady state) |
+| qwen36 | Q8_0 | 35.2 GiB | 5 runs, 0.72 tok/s decode (steady state) |
+| qwen36 | UD-Q2_K_XL | 11.7 GiB | 5 runs, 1.02 tok/s decode (steady state) |
+| qwen36 | UD-Q4_K_XL | 21.3 GiB | 5 runs, 1.00 tok/s decode (steady state) |
+| qwen36 | UD-Q6_K_XL | 30.4 GiB | 5 runs, 0.79 tok/s decode (steady state) |
+| qwen36 | UD-Q8_K_XL | 36.4 GiB | 5 runs, 0.78 tok/s decode (steady state) |
+| dsv41 | IQ2_XXS | 239.2 GiB | 5 runs, 0.29 tok/s decode (steady state) |
 | dsv41 | UD-Q8_K_XL | — | refused: the dense weights (attention, shared experts, output head) need 15.61 GB of VRAM and the RX 580 has 8.59 GB |
 
 Two Qwen3.6 packs were refused when this sweep started, and the refusals were real defects rather than hardware limits; they were fixed on the branch before the sweep (see [Engine fixes](#engine-fixes)). The DeepSeek UD-Q8_K_XL pack is refused by the engine on this card because its dense weights alone need 15.61 GB of VRAM against the RX 580's 8.59 GB; that is a hardware limit, recorded here rather than worked around.
@@ -74,7 +74,7 @@ On this card a token streams its routed experts from RAM/SSD through an 8 GB win
 - **Fastest prompt read:** `UD-Q2_K_XL` at 1.14 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
 - **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.02, `Q4_K_M` 0.80, `UD-Q4_K_XL` 1.00, `Q6_K` 0.87, `UD-Q6_K_XL` 0.79, `Q8_0` 0.72, `UD-Q8_K_XL` 0.78 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
 
-The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages +10.7% over these 8 pack(s).
+The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages +10.7% over these 8 packs.
 
 | Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |
 | --- | ---: | ---: | ---: |
