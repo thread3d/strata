@@ -21,6 +21,7 @@ AXIS = "#9ca3af"
 FAMILY_COLOURS = {
     "qwen36": "#2563eb",
     "dsv41": "#c2410c",
+    "qwen38": "#0f766e",
 }
 
 
