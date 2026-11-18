@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 09:28 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 09:30 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -23,7 +23,7 @@ Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next a
 | qwen36 | Q4_K_M | 19.7 GiB | 3 run(s), 0.78 tok/s decode |
 | qwen36 | Q6_K | 26.6 GiB | 3 run(s), 0.88 tok/s decode |
 | qwen36 | Q8_0 | 35.2 GiB | 3 run(s), 0.69 tok/s decode |
-| qwen36 | UD-Q2_K_XL | 11.7 GiB | 2 run(s), 1.03 tok/s decode |
+| qwen36 | UD-Q2_K_XL | 11.7 GiB | 3 run(s), 1.00 tok/s decode |
 | qwen36 | UD-Q4_K_XL | 21.3 GiB | 2 run(s), 0.94 tok/s decode |
 | qwen36 | UD-Q6_K_XL | 30.4 GiB | 3 run(s), 0.81 tok/s decode |
 | qwen36 | UD-Q8_K_XL | 36.4 GiB | 2 run(s), 0.71 tok/s decode |
@@ -49,7 +49,7 @@ Two Qwen3.6 packs were refused when this sweep started, and the refusals were re
 | qwen36 | Q4_K_M | 3 | 0.78 ± 0.08 | 0.73 – 0.87 | 0.95 ± 0.00 |
 | qwen36 | Q6_K | 3 | 0.88 ± 0.05 | 0.82 – 0.92 | 0.99 ± 0.02 |
 | qwen36 | Q8_0 | 3 | 0.69 ± 0.08 | 0.64 – 0.78 | 0.86 ± 0.00 |
-| qwen36 | UD-Q2_K_XL | 2 | 1.03 ± 0.09 | 0.96 – 1.09 | 1.15 ± 0.00 |
+| qwen36 | UD-Q2_K_XL | 3 | 1.00 ± 0.08 | 0.96 – 1.09 | 1.15 ± 0.01 |
 | qwen36 | UD-Q4_K_XL | 2 | 0.94 ± 0.11 | 0.86 – 1.02 | 1.08 ± 0.00 |
 | qwen36 | UD-Q6_K_XL | 3 | 0.81 ± 0.10 | 0.70 – 0.87 | 0.93 ± 0.00 |
 | qwen36 | UD-Q8_K_XL | 2 | 0.71 ± 0.10 | 0.64 – 0.78 | 0.83 ± 0.00 |
@@ -69,10 +69,10 @@ On this card a token streams its routed experts from RAM/SSD through an 8 GB win
 
 ## What the numbers say
 
-- **Fastest decode:** `UD-Q2_K_XL` at 1.03 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (3.54× between them).
+- **Fastest decode:** `UD-Q2_K_XL` at 1.00 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (3.46× between them).
 - **Run-to-run spread:** largest for `UD-Q8_K_XL` at 14.4% of its mean (coefficient of variation), smallest for `IQ2_XXS` at 0.0%. A spread this small is what a fixed workload on one machine should show; a bar that is much wider is a pack whose expert streaming is not in steady state.
 - **Fastest prompt read:** `UD-Q2_K_XL` at 1.15 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
-- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.03, `Q4_K_M` 0.78, `UD-Q4_K_XL` 0.94, `Q6_K` 0.88, `UD-Q6_K_XL` 0.81, `Q8_0` 0.69, `UD-Q8_K_XL` 0.71 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
+- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.00, `Q4_K_M` 0.78, `UD-Q4_K_XL` 0.94, `Q6_K` 0.88, `UD-Q6_K_XL` 0.81, `Q8_0` 0.69, `UD-Q8_K_XL` 0.71 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
 
 The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack:
 
@@ -81,7 +81,7 @@ The first round is the first pass over each pack (cold page cache, cold GPU cloc
 | Q4_K_M | 0.74 | 0.80 | +8.9% |
 | Q6_K | 0.82 | 0.91 | +11.4% |
 | Q8_0 | 0.64 | 0.71 | +11.1% |
-| UD-Q2_K_XL | 0.96 | 1.09 | +13.7% |
+| UD-Q2_K_XL | 0.96 | 1.03 | +6.9% |
 | UD-Q4_K_XL | 0.86 | 1.02 | +18.7% |
 | UD-Q6_K_XL | 0.70 | 0.87 | +24.0% |
 | UD-Q8_K_XL | 0.64 | 0.78 | +22.6% |
@@ -117,6 +117,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results.jsonl` is ski
 | 18 | 3 | qwen36 | Q4_K_M | 33.74 | 42.18 | 0.73 | later round |
 | 19 | 3 | qwen36 | UD-Q6_K_XL | 34.57 | 35.74 | 0.87 | later round |
 | 20 | 3 | qwen36 | Q8_0 | 37.01 | 48.28 | 0.64 | later round |
+| 21 | 3 | qwen36 | UD-Q2_K_XL | 28.22 | 32.25 | 0.96 | later round |
 
 ## Engine fixes made to run the matrix
 
