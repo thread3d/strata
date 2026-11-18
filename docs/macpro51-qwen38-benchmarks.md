@@ -20,7 +20,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Quantisation | Source | On disk | Result |
 | --- | --- | --- | ---: | --- |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 4 runs, 1.06 tok/s decode (steady state) |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 5 runs, 1.06 tok/s decode (steady state) |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 4 runs, 0.91 tok/s decode (steady state) |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 4 runs, 0.83 tok/s decode (steady state) |
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 5 runs, 0.62 tok/s decode (steady state) |
@@ -43,7 +43,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ1_M`, `UD-Q
 
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Q2_0` | 3 | 1.06 ± 0.002 | 1.06 | 1.06 – 1.07 | 3.41 ± 0.033 |
+| `Q2_0` | 4 | 1.06 ± 0.002 | 1.06 | 1.06 – 1.07 | 3.41 ± 0.027 |
 | `IQ3_XXS` | 3 | 0.914 ± 0.001 | 0.914 | 0.912 – 0.915 | 2.74 ± 0.028 |
 | `IQ3_S` | 3 | 0.825 ± 0.001 | 0.825 | 0.825 – 0.826 | 2.47 ± 0.013 |
 | `UD-Q4_K_XL` | 4 | 0.622 ± 0.001 | 0.622 | 0.621 – 0.623 | 1.98 ± 0.019 |
@@ -102,6 +102,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 15 | 4 | `IQ3_S` | 12.62 | 38.80 | 0.825 | later round |
 | 16 | 4 | `UD-Q4_K_XL` | 15.70 | 51.43 | 0.622 | later round |
 | 17 | 5 | `UD-Q4_K_XL` | 15.47 | 51.53 | 0.621 | later round |
+| 18 | 5 | `Q2_0` | 9.08 | 30.16 | 1.06 | later round |
 
 ## Limits recorded here
 

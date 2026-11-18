@@ -17,14 +17,15 @@
 <line x1="92.0" y1="92.0" x2="1146.0" y2="92.0" stroke="#e5e7eb" stroke-width="1.0"/>
 <text x="82.0" y="96.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#6b7280" font-weight="400">4.00</text>
 <text x="22.0" y="281.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600" transform="rotate(-90.0 22.0 281.0)">tokens per second (prompt)</text>
-<rect x="191.8" y="147.9" width="64.0" height="322.1" fill="#0f766e" opacity="0.86"/>
-<line x1="223.8" y1="144.8" x2="223.8" y2="151.1" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="212.8" y1="144.8" x2="234.8" y2="144.8" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="212.8" y1="151.1" x2="234.8" y2="151.1" stroke="#1f2933" stroke-width="1.4"/>
+<rect x="191.8" y="147.8" width="64.0" height="322.2" fill="#0f766e" opacity="0.86"/>
+<line x1="223.8" y1="145.2" x2="223.8" y2="150.4" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="212.8" y1="145.2" x2="234.8" y2="145.2" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="212.8" y1="150.4" x2="234.8" y2="150.4" stroke="#1f2933" stroke-width="1.4"/>
 <circle cx="209.7" cy="151.0" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <circle cx="216.7" cy="144.7" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <circle cx="223.8" cy="148.1" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<text x="223.8" y="138.9" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">3.41</text>
+<circle cx="230.8" cy="147.3" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<text x="223.8" y="138.8" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">3.41</text>
 <text x="223.8" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 223.8 490.0)">Q2_0</text>
 <rect x="455.2" y="210.9" width="64.0" height="259.1" fill="#0f766e" opacity="0.86"/>
 <line x1="487.2" y1="208.2" x2="487.2" y2="213.6" stroke="#1f2933" stroke-width="1.4"/>
