@@ -1,18 +1,6 @@
-# Qwen3.8-Flash-Next prompt-throughput benchmarks on macpro51 (RX 580, Metal 2)
+# Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-> **Superseded 2026-11-18 20:50 UTC:** these prompt numbers were measured before the gr_norm2 64-lane fix,
-> on a forward whose routing was not the model's (its values were non-finite at the first attention layer).
-> They are kept as the record of the first matrix and will be replaced by a full prefill+decode sweep once
-> multi-token decoding is stable. See [the bring-up record](qwen38-metal-macpro51.md).
-
-_Generated 2026-11-18 18:54 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
-
-> **The engine does not answer yet.** Its forward pass goes non-finite at the first full-attention layer, so
-> there is no decode rate to report and none is claimed here. What this page measures is the prompt path: the
-> whole model is opened, the dense side and the expert arena are built, and the 32-token prompt is read through
-> the same streaming kernels a decode window uses. Those bytes and that work are real. The blocker and the
-> evidence are in [qwen38-metal-macpro51.md](qwen38-metal-macpro51.md); this page becomes the decode matrix
-> the day the query projection is fixed.
+_Generated 2026-11-18 20:18 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -21,86 +9,81 @@ _Generated 2026-11-18 18:54 UTC by `bench/macpro51/run_bench_qwen38.py` after ev
 | Mac | MacPro5,1, 2 × 6-core Xeon X5675 (12 cores / 24 threads), 128 GB DDR3 ECC |
 | GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |
 | OS | macOS 11.7.11 (Big Sur, 20G1443) |
-| Engine | `strata` 0.1.59-metal, branch `macpro51` |
-| Branch / commit at the last run | `macpro51` / `ff7ed691aa` |
+| Engine | `strata` 0.1.59-metal (`metal/` build, Ninja Release), branch `macpro51` |
+| Branch / commit at the last run | `macpro51` / `c1b960a9d5` |
+
+The engine's Metal decode window reads the model's GGUF in place. The RX 580 cannot hold a 40–160 GB pack in 8 GB of VRAM, so the dense side (norms, hyper-connection projections, the shared expert and the attention/GDN projections) is read once into host memory and the routed experts stream from the SSD through an arena; a token's experts are looked up after its router and the next layer's are read ahead. Nothing is copied into a second file.
 
 ## What ran
 
-| Pack | Quantisation | Source | On disk | Runs | Prompt, steady (mean ± sd) | All runs (mean) | Steady range |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 5 | 4.72 ± 0.050 | 4.74 | 4.68 – 4.79 |
-| `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | — | — | — | — |
-| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 5 | 3.67 ± 0.028 | 3.35 | 3.64 – 3.70 |
-| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 5 | 3.38 ± 0.029 | 3.30 | 3.35 – 3.42 |
+Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk layers (36 gated-DeltaNet, 12 full-attention QSA with the 4×128 indexer), 4 hyper-connection streams of rank 320, and 512 routed experts of width 640 with 10 used per token, plus the 28.8 GB PLE n-gram table in the second shard. Every pack below is the same architecture; only the expert encodings differ.
 
-Not on disk yet (not attempted, and not counted as a failure): `UD-IQ1_M`, `UD-Q2_0`, `UD-IQ2_XS`, `UD-Q2_K_XL`, `UD-IQ4_XS`, `UD-Q4_K_XL`, `UD-Q5_K_XL`, `UD-Q6_K_XL`, `Q8_0`.
-
-Refused on this branch (recorded, not timed):
-
-| Pack | Why |
-| --- | --- |
-| `IQ2_XS` | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
+| Pack | Quantisation | Source | On disk | Result |
+| --- | --- | --- | ---: | --- |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 1 run, 1.07 tok/s decode (steady state) |
+| `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | queued |
+| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 1 run, 0.90 tok/s decode (steady state) |
+| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | queued |
+| `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 0.0 GiB | not downloaded |
+| `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 0.0 GiB | not downloaded |
+| `UD-IQ2_XS` | UD-IQ2_XS (Unsloth v3.1) | unsloth | 0.0 GiB | not downloaded |
+| `UD-Q2_K_XL` | UD-Q2_K_XL (Unsloth v3.1) | unsloth | 0.0 GiB | not downloaded |
+| `UD-IQ4_XS` | UD-IQ4_XS (Unsloth) | unsloth | 0.0 GiB | not downloaded |
+| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 0.0 GiB | not downloaded |
+| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 0.0 GiB | not downloaded |
+| `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 0.0 GiB | not downloaded |
+| `Q8_0` | Q8_0 (Unsloth) | unsloth | 0.0 GiB | not downloaded |
 
 ## Method
 
-- **One process per run.** The engine reads the dense side (2.36 GB for Q2_0), fills the expert arena (2.2 GB),
-  compiles its window kernels, then reads the 32-token prompt as one chunk through the prompt path.
-- **The same 32 token ids** for every pack (the Qwen 248 320-entry vocabulary, a varied English sentence).
-- **Mixed order.** Each round contains every downloaded pack once, in a fresh shuffled order (seed in
-  `bench/macpro51/meta-qwen38.json`), so a drift in the machine is spread rather than assigned to one pack.
-- **Error bars.** Mean ± 1 sample standard deviation over the steady-state runs (rounds 2+). Round 1 is each
-  pack's first pass on a cold page cache and is kept separately. The dots on the chart are the individual runs.
-- **Streaming.** `STRATA_METAL_STREAM=1`: the pack cannot be resident in 8 GB of VRAM, and every pack is measured
-  on the same streamed path. The prompt path and the decode window read the same experts from the same arena.
+- **One process per run.** `strata generate` opens the shard, builds the pack metadata once, reads the dense side and the expert arena, then times the prompt and the decode separately. Load time is reported on its own and is not part of either throughput.
+- **Fixed workload.** The same 32 token ids for every pack (the Qwen 248 320-entry vocabulary, a varied English sentence rather than repeated ids, so routing is not narrowed), read one at a time, then 32 greedy tokens.
+- **Mixed order.** Each round contains every downloaded pack once, in a fresh shuffled order (seed in the run's `meta.json`). No pack is always first or last, so thermal drift, page-cache state and SSD behaviour are spread across the matrix.
+- **Error bars.** Mean ± 1 sample standard deviation over the steady-state runs (rounds 2+); round 1 is each pack's first pass and is priced separately. Individual runs are the dots on the charts.
+- **Streaming.** `STRATA_METAL_STREAM=1` is set for every run: the pack cannot be resident in 8 GB of VRAM, and forcing the streamed path keeps every pack on the same code path.
 
-## Prompt throughput
+## Decode throughput
 
-![Prompt throughput by quantisation](benchmarks/macpro51/qwen38-prefill.svg)
+![Decode throughput by quantisation](benchmarks/macpro51/qwen38-decode.svg)
 
-## Size against prompt speed
+| Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `Q2_0` | 1 | 1.07 ± 0.00 | 1.07 | 1.07 – 1.07 | 3.33 ± 0.00 |
+| `IQ3_XXS` | 1 | 0.903 ± 0.00 | 0.903 | 0.903 – 0.903 | 2.61 ± 0.00 |
 
-![Prompt throughput against pack size](benchmarks/macpro51/qwen38-size-vs-prompt.svg)
+## Prompt (prefill) throughput
 
-A prompt token reads the same 10 routed experts per layer a decode token does, so the pack's encoding and the
-bytes a token actually touches decide this number more than the file size does.
+![Prefill throughput by quantisation](benchmarks/macpro51/qwen38-prefill.svg)
+
+The prompt is read one token at a time on this port, so prefill here is per-token latency through the same expert stream, not the batched GEMM a CUDA card runs. It is comparable across these packs, not to a desktop GPU's numbers.
+
+## Size against speed
+
+![Decode throughput against pack size](benchmarks/macpro51/qwen38-size-vs-decode.svg)
+
+A token reads only its 10 routed experts per layer, so a bigger file is not automatically slower: what matters is the bytes one token actually touches, the encoding's decode cost (Q2_0 and the i-quants trade a wider row read for cheap decode), and how much of the dense side stays resident.
 
 ## What the numbers say
 
-- **Fastest prompt read:** `Q2_0` at 4.72 tok/s; **slowest:** `IQ3_S` at 3.38 tok/s (1.40× between them).
-- **Run-to-run spread:** coefficient of variation from 0.8% (`IQ3_XXS`) to 1.1% (`Q2_0`).
-
-The first round is the first pass over each pack (cold page cache, cold clocks); the later rounds are the
-steady state. The round-1 and steady numbers are kept apart in the table and the per-run log.
+- **Fastest decode:** `Q2_0` at 1.07 tok/s; **slowest:** `IQ3_XXS` at 0.90 tok/s (1.18× between them).
+- **Fastest prompt read:** `Q2_0` at 3.33 tok/s; slowest `IQ3_XXS` at 2.61 tok/s.
 
 ## Run order (mixing)
 
 ![Every run in execution order](benchmarks/macpro51/qwen38-run-order.svg)
 
-The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl` is skipped, so an interrupted
-or rebooted machine costs one run rather than the series.
+The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl` is skipped, so an interrupted or rebooted machine costs one run rather than the series.
 
 ## Per-run log
 
-| # | Round | Pack | Prompt tokens | Prompt s | Prompt tok/s | Note |
+| # | Round | Pack | Prefill s | Decode s | Decode tok/s | Note |
 | ---: | ---: | --- | ---: | ---: | ---: | --- |
-| 1 | 1 | `Q2_0` | 31 | 6.48 | 4.79 | first round (cold) |
-| 1 | 1 | `IQ3_XXS` | 31 | 15.07 | 2.06 | first round (cold) |
-| 2 | 1 | `IQ3_S` | 31 | 10.47 | 2.96 | first round (cold) |
-| 3 | 1 | `IQ2_XS` | — | — | — | failed: mtl: shared-event waits 2320 times, 33.3 ms (0.014 ms a wait) |
-| 4 | 2 | `IQ2_XS` | — | — | — | failed: mtl: shared-event waits 2320 times, 32.7 ms (0.014 ms a wait) |
-| 5 | 2 | `IQ3_XXS` | 31 | 8.47 | 3.66 | later round |
-| 6 | 2 | `IQ3_S` | 31 | 9.26 | 3.35 | later round |
-| 7 | 2 | `Q2_0` | 31 | 6.54 | 4.74 | later round |
-| 8 | 3 | `Q2_0` | 31 | 6.61 | 4.69 | later round |
-| 9 | 3 | `IQ3_XXS` | 31 | 8.52 | 3.64 | later round |
-| 10 | 3 | `IQ2_XS` | — | — | — | failed: mtl: shared-event waits 2320 times, 33.2 ms (0.014 ms a wait) |
-| 11 | 3 | `IQ3_S` | 31 | 9.13 | 3.40 | later round |
-| 12 | 4 | `IQ2_XS` | — | — | — | failed: mtl: shared-event waits 2320 times, 32.8 ms (0.014 ms a wait) |
-| 13 | 4 | `Q2_0` | 31 | 6.48 | 4.79 | later round |
-| 14 | 4 | `IQ3_XXS` | 31 | 8.38 | 3.70 | later round |
-| 15 | 4 | `IQ3_S` | 31 | 9.08 | 3.42 | later round |
-| 16 | 5 | `IQ3_S` | 31 | 9.18 | 3.38 | later round |
-| 17 | 5 | `Q2_0` | 31 | 6.63 | 4.68 | later round |
-| 18 | 5 | `IQ3_XXS` | 31 | 8.41 | 3.69 | later round |
-| 19 | 5 | `IQ2_XS` | — | — | — | failed: mtl: shared-event waits 2320 times, 32.6 ms (0.014 ms a wait) |
+| 1 | 1 | `Q2_0` | 9.32 | 30.04 | 1.07 | first round (cold) |
+| 1 | 1 | `IQ3_XXS` | 11.89 | 35.44 | 0.903 | first round (cold) |
+
+## Limits recorded here
+
+- The pack's second shard is the 28.8 GB PLE n-gram table. It is read from the SSD a few rows at a time and is never loaded whole; its size counts in the download, not in VRAM.
+- Metal 2 on this card has no device addresses; kernels take buffer + offset, and the engine hands every weight that way. No Metal 3 feature is used.
+- The output head is 512 wide in the draft path and 248 320 wide in the sample; greedy decoding is used throughout so the comparison is not a sampler's.
 

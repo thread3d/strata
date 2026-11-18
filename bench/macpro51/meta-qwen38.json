@@ -4,7 +4,7 @@
  "seed": 20261118,
  "prefill": 32,
  "decode": 32,
- "git_head": "ff7ed691aa",
- "prefill_only": true,
- "started": "2026-11-18T18:44:14+00:00"
+ "git_head": "c1b960a9d5",
+ "prefill_only": false,
+ "started": "2026-11-18T20:17:10+00:00"
 }

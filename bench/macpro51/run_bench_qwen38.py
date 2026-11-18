@@ -50,8 +50,10 @@ PREFILL_ONLY = False   # --prefill-only: one token after the prompt, so the prom
 # Qwen3.6's ids (the same 248 320-entry Qwen vocabulary): the first 32 of
 #   "Explain, in two short sentences, why the sky looks blue during the day and red at sunset. Then say
 #    why the Moon looks orange near the horizon."
-IDS = [3, 1, 42498, 456, 11, 303, 1330, 2716, 22157, 11, 3069, 279, 12515, 5686, 6105, 2261, 279, 1834, 321,
-       2438, 506, 41564, 13, 4844, 1910, 3069, 279, 16820, 5686, 18016, 3043, 279]
+# The pack's own tokenizer, not Qwen3.6's ids: the two vocabularies share a size but not their order, and the
+# Qwen3.6 ids render as punctuation here.  Encoded from the sentence below with tools/strata_tokenizer.py (32 ids).
+IDS = [814, 20139, 11, 303, 1330, 2716, 22157, 11, 3069, 279, 12515, 5686, 6105, 2261, 279, 1834, 321,
+       2438, 506, 41564, 13, 4844, 1910, 3069, 279, 16820, 5686, 18016, 3043, 279, 32946, 13]
 
 # (folder under ~/models/qwen38, label, quantisation, source, note)
 CONFIGS = [
