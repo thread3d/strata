@@ -32,11 +32,11 @@
 <text x="1008.0" y="482.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#6b7280" font-weight="400">300</text>
 <text x="24.0" y="277.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600" transform="rotate(-90.0 24.0 277.0)">decode tokens/s</text>
 <text x="550.0" y="514.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600">pack size on disk (GiB)</text>
-<line x1="152.2" y1="240.7" x2="152.2" y2="287.0" stroke="#2563eb" stroke-width="1.2"/>
-<line x1="144.2" y1="240.7" x2="160.2" y2="240.7" stroke="#2563eb" stroke-width="1.2"/>
-<line x1="144.2" y1="287.0" x2="160.2" y2="287.0" stroke="#2563eb" stroke-width="1.2"/>
-<circle cx="152.2" cy="263.9" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="161.2" y="256.9" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q4_K_M</text>
+<line x1="152.2" y1="250.5" x2="152.2" y2="288.5" stroke="#2563eb" stroke-width="1.2"/>
+<line x1="144.2" y1="250.5" x2="160.2" y2="250.5" stroke="#2563eb" stroke-width="1.2"/>
+<line x1="144.2" y1="288.5" x2="160.2" y2="288.5" stroke="#2563eb" stroke-width="1.2"/>
+<circle cx="152.2" cy="269.5" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="161.2" y="262.5" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q4_K_M</text>
 <line x1="173.1" y1="230.8" x2="173.1" y2="257.5" stroke="#2563eb" stroke-width="1.2"/>
 <line x1="165.1" y1="230.8" x2="181.1" y2="230.8" stroke="#2563eb" stroke-width="1.2"/>
 <line x1="165.1" y1="257.5" x2="181.1" y2="257.5" stroke="#2563eb" stroke-width="1.2"/>
