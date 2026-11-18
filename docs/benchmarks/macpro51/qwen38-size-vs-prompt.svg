@@ -42,9 +42,9 @@
 <line x1="731.0" y1="237.9" x2="747.0" y2="237.9" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="739.0" cy="236.0" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="748.0" y="229.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_XXS</text>
-<line x1="805.3" y1="252.0" x2="805.3" y2="256.3" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="797.3" y1="252.0" x2="813.3" y2="252.0" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="797.3" y1="256.3" x2="813.3" y2="256.3" stroke="#0f766e" stroke-width="1.2"/>
-<circle cx="805.3" cy="254.1" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="814.3" y="247.1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
+<line x1="805.3" y1="251.0" x2="805.3" y2="255.4" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="797.3" y1="251.0" x2="813.3" y2="251.0" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="797.3" y1="255.4" x2="813.3" y2="255.4" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="805.3" cy="253.2" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="814.3" y="246.2" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
 </svg>
