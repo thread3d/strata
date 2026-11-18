@@ -62,14 +62,15 @@
 <circle cx="566.3" cy="219.3" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <text x="566.3" y="220.3" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.96</text>
 <text x="566.3" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 566.3 490.0)">UD-Q4_K_XL</text>
-<rect x="641.1" y="265.4" width="61.1" height="204.6" fill="#2563eb" opacity="0.86"/>
-<line x1="671.7" y1="240.9" x2="671.7" y2="289.9" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="660.7" y1="240.9" x2="682.7" y2="240.9" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="660.7" y1="289.9" x2="682.7" y2="289.9" stroke="#1f2933" stroke-width="1.4"/>
+<rect x="641.1" y="270.4" width="61.1" height="199.6" fill="#2563eb" opacity="0.86"/>
+<line x1="671.7" y1="248.1" x2="671.7" y2="292.8" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="660.7" y1="248.1" x2="682.7" y2="248.1" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="660.7" y1="292.8" x2="682.7" y2="292.8" stroke="#1f2933" stroke-width="1.4"/>
 <circle cx="658.3" cy="293.7" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="665.0" cy="251.1" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
 <circle cx="671.7" cy="251.4" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
-<text x="671.7" y="256.4" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.81</text>
+<circle cx="678.4" cy="285.5" r="2.6" fill="white" stroke="#2563eb" stroke-width="1.0" opacity="0.95"/>
+<text x="671.7" y="261.4" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.79</text>
 <text x="671.7" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 671.7 490.0)">UD-Q6_K_XL</text>
 <rect x="746.5" y="285.8" width="61.1" height="184.2" fill="#2563eb" opacity="0.86"/>
 <line x1="777.1" y1="265.3" x2="777.1" y2="306.3" stroke="#1f2933" stroke-width="1.4"/>
