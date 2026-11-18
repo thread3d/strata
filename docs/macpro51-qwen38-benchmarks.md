@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 20:37 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 21:56 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -10,7 +10,7 @@ _Generated 2026-11-18 20:37 UTC by `bench/macpro51/run_bench_qwen38.py` after ev
 | GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |
 | OS | macOS 11.7.11 (Big Sur, 20G1443) |
 | Engine | `strata` 0.1.59-metal (`metal/` build, Ninja Release), branch `macpro51` |
-| Branch / commit at the last run | `macpro51` / `c1b960a9d5` |
+| Branch / commit at the last run | `macpro51` / `d2552f7f0e` |
 
 The engine's Metal decode window reads the model's GGUF in place. The RX 580 cannot hold a 40–160 GB pack in 8 GB of VRAM, so the dense side (norms, hyper-connection projections, the shared expert and the attention/GDN projections) is read once into host memory and the routed experts stream from the SSD through an arena; a token's experts are looked up after its router and the next layer's are read ahead. Nothing is copied into a second file.
 
@@ -20,12 +20,14 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Quantisation | Source | On disk | Result |
 | --- | --- | --- | ---: | --- |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 5 runs, 1.06 tok/s decode (steady state) |
-| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 5 runs, 0.90 tok/s decode (steady state) |
-| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 5 runs, 0.83 tok/s decode (steady state) |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | queued |
+| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | queued |
+| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 1 run, 0.82 tok/s decode (steady state) |
+| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | queued |
+| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 120.5 GiB | queued |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
 
-Not on disk yet (not attempted, and not counted as a failure): `UD-IQ1_M`, `UD-Q2_0`, `UD-IQ2_XS`, `UD-Q2_K_XL`, `UD-IQ4_XS`, `UD-Q4_K_XL`, `UD-Q5_K_XL`, `UD-Q6_K_XL`, `Q8_0`.
+Not on disk yet (not attempted, and not counted as a failure): `UD-IQ1_M`, `UD-Q2_0`, `UD-IQ2_XS`, `UD-Q2_K_XL`, `UD-IQ3_XXS`, `UD-Q3_K_XL`, `UD-IQ4_XS`, `UD-Q6_K_XL`, `Q8_0`.
 
 ## Method
 
@@ -41,9 +43,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ1_M`, `UD-Q
 
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Q2_0` | 4 | 1.06 ± 0.001 | 1.06 | 1.05 – 1.06 | 3.33 ± 0.021 |
-| `IQ3_XXS` | 4 | 0.895 ± 0.006 | 0.897 | 0.886 – 0.900 | 2.63 ± 0.024 |
-| `IQ3_S` | 4 | 0.835 ± 0.001 | 0.836 | 0.834 – 0.836 | 2.53 ± 0.028 |
+| `IQ3_S` | 1 | 0.824 ± 0.00 | 0.824 | 0.824 – 0.824 | 2.38 ± 0.00 |
 
 ## Prompt (prefill) throughput
 
@@ -59,17 +59,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 
 ## What the numbers say
 
-- **Fastest decode:** `Q2_0` at 1.06 tok/s; **slowest:** `IQ3_S` at 0.83 tok/s (1.26× between them).
-- **Run-to-run spread:** coefficient of variation from 0.1% (`Q2_0`) to 0.7% (`IQ3_XXS`).
-- **Fastest prompt read:** `Q2_0` at 3.33 tok/s; slowest `IQ3_S` at 2.53 tok/s.
-
-The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages -0.8% over these 3 packs.
-
-| Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |
-| --- | ---: | ---: | ---: |
-| `Q2_0` | 1.07 | 1.06 | -0.9% |
-| `IQ3_XXS` | 0.90 | 0.90 | -0.8% |
-| `IQ3_S` | 0.84 | 0.83 | -0.6% |
+_Not enough completed packs yet; this section fills in as the rounds finish._
 
 ## Run order (mixing)
 
@@ -81,26 +71,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 
 | # | Round | Pack | Prefill s | Decode s | Decode tok/s | Note |
 | ---: | ---: | --- | ---: | ---: | ---: | --- |
-| 1 | 1 | `Q2_0` | 9.32 | 30.04 | 1.07 | first round (cold) |
-| 2 | 1 | `IQ3_XXS` | 11.89 | 35.44 | 0.903 | first round (cold) |
-| 3 | 1 | `IQ3_S` | 12.10 | 38.08 | 0.840 | first round (cold) |
-| 4 | 1 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
-| 5 | 2 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
-| 6 | 2 | `IQ3_XXS` | 11.68 | 35.60 | 0.899 | later round |
-| 7 | 2 | `IQ3_S` | 12.23 | 38.39 | 0.834 | later round |
-| 8 | 2 | `Q2_0` | 9.29 | 30.31 | 1.06 | later round |
-| 9 | 3 | `Q2_0` | 9.24 | 30.35 | 1.05 | later round |
-| 10 | 3 | `IQ3_XXS` | 11.91 | 36.12 | 0.886 | later round |
-| 11 | 3 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
-| 12 | 3 | `IQ3_S` | 12.15 | 38.28 | 0.836 | later round |
-| 13 | 4 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
-| 14 | 4 | `Q2_0` | 9.38 | 30.36 | 1.05 | later round |
-| 15 | 4 | `IQ3_XXS` | 11.89 | 35.67 | 0.897 | later round |
-| 16 | 4 | `IQ3_S` | 12.18 | 38.31 | 0.835 | later round |
-| 17 | 5 | `IQ3_S` | 12.45 | 38.34 | 0.835 | later round |
-| 18 | 5 | `Q2_0` | 9.30 | 30.29 | 1.06 | later round |
-| 19 | 5 | `IQ3_XXS` | 11.74 | 35.57 | 0.900 | later round |
-| 20 | 5 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
+| 1 | 1 | `IQ3_S` | 13.05 | 38.82 | 0.824 | first round (cold) |
 
 ## Limits recorded here
 
