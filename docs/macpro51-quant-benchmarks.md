@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 09:19 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 09:22 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -21,7 +21,7 @@ Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next a
 | Family | Pack | On disk | Result |
 | --- | --- | ---: | --- |
 | qwen36 | Q4_K_M | 19.7 GiB | 2 run(s), 0.80 tok/s decode |
-| qwen36 | Q6_K | 26.6 GiB | 2 run(s), 0.87 tok/s decode |
+| qwen36 | Q6_K | 26.6 GiB | 3 run(s), 0.88 tok/s decode |
 | qwen36 | Q8_0 | 35.2 GiB | 2 run(s), 0.71 tok/s decode |
 | qwen36 | UD-Q2_K_XL | 11.7 GiB | 2 run(s), 1.03 tok/s decode |
 | qwen36 | UD-Q4_K_XL | 21.3 GiB | 2 run(s), 0.94 tok/s decode |
@@ -47,7 +47,7 @@ Two Qwen3.6 packs were refused when this sweep started, and the refusals were re
 | Family | Pack | Runs | Decode tok/s (mean ± sd) | Range | Prefill tok/s (mean ± sd) |
 | --- | --- | ---: | ---: | ---: | ---: |
 | qwen36 | Q4_K_M | 2 | 0.80 ± 0.09 | 0.74 – 0.87 | 0.94 ± 0.00 |
-| qwen36 | Q6_K | 2 | 0.87 ± 0.07 | 0.82 – 0.91 | 0.99 ± 0.03 |
+| qwen36 | Q6_K | 3 | 0.88 ± 0.05 | 0.82 – 0.92 | 0.99 ± 0.02 |
 | qwen36 | Q8_0 | 2 | 0.71 ± 0.10 | 0.64 – 0.78 | 0.86 ± 0.00 |
 | qwen36 | UD-Q2_K_XL | 2 | 1.03 ± 0.09 | 0.96 – 1.09 | 1.15 ± 0.00 |
 | qwen36 | UD-Q4_K_XL | 2 | 0.94 ± 0.11 | 0.86 – 1.02 | 1.08 ± 0.00 |
@@ -72,14 +72,14 @@ On this card a token streams its routed experts from RAM/SSD through an 8 GB win
 - **Fastest decode:** `UD-Q2_K_XL` at 1.03 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (3.54× between them).
 - **Run-to-run spread:** largest for `UD-Q6_K_XL` at 15.2% of its mean (coefficient of variation), smallest for `IQ2_XXS` at 0.0%. A spread this small is what a fixed workload on one machine should show; a bar that is much wider is a pack whose expert streaming is not in steady state.
 - **Fastest prompt read:** `UD-Q2_K_XL` at 1.15 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
-- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.03, `Q4_K_M` 0.80, `UD-Q4_K_XL` 0.94, `Q6_K` 0.87, `UD-Q6_K_XL` 0.78, `Q8_0` 0.71, `UD-Q8_K_XL` 0.71 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
+- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.03, `Q4_K_M` 0.80, `UD-Q4_K_XL` 0.94, `Q6_K` 0.88, `UD-Q6_K_XL` 0.78, `Q8_0` 0.71, `UD-Q8_K_XL` 0.71 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
 
 The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack:
 
 | Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |
 | --- | ---: | ---: | ---: |
 | Q4_K_M | 0.74 | 0.87 | +18.0% |
-| Q6_K | 0.82 | 0.91 | +11.3% |
+| Q6_K | 0.82 | 0.91 | +11.4% |
 | Q8_0 | 0.64 | 0.78 | +21.7% |
 | UD-Q2_K_XL | 0.96 | 1.09 | +13.7% |
 | UD-Q4_K_XL | 0.86 | 1.02 | +18.7% |
@@ -113,6 +113,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results.jsonl` is ski
 | 14 | 2 | qwen36 | UD-Q4_K_XL | 29.58 | 30.54 | 1.02 | later round |
 | 15 | 2 | qwen36 | UD-Q6_K_XL | 34.35 | 35.70 | 0.87 | later round |
 | 16 | 2 | dsv41 | IQ2_XXS | 33.36 | 52.57 | 0.29 | later round |
+| 17 | 3 | qwen36 | Q6_K | 32.68 | 33.87 | 0.92 | later round |
 
 ## Engine fixes made to run the matrix
 
