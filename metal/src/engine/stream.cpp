@@ -193,13 +193,29 @@ bool ExpertStream::load_dense(gguf::File& f, mtl::Context& cx, const std::vector
         ts.push_back(&t);
         tot += (t.bytes + 255) / 256 * 256;
     }
-    out = cx.alloc((tot + PAGE - 1) / PAGE * PAGE);
+    // A dense side larger than one MTLBuffer (the RX 580's maxBufferLength is 3.8 GB; an Unsloth UD-* pack's is
+    // 4.7-6 GB) goes into an anonymous host blob and is wrapped as overlapping chunks: every GPU binding then
+    // selects its chunk (mtl::BO), and the host reads (the embedding row, the PLE conv weights) still index
+    // out.ptr + offset because the no-copy chunks ARE that memory.
+    const size_t maxlen = cx.max_buffer_length() / PAGE * PAGE;
+    uint8_t* host = nullptr;
+    const size_t blob = (tot + PAGE - 1) / PAGE * PAGE;
+    bool wrapped = false;
+    if (tot > maxlen) {
+        void* m = mmap(nullptr, blob, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+        if (m == MAP_FAILED) { err = "metal stream: cannot allocate the dense blob"; return false; }
+        host = (uint8_t*) m;
+    } else {
+        out = cx.alloc(blob);
+        host = out.as<uint8_t>();
+    }
     std::vector<uint64_t> src(ts.size()), dst(ts.size());
-    uint64_t o = 0;
+    uint64_t o = 0, span = 0;
     for (size_t i = 0; i < ts.size(); ++i) {
         src[i] = ts[i]->offset;
         dst[i] = o;
         o += (ts[i]->bytes + 255) / 256 * 256;
+        span = std::max<uint64_t>(span, (ts[i]->bytes + PAGE - 1) / PAGE * PAGE);
     }
     std::atomic<size_t> next{0};
     std::atomic<bool> ok{true};
@@ -209,14 +225,21 @@ bool ExpertStream::load_dense(gguf::File& f, mtl::Context& cx, const std::vector
             for (;;) {
                 const size_t i = next++;
                 if (i >= ts.size()) break;
-                if (!read(out.as<uint8_t>() + dst[i], ts[i]->bytes, src[i])) ok = false;
+                if (!read(host + dst[i], ts[i]->bytes, src[i])) ok = false;
             }
         });
     for (auto& x : th) x.join();
     if (!ok) { err = "metal stream: reading the dense tensors failed"; return false; }
+    if (tot > maxlen) {
+        out = cx.wrap(host, blob, (size_t) span);
+        if (out.handle == nullptr) { err = "metal stream: cannot wrap the dense blob"; return false; }
+        wrapped = true;
+        std::fprintf(stderr, "strata metal stream: the dense side is %.2f GB, larger than one buffer (%.2f GB): %zu chunks of %.2f GB\n",
+                     tot / 1e9, maxlen / 1e9, out.chunks->size(), maxlen / 1e9);
+    }
     for (size_t i = 0; i < ts.size(); ++i) ts[i]->offset = dst[i];
-    std::fprintf(stderr, "strata metal stream: %zu dense tensors read into memory (%.2f GB, %.1f s; %zu left out)\n", ts.size(),
-                 tot / 1e9, (now_ms() - t0) / 1e3, skip.size());
+    std::fprintf(stderr, "strata metal stream: %zu dense tensors read into memory (%.2f GB, %.1f s; %zu left out%s)\n", ts.size(),
+                 tot / 1e9, (now_ms() - t0) / 1e3, skip.size(), wrapped ? ", chunked" : "");
     return true;
 }
 

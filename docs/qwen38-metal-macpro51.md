@@ -113,6 +113,10 @@ These are on the branch, all behind `STRATA_GPU_METAL`, so the CUDA/HIP paths ar
 5. **No adaptation thread without a host residency table.** `adapt()` indexes `host_res`; the Metal window has none.
    All three spawn sites (the one-shot loop and the two serve loops) now require it, which also stops the fourth
    decode window's SIGSEGV.
+6. **A dense side larger than one Metal buffer.** The RX 580's `maxBufferLength` is 3.8 GB and an Unsloth UD-* pack's
+   dense side is 4.7–6 GB, so `ExpertStream::load_dense` now reads it into an anonymous host blob and wraps that as
+   overlapping chunks (every GPU binding selects its chunk; the host reads still index the base pointer). This is what
+   makes the Unsloth packs runnable on this card at all.
 
 The pack tools also needed two Python 3.8 fixes (`Path.write_text(..., newline=...)` is 3.10's), which is the Python
 macOS 11 ships: `tools/strata_tokenizer.py` and `tools/iq_pack.py` now open the file themselves.
@@ -129,10 +133,23 @@ because it is the same bytes):
 | `IQ3_S` | 83.6 GB | verified; 0.84 tok/s decode, 2.53 tok/s prompt |
 | `IQ2_XS` | 68.0 GB | verified, but **refused on this branch**: some gate/up experts are IQ1_M and `moe.metal` has no `moe_gu_29_*` |
 
-The Unsloth and Gyro packs are not downloaded yet. An Unsloth pack is 3–6 shards whose dense tensors and experts are
-cut across them, so the Metal window (which opens one GGUF) needs `metal/tools/metal_repack.py` first; Gyro is one
-file with the n-gram table inside, and its TQ expert kernels are the `stubs_gyro` path on this branch — check before
-promising it.
+### Multi-shard Unsloth packs
+
+An Unsloth UD-* pack is 3–6 shards whose dense tensors and experts are cut across them, so the window (which opens one
+GGUF) needs `metal/tools/metal_repack.py` first. That path now works, and `bench/macpro51/prep_unsloth.sh <PACK>` runs
+all of it: repack (verified tensor by tensor), `iq_pack --compat-bf16` (the sets keep the HC projections as Q8_0; the
+conversion rounds only those), then a smoke run. Two details matter:
+
+- pass the repacked file as `--native` **and** `--native-dense-gguf`; with `--native` alone the engine adds the PLE
+  shard to the dense list and the shard-split check refuses a repacked file beside it;
+- `iq_pack --compat-bf16` needs llama.cpp's `gguf-py` (`STRATA_GGUF_PY=<llama.cpp>/gguf-py`) and PyYAML.
+
+Measured on UD-Q4_K_XL (111 GB downloaded, 76.9 GiB repacked) **while the rest of the set was still downloading**:
+0.61 tok/s decode and 1.57 tok/s prompt (the download competes for the SSD), with the same first tokens as Q2_0
+(`\n\n<think>\nThe user wants a concise explanation…`) — the 4.5-bit pack answers the same way the 2-bit one does.
+
+Gyro is one file with the n-gram table inside, and its TQ expert kernels are the `stubs_gyro` path on this branch —
+check before promising it.
 
 `bench/macpro51/run_bench_qwen38.py` is the sweep: one process per run, the pack's own 32-token prompt + 32 greedy
 tokens, a fresh shuffled order each round, mean ± 1 sample standard deviation over the steady rounds, SVG charts and

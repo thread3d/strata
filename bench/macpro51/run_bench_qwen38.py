@@ -65,7 +65,9 @@ CONFIGS = [
     ("UD-Q2_0", "UD-Q2_0", "UD-Q2_0 (Unsloth v3.1)", "unsloth", "2-bit dynamic"),
     ("UD-IQ2_XS", "UD-IQ2_XS", "UD-IQ2_XS (Unsloth v3.1)", "unsloth", "2-bit i-quant dynamic"),
     ("UD-Q2_K_XL", "UD-Q2_K_XL", "UD-Q2_K_XL (Unsloth v3.1)", "unsloth", "2-bit dynamic, some 3-bit experts"),
-    ("UD-IQ4_XS", "UD-IQ4_XS", "UD-IQ4_XS (Unsloth)", "unsloth", "~4-bit i-quant experts"),
+    ("UD-IQ3_XXS", "UD-IQ3_XXS", "UD-IQ3_XXS (Unsloth v3.1)", "unsloth", "3-bit i-quant dynamic"),
+    ("UD-Q3_K_XL", "UD-Q3_K_XL", "UD-Q3_K_XL (Unsloth v3.1)", "unsloth", "3-bit K-quant dynamic"),
+    ("UD-IQ4_XS", "UD-IQ4_XS", "UD-IQ4_XS (Unsloth v3.1)", "unsloth", "~4-bit i-quant experts"),
     ("UD-Q4_K_XL", "UD-Q4_K_XL", "UD-Q4_K_XL (Unsloth)", "unsloth", "4-bit K-quant experts"),
     ("UD-Q5_K_XL", "UD-Q5_K_XL", "UD-Q5_K_XL (Unsloth)", "unsloth", "5-bit K-quant experts"),
     ("UD-Q6_K_XL", "UD-Q6_K_XL", "UD-Q6_K_XL (Unsloth)", "unsloth", "6-bit K-quant experts"),
@@ -105,6 +107,37 @@ def shards(label: str):
     return one[0], (two[0] if two else one[0])
 
 
+def repacked(label: str):
+    """A multi-shard pack repacked into the one GGUF the Metal window opens, or None."""
+    d = pack_dir(label)
+    f = d / f"{label}-metal.gguf"
+    return f if f.is_file() else None
+
+
+def ple_shard(label: str):
+    """The shard that holds the PLE n-gram table (the repack leaves it there; the window reads it through
+    --ple-gguf).  The last shard in these sets, found by its tensor name rather than assumed."""
+    d = pack_dir(label)
+    cands = sorted(d.glob("*-of-*.gguf"), reverse=True)
+    for p in cands:
+        try:
+            with open(p, "rb") as f:
+                if b"per_layer_token_embd.weight" in f.read(24 << 20):
+                    return p
+        except OSError:
+            continue
+    return None
+
+
+def native_pair(label: str):
+    """(native shard/file for --native, PLE shard for --ple-gguf)."""
+    rep = repacked(label)
+    if rep is not None:
+        return rep, ple_shard(label)
+    one, two = shards(label)
+    return one, two
+
+
 def pack_size(label: str) -> int:
     d = pack_dir(label)
     if not d.is_dir():
@@ -128,7 +161,7 @@ def git_head() -> str:
 def prepare_pack(label: str) -> str:
     """Build the metadata pack (native_experts.txt, index.txt, dense.bin) beside the GGUF, once."""
     d = pack_dir(label)
-    one, _ = shards(label)
+    one, _ = native_pair(label)
     if one is None:
         return "not downloaded"
     pack = d / "pack"
@@ -149,9 +182,9 @@ def run_one(cfg, round_no, order):
     rec = {"label": label, "quant": cfg[2], "family": "qwen38", "kind": "q38",
            "source": cfg[3], "note": cfg[4], "round": round_no, "order": order,
            "prefill_tokens": PREFILL, "decode_tokens": DECODE}
-    one, two = shards(label)
-    if one is None:
-        rec.update(rc=-1, error="not downloaded")
+    one, two = native_pair(label)
+    if one is None or two is None:
+        rec.update(rc=-1, error="not downloaded (or, for a multi-shard pack, not repacked)")
         return rec
     prepared = prepare_pack(label)
     rec["pack_state"] = prepared
