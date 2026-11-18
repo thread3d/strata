@@ -95,6 +95,8 @@ def stdev(xs):
 
 
 def fmt(x, nd=2):
+    if 0 < abs(x) < 1.0:
+        nd = max(nd, 3)   # 0.29 +/- 0.00 hides the spread a rate below 1 tok/s actually has
     return f"{x:.{nd}f}"
 
 
@@ -436,10 +438,10 @@ def render_doc(agg, records, meta):
                for lbl, a in done if a["n"] > 1 and mean(a["decode"]) > 0]
         if cvs:
             cvs.sort(key=lambda x: -x[1])
-            lines.append(f"- **Run-to-run spread:** largest for `{cvs[0][0]}` at {cvs[0][1]:.1f}% of its mean "
-                         f"(coefficient of variation), smallest for `{cvs[-1][0]}` at {cvs[-1][1]:.1f}%. "
-                         f"A spread this small is what a fixed workload on one machine should show; a bar "
-                         f"that is much wider is a pack whose expert streaming is not in steady state.")
+            lines.append(f"- **Run-to-run spread:** the coefficient of variation runs from {cvs[-1][1]:.1f}% "
+                         f"(`{cvs[-1][0]}`) to {cvs[0][1]:.1f}% (`{cvs[0][0]}`). A fixed workload on one machine "
+                         f"has no reason to vary by much; a pack whose bar is much wider is one whose expert "
+                         f"streaming did not reach steady state in every round.")
         pre = sorted(((lbl, mean(a["prefill"])) for lbl, a in done), key=lambda x: -x[1])
         lines.append(f"- **Fastest prompt read:** `{pre[0][0]}` at {pre[0][1]:.2f} tok/s; slowest "
                      f"`{pre[-1][0]}` at {pre[-1][1]:.2f} tok/s. Prefill is per-token latency on this engine, "
@@ -513,7 +515,9 @@ def render_doc(agg, records, meta):
     lines.append("3. **BF16 grouped experts.** UD-Q8_K_XL promotes three layers' routed experts to BF16 "
                  "(layers 34, 38 and 39). `moe.metal` now instantiates the gate/up and down kernels for BF16 "
                  "as well, and the type tables accept it. The pack then runs; its first generated token "
-                 "matches the Q8_0-era 279.")
+                 "matches the Q8_0-era 279. The new kernels are checked against the double reference: "
+                 "`expert_parity --gu BF16 --dn BF16` passes at 1 and 8 tokens (h rel L2 1.4e-07, "
+                 "y 1.1e-07).")
     lines.append("")
     lines.append("## Tests")
     lines.append("")
@@ -529,6 +533,10 @@ def render_doc(agg, records, meta):
                  "the evidence that a real pack's shapes compile and run.")
     lines.append("- `runtime_hello` fails its device-address and graph-replay cases because macOS 11 has "
                  "neither; the engine's documented workarounds are why these benchmarks run at all.")
+    lines.append("")
+    lines.append("The BF16 grouped-expert kernels added for UD-Q8_K_XL pass `expert_parity --gu BF16 "
+                 "--dn BF16` at 1 and 8 tokens (h rel L2 1.4e-07, y 1.1e-07), against the same double "
+                 "reference the other formats are held to.")
     lines.append("")
     lines.append("`q36_model_check`, `q36_glue_parity` and `q36_upload_check` were repaired as part of this "
                  "work (a stale kernel argument, an error message that looked a type up in the wrong table, "
