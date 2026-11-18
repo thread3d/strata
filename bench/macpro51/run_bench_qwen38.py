@@ -41,6 +41,7 @@ PACK_TOOL = REPO / "tools" / "iq_pack.py"
 PY = "python3"
 
 PREFILL, DECODE = 32, 32
+PREFILL_ONLY = False   # --prefill-only: one token after the prompt, so the prompt is measured and no decode rate is claimed
 # Qwen3.6's ids (the same 248 320-entry Qwen vocabulary): the first 32 of
 #   "Explain, in two short sentences, why the sky looks blue during the day and red at sunset. Then say
 #    why the Moon looks orange near the horizon."
@@ -151,10 +152,11 @@ def run_one(cfg, round_no, order):
         rec.update(rc=-2, error=prepared)
         return rec
     ids = ",".join(str(i) for i in IDS[:PREFILL])
+    decode_n = 1 if PREFILL_ONLY else DECODE
     # One token per verify window, no drafter: every pack runs the same policy, and the window path is the
     # quantisation's own cost.  The prompt goes through the engine's prompt path in one chunk of PREFILL.
     cmd = [str(BIN), "--pack", str(pack_dir(label) / "pack"), "--native", str(one),
-           "--ple-gguf", str(two), "--tokens", ids, "--max-new", str(DECODE),
+           "--ple-gguf", str(two), "--tokens", ids, "--max-new", str(decode_n),
            "--max-context", "512", "--spec", "1", "--suffix-draft", "0", "--lookup-max-t", "0",
            "--prefill", str(PREFILL)]
     env = dict(os.environ)
@@ -174,6 +176,7 @@ def run_one(cfg, round_no, order):
         return rec
     rec["decode_tokens"] = int(dm.group(1))
     rec["decode_s"] = float(dm.group(2)) / 1000.0
+    rec["decode_ok"] = (not PREFILL_ONLY) and int(dm.group(1)) > 1
     rec["decode_tok_s"] = int(dm.group(1)) / rec["decode_s"] if rec["decode_s"] > 0 else 0.0
     if pm:
         rec["prefill_tokens"] = int(pm.group(1))
@@ -219,36 +222,33 @@ def aggregate(records):
         by.setdefault(r["label"], []).append(r)
     agg = {}
     for label, rs in by.items():
-        ok = [r for r in rs if r.get("rc") == 0 and "decode_s" in r]
-        steady = [r for r in ok if r.get("round", 0) > 0]
-        use = steady if len(steady) >= 2 else ok
+        ok = [r for r in rs if r.get("rc") == 0 and r.get("prefill_s")]
+        dec = [r for r in ok if r.get("decode_ok")]
+        steady_p = [r for r in ok if r.get("round", 0) > 0]
+        steady_d = [r for r in dec if r.get("round", 0) > 0]
+        use_p = steady_p if len(steady_p) >= 2 else ok
+        use_d = steady_d if len(steady_d) >= 2 else dec
         agg[label] = {"runs": sorted(rs, key=lambda r: r.get("order", 0)),
-                      "decode": [rate(r, "decode") for r in use],
-                      "prefill": [rate(r, "prefill") for r in use],
-                      "decode_all": [rate(r, "decode") for r in ok],
-                      "n": len(ok), "n_steady": len(steady),
-                      "used_steady": bool(steady) and len(steady) >= 2,
+                      "decode": [rate(r, "decode") for r in use_d],
+                      "prefill": [rate(r, "prefill") for r in use_p],
+                      "decode_all": [rate(r, "decode") for r in dec],
+                      "prefill_all": [rate(r, "prefill") for r in ok],
+                      "n": len(ok), "n_decode": len(dec),
+                      "n_steady": len(steady_p),
+                      "used_steady": len(steady_p) >= 2,
                       "failed": len(rs) - len(ok)}
     return agg
 
 
 # ------------------------------------------------------------------------------------------------------ charts
 
+def prompt_only(agg) -> bool:
+    """True while no pack has a usable decode measurement (the forward is not answering yet)."""
+    return not any(a.get("n_decode") for a in agg.values())
+
+
 def render_charts(agg):
     CHART_DIR.mkdir(parents=True, exist_ok=True)
-    items = []
-    for cfg in CONFIGS:
-        a = agg.get(cfg[1])
-        if not a or not a["n"]:
-            continue
-        items.append({"label": cfg[1], "mean": mean(a["decode"]), "std": stdev(a["decode"]),
-                      "points": a["decode"], "n": a["n"]})
-    if items:
-        charts.grouped_bar_chart(
-            CHART_DIR / "qwen38-decode.svg",
-            "Qwen3.8-Flash-Next decode throughput on macpro51",
-            "RX 580 8 GB, Metal 2, experts streamed from the SSD; greedy; steady state (rounds 2+), mean ± 1 sample standard deviation; dots are individual runs",
-            [("qwen38", items)], "tokens per second (decode)", "higher is better")
     items = []
     for cfg in CONFIGS:
         a = agg.get(cfg[1])
@@ -260,15 +260,31 @@ def render_charts(agg):
         charts.grouped_bar_chart(
             CHART_DIR / "qwen38-prefill.svg",
             "Qwen3.8-Flash-Next prompt throughput on macpro51",
-            "The fixed prompt read one token at a time through the same streaming path; steady state, mean ± 1 sample standard deviation",
-            [("qwen38", items)], "tokens per second (prefill)", "higher is better")
-    pts = []
-    for cfg in CONFIGS:
-        a = agg.get(cfg[1])
-        if not a or not a["n"]:
-            continue
-        pts.append({"family": "qwen38", "label": cfg[1], "x": pack_size(cfg[0]) / 1073741824.0,
-                    "y": mean(a["decode"]), "std": stdev(a["decode"])})
+            "The fixed prompt read through the streaming path; steady state (rounds 2+), mean ± 1 sample standard deviation; dots are individual runs",
+            [("qwen38", items)], "tokens per second (prompt)", "higher is better")
+    if prompt_only(agg):
+        pts = [{"family": "qwen38", "label": c[1], "x": pack_size(c[0]) / 1073741824.0,
+                "y": mean(agg[c[1]]["prefill"]), "std": stdev(agg[c[1]]["prefill"])}
+               for c in CONFIGS if agg.get(c[1]) and agg[c[1]]["n"]]
+        if pts:
+            charts.scatter_chart(
+                CHART_DIR / "qwen38-size-vs-prompt.svg",
+                "Qwen3.8-Flash-Next: prompt throughput against pack size",
+                "What a token reads from the SSD and the format's decode cost matter more than the file size alone",
+                pts, "pack size on disk (GiB)", "prompt tokens/s")
+        return
+    items = [{"label": c[1], "mean": mean(agg[c[1]]["decode"]), "std": stdev(agg[c[1]]["decode"]),
+              "points": agg[c[1]]["decode"], "n": agg[c[1]]["n_decode"]}
+             for c in CONFIGS if agg.get(c[1]) and agg[c[1]]["n_decode"]]
+    if items:
+        charts.grouped_bar_chart(
+            CHART_DIR / "qwen38-decode.svg",
+            "Qwen3.8-Flash-Next decode throughput on macpro51",
+            "RX 580 8 GB, Metal 2, experts streamed from the SSD; greedy; steady state (rounds 2+), mean ± 1 sample standard deviation; dots are individual runs",
+            [("qwen38", items)], "tokens per second (decode)", "higher is better")
+    pts = [{"family": "qwen38", "label": c[1], "x": pack_size(c[0]) / 1073741824.0,
+            "y": mean(agg[c[1]]["decode"]), "std": stdev(agg[c[1]]["decode"])}
+           for c in CONFIGS if agg.get(c[1]) and agg[c[1]]["n_decode"]]
     if pts:
         charts.scatter_chart(
             CHART_DIR / "qwen38-size-vs-decode.svg",
@@ -277,21 +293,125 @@ def render_charts(agg):
             pts, "pack size on disk (GiB)", "decode tokens/s")
 
 
-def render_timeline(records):
-    rows = [{"order": r.get("order", 0), "label": r["label"], "family": r["family"],
-             "value": rate(r, "decode")}
-            for r in sorted(records, key=lambda r: r.get("order", 0)) if r.get("rc") == 0 and "decode_s" in r]
+def render_timeline(records, agg):
+    which = "prefill" if prompt_only(agg) else "decode"
+    rows = [{"order": r.get("order", 0), "label": r["label"], "family": r["family"], "value": rate(r, which)}
+            for r in sorted(records, key=lambda r: r.get("order", 0)) if r.get("rc") == 0 and r.get("prefill_s")]
     if rows:
         charts.timeline_chart(
             CHART_DIR / "qwen38-run-order.svg",
-            "Every Qwen3.8 run in the order it was made",
+            "Every Qwen3.8 run in the order it was made (%s)" % which,
             "Each round reshuffles the packs, so a drift in the machine is shared rather than assigned to one pack",
             rows)
 
 
 # --------------------------------------------------------------------------------------------------------- doc
 
+def render_doc_prompt_only(agg, records, meta):
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    L = []
+    L.append("# Qwen3.8-Flash-Next prompt-throughput benchmarks on macpro51 (RX 580, Metal 2)")
+    L.append("")
+    L.append(f"_Generated {now} by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._")
+    L.append("")
+    L.append("> **The engine does not answer yet.** Its forward pass goes non-finite at the first full-attention layer, so")
+    L.append("> there is no decode rate to report and none is claimed here. What this page measures is the prompt path: the")
+    L.append("> whole model is opened, the dense side and the expert arena are built, and the 32-token prompt is read through")
+    L.append("> the same streaming kernels a decode window uses. Those bytes and that work are real. The blocker and the")
+    L.append("> evidence are in [qwen38-metal-macpro51.md](qwen38-metal-macpro51.md); this page becomes the decode matrix")
+    L.append("> the day the query projection is fixed.")
+    L.append("")
+    L.append("## The machine")
+    L.append("")
+    L.append("| | |")
+    L.append("| --- | --- |")
+    L.append("| Mac | MacPro5,1, 2 × 6-core Xeon X5675 (12 cores / 24 threads), 128 GB DDR3 ECC |")
+    L.append("| GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |")
+    L.append("| OS | macOS 11.7.11 (Big Sur, 20G1443) |")
+    L.append("| Engine | `strata` 0.1.59-metal, branch `macpro51` |")
+    L.append(f"| Branch / commit at the last run | `macpro51` / `{meta.get('git_head', 'unknown')}` |")
+    L.append("")
+    L.append("## What ran")
+    L.append("")
+    L.append("| Pack | Quantisation | Source | On disk | Runs | Prompt, steady (mean ± sd) | All runs (mean) | Steady range |")
+    L.append("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |")
+    for cfg in CONFIGS:
+        a = agg.get(cfg[1])
+        size = pack_size(cfg[0])
+        if not a or not a["n"]:
+            L.append(f"| `{cfg[1]}` | {cfg[2]} | {cfg[3]} | {size/1073741824.0:.1f} GiB | — | — | — | — |")
+            continue
+        p = a["prefill"]
+        star = "" if a.get("used_steady") else "*"
+        L.append(f"| `{cfg[1]}`{star} | {cfg[2]} | {cfg[3]} | {size/1073741824.0:.1f} GiB | {a['n']} | "
+                 f"{fmt(mean(p))} ± {fmt(stdev(p))} | {fmt(mean(a['prefill_all']))} | {fmt(min(p))} – {fmt(max(p))} |")
+    L.append("")
+    L.append("\\* fewer than two steady-state runs (rounds 2+) so far, so this row uses every completed run.")
+    L.append("")
+    L.append("## Method")
+    L.append("")
+    L.append(f"- **One process per run.** The engine reads the dense side (2.36 GB for Q2_0), fills the expert arena (2.2 GB),")
+    L.append(f"  compiles its window kernels, then reads the {PREFILL}-token prompt as one chunk through the prompt path.")
+    L.append(f"- **The same {PREFILL} token ids** for every pack (the Qwen 248 320-entry vocabulary, a varied English sentence).")
+    L.append(f"- **Mixed order.** Each round contains every downloaded pack once, in a fresh shuffled order (seed in")
+    L.append(f"  `bench/macpro51/meta-qwen38.json`), so a drift in the machine is spread rather than assigned to one pack.")
+    L.append(f"- **Error bars.** Mean ± 1 sample standard deviation over the steady-state runs (rounds 2+). Round 1 is each")
+    L.append(f"  pack's first pass on a cold page cache and is kept separately. The dots on the chart are the individual runs.")
+    L.append(f"- **Streaming.** `STRATA_METAL_STREAM=1`: the pack cannot be resident in 8 GB of VRAM, and every pack is measured")
+    L.append(f"  on the same streamed path. The prompt path and the decode window read the same experts from the same arena.")
+    L.append("")
+    L.append("## Prompt throughput")
+    L.append("")
+    L.append("![Prompt throughput by quantisation](benchmarks/macpro51/qwen38-prefill.svg)")
+    L.append("")
+    L.append("## Size against prompt speed")
+    L.append("")
+    L.append("![Prompt throughput against pack size](benchmarks/macpro51/qwen38-size-vs-prompt.svg)")
+    L.append("")
+    L.append("A prompt token reads the same 10 routed experts per layer a decode token does, so the pack's encoding and the")
+    L.append("bytes a token actually touches decide this number more than the file size does.")
+    L.append("")
+    L.append("## What the numbers say")
+    L.append("")
+    done = [(c[1], agg[c[1]]) for c in CONFIGS if agg.get(c[1]) and agg[c[1]]["n"]]
+    if len(done) >= 2:
+        pre = sorted(((l, mean(a["prefill"])) for l, a in done), key=lambda x: -x[1])
+        L.append(f"- **Fastest prompt read:** `{pre[0][0]}` at {pre[0][1]:.2f} tok/s; **slowest:** `{pre[-1][0]}` at {pre[-1][1]:.2f} tok/s ({pre[0][1]/max(1e-9, pre[-1][1]):.2f}× between them).")
+        cvs = sorted(((l, 100.0 * stdev(a["prefill"]) / mean(a["prefill"])) for l, a in done if a["n"] > 1 and mean(a["prefill"]) > 0), key=lambda x: -x[1])
+        if cvs:
+            L.append(f"- **Run-to-run spread:** coefficient of variation from {cvs[-1][1]:.1f}% (`{cvs[-1][0]}`) to {cvs[0][1]:.1f}% (`{cvs[0][0]}`).")
+        L.append("")
+        L.append("The first round is the first pass over each pack (cold page cache, cold clocks); the later rounds are the")
+        L.append("steady state. The round-1 and steady numbers are kept apart in the table and the per-run log.")
+    else:
+        L.append("_Not enough completed packs yet; this section fills in as the rounds finish._")
+    L.append("")
+    L.append("## Run order (mixing)")
+    L.append("")
+    L.append("![Every run in execution order](benchmarks/macpro51/qwen38-run-order.svg)")
+    L.append("")
+    L.append("The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl` is skipped, so an interrupted")
+    L.append("or rebooted machine costs one run rather than the series.")
+    L.append("")
+    L.append("## Per-run log")
+    L.append("")
+    L.append("| # | Round | Pack | Prompt tokens | Prompt s | Prompt tok/s | Note |")
+    L.append("| ---: | ---: | --- | ---: | ---: | ---: | --- |")
+    for r in sorted(records, key=lambda r: r.get("order", 0)):
+        if r.get("rc") == 0 and r.get("prefill_s"):
+            note = "first round (cold)" if r.get("round", 0) == 0 else "later round"
+            L.append(f"| {r.get('order', 0)+1} | {r.get('round', 0)+1} | `{r['label']}` | {r.get('prefill_tokens', 0)} | "
+                     f"{fmt(r['prefill_s'])} | {fmt(rate(r, 'prefill'))} | {note} |")
+        else:
+            L.append(f"| {r.get('order', 0)+1} | {r.get('round', 0)+1} | `{r.get('label','?')}` | — | — | — | failed: {r.get('error', 'unknown')} |")
+    L.append("")
+    DOC.write_text("\n".join(L) + "\n", encoding="utf-8")
+
+
 def render_doc(agg, records, meta):
+    if prompt_only(agg):
+        render_doc_prompt_only(agg, records, meta)
+        return
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     L = []
     L.append("# Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)")
@@ -429,19 +549,29 @@ def main():
     ap.add_argument("--only", action="append", default=None)
     ap.add_argument("--no-push", action="store_true")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--prefill-only", action="store_true",
+                    help="measure the prompt only (one token after it); for a forward that does not answer yet")
     a = ap.parse_args()
+    global PREFILL_ONLY
+    PREFILL_ONLY = a.prefill_only
 
     rng = random.Random(a.seed)
-    active = [c for c in CONFIGS if a.only is None or c[1] in a.only]
+    listed = [c for c in CONFIGS if a.only is None or c[1] in a.only]
     if a.list:
-        for c in active:
+        for c in listed:
             print(c[1], "downloaded" if shards(c[1])[0] else "missing")
+        return 0
+    # a pack that is not on disk yet is not a run: it would only add a failed row to the log
+    active = [c for c in listed if shards(c[1])[0] is not None]
+    if not active:
+        print("no pack on disk: nothing to run")
         return 0
 
     records = load_records()
     done = {(r.get("round"), r.get("label")) for r in records if r.get("rc") == 0}
     meta = {"host": "macpro51", "rounds": a.rounds, "seed": a.seed, "prefill": PREFILL, "decode": DECODE,
-            "git_head": git_head(), "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+            "git_head": git_head(), "prefill_only": PREFILL_ONLY,
+            "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     (HERE / "meta-qwen38.json").write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
 
     order = 0
@@ -464,7 +594,7 @@ def main():
                   f"prefill={fmt(rate(rec, 'prefill'))} tok/s {rec.get('error','')}", flush=True)
             agg = aggregate(records)
             render_charts(agg)
-            render_timeline(records)
+            render_timeline(records, agg)
             render_doc(agg, records, meta)
             if not a.no_push:
                 git("add", "bench/macpro51/results-qwen38.jsonl", "bench/macpro51/meta-qwen38.json",
@@ -477,7 +607,7 @@ def main():
                 print("    committed and pushed", flush=True)
     agg = aggregate(records)
     render_charts(agg)
-    render_timeline(records)
+    render_timeline(records, agg)
     render_doc(agg, records, meta)
     return 0
 
