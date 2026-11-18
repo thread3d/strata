@@ -25,7 +25,7 @@ _Generated 2026-11-18 18:53 UTC by `bench/macpro51/run_bench_qwen38.py` after ev
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 5 | 4.72 ± 0.050 | 4.74 | 4.68 – 4.79 |
 | `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | — | — | — | — |
-| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 4 | 3.67 ± 0.032 | 3.26 | 3.64 – 3.70 |
+| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 5 | 3.67 ± 0.028 | 3.35 | 3.64 – 3.70 |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 5 | 3.38 ± 0.029 | 3.30 | 3.35 – 3.42 |
 | `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
@@ -65,7 +65,7 @@ bytes a token actually touches decide this number more than the file size does.
 ## What the numbers say
 
 - **Fastest prompt read:** `Q2_0` at 4.72 tok/s; **slowest:** `IQ3_S` at 3.38 tok/s (1.40× between them).
-- **Run-to-run spread:** coefficient of variation from 0.9% (`IQ3_XXS`) to 1.1% (`Q2_0`).
+- **Run-to-run spread:** coefficient of variation from 0.8% (`IQ3_XXS`) to 1.1% (`Q2_0`).
 
 The first round is the first pass over each pack (cold page cache, cold clocks); the later rounds are the
 steady state. The round-1 and steady numbers are kept apart in the table and the per-run log.
@@ -99,4 +99,5 @@ or rebooted machine costs one run rather than the series.
 | 15 | 4 | `IQ3_S` | 31 | 9.08 | 3.42 | later round |
 | 16 | 5 | `IQ3_S` | 31 | 9.18 | 3.38 | later round |
 | 17 | 5 | `Q2_0` | 31 | 6.63 | 4.68 | later round |
+| 18 | 5 | `IQ3_XXS` | 31 | 8.41 | 3.69 | later round |
 
