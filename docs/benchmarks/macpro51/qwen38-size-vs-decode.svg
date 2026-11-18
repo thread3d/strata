@@ -37,9 +37,9 @@
 <line x1="556.2" y1="135.2" x2="572.2" y2="135.2" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="564.2" cy="134.7" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="573.2" y="127.7" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q2_0</text>
-<line x1="631.2" y1="179.7" x2="631.2" y2="181.0" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="623.2" y1="179.7" x2="639.2" y2="179.7" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="623.2" y1="181.0" x2="639.2" y2="181.0" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="631.2" y1="179.9" x2="631.2" y2="180.8" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="623.2" y1="179.9" x2="639.2" y2="179.9" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="623.2" y1="180.8" x2="639.2" y2="180.8" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="631.2" cy="180.3" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="640.2" y="173.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_XXS</text>
 <line x1="686.4" y1="207.2" x2="686.4" y2="207.7" stroke="#0f766e" stroke-width="1.2"/>
