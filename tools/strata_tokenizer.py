@@ -511,7 +511,8 @@ def extract(gguf_path, out_dir) -> dict:
     from gguf_reader import GGUFFile
     tpl = GGUFFile(pathlib.Path(gguf_path)).metadata.get("tokenizer.chat_template")
     if tpl:
-        (out / "chat_template.jinja").write_text(tpl, encoding="utf-8", newline="\n")
+        with open((out / "chat_template.jinja"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(tpl)
     return cfg
 
 

@@ -5014,12 +5014,22 @@ int main(int argc, char** argv) {
     }
     strata::core::NativeEmbed native_embed;
     if (native_pack) {
+#if defined(STRATA_GPU_METAL)
+        // The Metal decode window reads the model GGUF itself and has neither the device residency table a --spec
+        // window needs nor a batched prompt path of its own: it reads the prompt through its own token windows. A
+        // native pack there therefore needs --native only (the CUDA/HIP paths keep the two requirements below).
+        if (o.native_preset.empty() || o.keep_canonical) {
+            std::fprintf(stderr, "strata generate: %s is a native (IQ) pack: it needs --native SHARD1\n", o.pack.c_str());
+            return 2;
+        }
+#else
         if (o.native_preset.empty() || o.spec < 2 || o.keep_canonical ||
             (o.prefill_chunk <= 0 && o.tokens.size() > 1)) {
             std::fprintf(stderr, "strata generate: %s is a native (IQ) pack: it needs --native SHARD1, --spec T (T >= 2) "
                                  "and --prefill CHUNK\n", o.pack.c_str());
             return 2;
         }
+#endif
         const auto embed_t0 = std::chrono::steady_clock::now();
         if (!native_embed.load(o.embd_gguf.empty() ? o.native_shards : std::vector<std::string>{o.embd_gguf}, g.n_embd,
                                g.n_vocab, err)) {
@@ -20505,11 +20515,15 @@ int main(int argc, char** argv) {
         // --spec-follow: the run ends with the continuation
         const int64_t max_new = follow.empty() ? o.max_new : std::min<int64_t>(o.max_new, (int64_t) follow.size());
         int64_t follow_differ = 0, follow_emitted = 0;
+#if !defined(STRATA_GPU_METAL)
+        // The Metal window streams the experts itself and keeps its own state; it has no device residency table to
+        // consult, so a spec window there is complete without one (the CUDA/HIP windows are not).
         if (thits.d_res == nullptr) {
             std::fprintf(stderr, "strata generate: --spec needs the device residency table (--expert-profile, "
                                  "--expert-cache and the token graph)\n");
             return 2;
         }
+#endif
         mem_mark("the head and the prompt path");
         strata::core::Verifier ver;
         strata::core::VerifyHits vh;
