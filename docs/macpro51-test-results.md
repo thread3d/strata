@@ -1,5 +1,10 @@
 # macpro51 (Intel Mac Pro 5,1) Test Results — Metal 2 / DeepSeek-V4.1-Flash
 
+> **Update 2026-11-18.** Every installed pack of both families has since been benchmarked with five
+> shuffled runs each, steady-state error bars and SVG charts:
+> [macpro51-quant-benchmarks.md](macpro51-quant-benchmarks.md). The bring-up numbers below are kept as
+> the history of the first DeepSeek runs on this card.
+
 **Machine:** MacPro5,1 "cheese grater" (2012), 2× 6-core Intel Xeon Westmere (12 cores / 24 threads, 3.06 GHz), 128 GB DDR3 ECC, Radeon RX 580 8 GB (Metal 2, no Metal 3, no bf16), macOS 11.7.11 Big Sur (Build 20G1443).
 
 **Engine:** strata_ds4, built from `metal/` on branch `macpro51`, cmake 4.4.5, Xcode CLT 13, macOS 11.7 SDK.

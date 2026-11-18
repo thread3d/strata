@@ -26,6 +26,7 @@ Use the guide for your GPU and operating system. Model and feature support can d
 | AMD Ryzen AI Max / Strix Halo | [Strix Halo](STRIX_HALO.md), [on Windows](STRIX_HALO_WINDOWS.md) |
 | Intel Arc on Linux | [Intel Arc](INTEL_ARC.md) |
 | Apple Silicon | [Mac / Metal](MAC.md) |
+| Intel Mac, experimental (Qwen3.6 and DeepSeek, every installed pack) | [macpro51 pack matrix](macpro51-quant-benchmarks.md) |
 | More than one GPU | [Multiple GPUs](MULTI_GPU.md) |
 | Two cards: one reads the prompt, one makes the answer (opt-in) | [Split serving](SPLIT_SERVE.md) |
 | Older GPUs | [Experimental hardware](OLDER_GPUS.md) |
