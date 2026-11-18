@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 22:19 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 22:24 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -59,6 +59,20 @@ The prompt is read one token at a time on this port, so prefill here is per-toke
 ![Decode throughput against pack size](benchmarks/macpro51/qwen38-size-vs-decode.svg)
 
 A token reads only its 10 routed experts per layer, so a bigger file is not automatically slower: what matters is the bytes one token actually touches, the encoding's decode cost (Q2_0 and the i-quants trade a wider row read for cheap decode), and how much of the dense side stays resident.
+
+## The bytes a token reads
+
+![Decode throughput against the largest expert blob](benchmarks/macpro51/qwen38-decode-vs-blob.svg)
+
+| Pack | Largest expert blob | Decode, steady |
+| --- | ---: | ---: |
+| `Q2_0` | 1.38 MB | 1.06 ± 0.002 tok/s |
+| `IQ3_XXS` | 2.33 MB | 0.914 ± 0.001 tok/s |
+| `IQ3_S` | 2.66 MB | 0.825 ± 0.001 tok/s |
+| `UD-Q4_K_XL` | 3.99 MB | 0.622 ± 0.001 tok/s |
+
+Every token pulls its ten routed experts per layer from the SSD, so the blob one expert costs is the number a token actually pays for; the pack file is mostly experts a token never asks for.  Two packs whose blobs are the same size land at nearly the same rate, which is why the Unsloth 4.5-bit set is slower than the 2-bit one even though their files differ by less than 2x.
+
 
 ## What the numbers say
 

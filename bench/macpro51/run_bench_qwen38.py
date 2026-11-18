@@ -160,6 +160,40 @@ def pack_size(label: str) -> int:
     return sum(p.stat().st_size for p in d.glob("*.gguf") if not p.name.endswith("-metal.gguf"))
 
 
+def blob_mb(label):
+    """The largest expert blob (MB) of a prepared pack: the maximum blob_bytes over its native_experts.txt.
+
+    This is the number the engine prints as "largest blob", computed from the pack metadata instead of parsed
+    out of a run, so old records get it too."""
+    f = pack_dir(label) / "pack" / "native_experts.txt"
+    if not f.is_file():
+        return None
+    best = 0
+    try:
+        with open(f) as fh:
+            for line in fh:
+                if not line or line[0] in "#\n":
+                    continue
+                parts = line.split()
+                if len(parts) >= 5:
+                    best = max(best, int(parts[4]))
+    except (OSError, ValueError):
+        return None
+    return best / 1e6 if best else None
+
+
+def blob_of(a):
+    """The pack's largest expert blob (MB): a recorded value, else the pack metadata."""
+    for r in reversed(a.get("runs", [])):
+        if r.get("blob_mb"):
+            return float(r["blob_mb"])
+    for r in a.get("runs", []):
+        b = blob_mb(r.get("label", "")) if r.get("label") else None
+        if b:
+            return b
+    return None
+
+
 def git(*args, check=True):
     return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True, check=check)
 
@@ -203,6 +237,7 @@ def run_one(cfg, round_no, order):
         return rec
     prepared = prepare_pack(label)
     rec["pack_state"] = prepared
+    rec["blob_mb"] = blob_mb(label)
     if prepared != "ready":
         rec.update(rc=-2, error=prepared)
         return rec
@@ -229,6 +264,11 @@ def run_one(cfg, round_no, order):
     lm = re.search(r"dense tensors read into memory \(([\d.]+) GB, ([\d.]+) s", err)
     if lm:
         rec["dense_gb"], rec["dense_load_s"] = float(lm.group(1)), float(lm.group(2))
+    # the bytes one routed expert of this pack costs (the pack line names its largest blob): the variable that
+    # should explain a token's cost better than the file size
+    bm = re.search(r"experts \(largest blob ([\d.]+) MB\)", err)
+    if bm:
+        rec["blob_mb"] = float(bm.group(1))
     if proc.returncode != 0 or dm is None:
         lines = [ln.strip() for ln in err.strip().splitlines() if ln.strip()]
         pick = next((ln for ln in lines if "no function " in ln or "no Metal implementation" in ln or
@@ -354,6 +394,22 @@ def render_charts(agg):
             "What a token reads from the SSD and the format's decode cost matter more than the file size alone",
             pts, "pack size on disk (GiB)", "decode tokens/s")
 
+
+    bpts = []
+    for c in CONFIGS:
+        a = agg.get(c[1])
+        if not a or not a["n_decode"]:
+            continue
+        b = blob_of(a)
+        if b:
+            bpts.append({"family": "qwen38", "label": c[1], "x": b,
+                         "y": mean(a["decode"]), "std": stdev(a["decode"])})
+    if bpts:
+        charts.scatter_chart(
+            CHART_DIR / "qwen38-decode-vs-blob.svg",
+            "Qwen3.8-Flash-Next: decode throughput against the bytes a token reads",
+            "One routed expert's blob is what a token pulls from the SSD ten times a layer: the closer two packs' blobs, the closer their rate",
+            bpts, "largest expert blob (MB)", "decode tokens/s")
 
 def render_timeline(records, agg):
     which = "prefill" if prompt_only(agg) else "decode"
@@ -571,6 +627,24 @@ def render_doc(agg, records, meta):
     L.append("![Decode throughput against pack size](benchmarks/macpro51/qwen38-size-vs-decode.svg)")
     L.append("")
     L.append("A token reads only its 10 routed experts per layer, so a bigger file is not automatically slower: what matters is the bytes one token actually touches, the encoding's decode cost (Q2_0 and the i-quants trade a wider row read for cheap decode), and how much of the dense side stays resident.")
+    L.append("")
+    blob_rows = [(c[1], agg[c[1]], blob_of(agg[c[1]])) for c in CONFIGS if agg.get(c[1]) and agg[c[1]]["n_decode"]]
+    blob_rows = [x for x in blob_rows if x[2]]
+    if blob_rows:
+        L.append("## The bytes a token reads")
+        L.append("")
+        L.append("![Decode throughput against the largest expert blob](benchmarks/macpro51/qwen38-decode-vs-blob.svg)")
+        L.append("")
+        L.append("| Pack | Largest expert blob | Decode, steady |")
+        L.append("| --- | ---: | ---: |")
+        for label, a, b in blob_rows:
+            L.append("| `%s` | %.2f MB | %s \u00b1 %s tok/s |" % (label, b, fmt(mean(a["decode"])), fmt(stdev(a["decode"]))))
+        L.append("")
+        L.append("Every token pulls its ten routed experts per layer from the SSD, so the blob one expert costs is the "
+                 "number a token actually pays for; the pack file is mostly experts a token never asks for.  Two packs "
+                 "whose blobs are the same size land at nearly the same rate, which is why the Unsloth 4.5-bit set is "
+                 "slower than the 2-bit one even though their files differ by less than 2x.")
+        L.append("")
     L.append("")
     L.append("## What the numbers say")
     L.append("")
