@@ -39,6 +39,9 @@
 <line x1="731.0" y1="185.1" x2="747.0" y2="185.1" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="739.0" cy="184.2" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="748.0" y="177.2" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_XXS</text>
-<circle cx="805.3" cy="202.9" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="814.3" y="195.9" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
+<line x1="805.3" y1="202.5" x2="805.3" y2="205.4" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="797.3" y1="202.5" x2="813.3" y2="202.5" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="797.3" y1="205.4" x2="813.3" y2="205.4" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="805.3" cy="204.0" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="814.3" y="197.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
 </svg>
