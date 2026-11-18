@@ -44,6 +44,9 @@
 <line x1="678.4" y1="207.9" x2="694.4" y2="207.9" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="686.4" cy="207.7" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="695.4" y="200.7" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
-<circle cx="883.5" cy="269.8" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="892.5" y="262.8" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
+<line x1="883.5" y1="269.8" x2="883.5" y2="270.0" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="875.5" y1="269.8" x2="891.5" y2="269.8" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="875.5" y1="270.0" x2="891.5" y2="270.0" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="883.5" cy="269.9" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="892.5" y="262.9" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
 </svg>
