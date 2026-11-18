@@ -531,7 +531,7 @@ def render_doc(agg, records, meta):
                  "do not are not on a real pack's path:")
     lines.append("")
     lines.append("- `q36_forward_check` and `q36_generate_check` abort inside `attn_init` while compiling the "
-                 "synthetic eight-head fixture's attention kernels on this Metal 2 driver; the sweep below is "
+                 "synthetic eight-head fixture's attention kernels on this Metal 2 driver; the sweep above is "
                  "the evidence that a real pack's shapes compile and run.")
     lines.append("- `runtime_hello` fails its device-address and graph-replay cases because macOS 11 has "
                  "neither; the engine's documented workarounds are why these benchmarks run at all.")
