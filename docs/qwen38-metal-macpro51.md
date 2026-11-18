@@ -132,6 +132,7 @@ because it is the same bytes):
 | `IQ3_XXS` | 75.8 GB | verified; 0.90 tok/s decode, 2.63 tok/s prompt |
 | `IQ3_S` | 83.6 GB | verified; 0.84 tok/s decode, 2.53 tok/s prompt |
 | `IQ2_XS` | 68.0 GB | verified, but **refused on this branch**: some gate/up experts are IQ1_M and `moe.metal` has no `moe_gu_29_*` |
+| `UD-Q4_K_XL` | 103.7 GiB | verified, repacked and packed; **0.62 tok/s decode**, 1.98 tok/s prompt |
 
 ### Multi-shard Unsloth packs
 
@@ -144,9 +145,10 @@ conversion rounds only those), then a smoke run. Two details matter:
   shard to the dense list and the shard-split check refuses a repacked file beside it;
 - `iq_pack --compat-bf16` needs llama.cpp's `gguf-py` (`STRATA_GGUF_PY=<llama.cpp>/gguf-py`) and PyYAML.
 
-Measured on UD-Q4_K_XL (111 GB downloaded, 76.9 GiB repacked) **while the rest of the set was still downloading**:
-0.61 tok/s decode and 1.57 tok/s prompt (the download competes for the SSD), with the same first tokens as Q2_0
-(`\n\n<think>\nThe user wants a concise explanation…`) — the 4.5-bit pack answers the same way the 2-bit one does.
+Measured on UD-Q4_K_XL (111 GB downloaded, 76.9 GiB repacked) in the same mixed sweep as the ISTA packs:
+**0.62 tok/s decode, 1.98 tok/s prompt** - its expert blobs are 4 MB against Q2_0's 1.4 MB, so a token reads more
+bytes.  The first smoke, run while the rest of the set was still downloading, gave 0.61 / 1.57; its first tokens
+are Q2_0's, so the 4.5-bit pack answers the same way the 2-bit one does.
 
 Gyro is one file with the n-gram table inside, and its TQ expert kernels are the `stubs_gyro` path on this branch —
 check before promising it.
