@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 09:39 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 09:41 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -23,7 +23,7 @@ Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next a
 | qwen36 | Q4_K_M | 19.7 GiB | 3 run(s), 0.78 tok/s decode |
 | qwen36 | Q6_K | 26.6 GiB | 3 run(s), 0.88 tok/s decode |
 | qwen36 | Q8_0 | 35.2 GiB | 3 run(s), 0.69 tok/s decode |
-| qwen36 | UD-Q2_K_XL | 11.7 GiB | 3 run(s), 1.00 tok/s decode |
+| qwen36 | UD-Q2_K_XL | 11.7 GiB | 4 run(s), 1.02 tok/s decode |
 | qwen36 | UD-Q4_K_XL | 21.3 GiB | 3 run(s), 0.96 tok/s decode |
 | qwen36 | UD-Q6_K_XL | 30.4 GiB | 4 run(s), 0.79 tok/s decode |
 | qwen36 | UD-Q8_K_XL | 36.4 GiB | 3 run(s), 0.73 tok/s decode |
@@ -49,7 +49,7 @@ Two Qwen3.6 packs were refused when this sweep started, and the refusals were re
 | qwen36 | Q4_K_M | 3 | 0.78 ± 0.08 | 0.73 – 0.87 | 0.95 ± 0.00 |
 | qwen36 | Q6_K | 3 | 0.88 ± 0.05 | 0.82 – 0.92 | 0.99 ± 0.02 |
 | qwen36 | Q8_0 | 3 | 0.69 ± 0.08 | 0.64 – 0.78 | 0.86 ± 0.00 |
-| qwen36 | UD-Q2_K_XL | 3 | 1.00 ± 0.08 | 0.96 – 1.09 | 1.15 ± 0.01 |
+| qwen36 | UD-Q2_K_XL | 4 | 1.02 ± 0.07 | 0.96 – 1.09 | 1.14 ± 0.01 |
 | qwen36 | UD-Q4_K_XL | 3 | 0.96 ± 0.09 | 0.86 – 1.02 | 1.08 ± 0.01 |
 | qwen36 | UD-Q6_K_XL | 4 | 0.79 ± 0.09 | 0.70 – 0.87 | 0.93 ± 0.01 |
 | qwen36 | UD-Q8_K_XL | 3 | 0.73 ± 0.08 | 0.64 – 0.78 | 0.83 ± 0.00 |
@@ -69,10 +69,10 @@ On this card a token streams its routed experts from RAM/SSD through an 8 GB win
 
 ## What the numbers say
 
-- **Fastest decode:** `UD-Q2_K_XL` at 1.00 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (3.46× between them).
+- **Fastest decode:** `UD-Q2_K_XL` at 1.02 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (3.52× between them).
 - **Run-to-run spread:** largest for `Q8_0` at 11.5% of its mean (coefficient of variation), smallest for `IQ2_XXS` at 0.0%. A spread this small is what a fixed workload on one machine should show; a bar that is much wider is a pack whose expert streaming is not in steady state.
-- **Fastest prompt read:** `UD-Q2_K_XL` at 1.15 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
-- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.00, `Q4_K_M` 0.78, `UD-Q4_K_XL` 0.96, `Q6_K` 0.88, `UD-Q6_K_XL` 0.79, `Q8_0` 0.69, `UD-Q8_K_XL` 0.73 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
+- **Fastest prompt read:** `UD-Q2_K_XL` at 1.14 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
+- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.02, `Q4_K_M` 0.78, `UD-Q4_K_XL` 0.96, `Q6_K` 0.88, `UD-Q6_K_XL` 0.79, `Q8_0` 0.69, `UD-Q8_K_XL` 0.73 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
 
 The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack:
 
@@ -81,7 +81,7 @@ The first round is the first pass over each pack (cold page cache, cold GPU cloc
 | Q4_K_M | 0.74 | 0.80 | +8.9% |
 | Q6_K | 0.82 | 0.91 | +11.4% |
 | Q8_0 | 0.64 | 0.71 | +11.1% |
-| UD-Q2_K_XL | 0.96 | 1.03 | +6.9% |
+| UD-Q2_K_XL | 0.96 | 1.04 | +8.5% |
 | UD-Q4_K_XL | 0.86 | 1.01 | +17.5% |
 | UD-Q6_K_XL | 0.70 | 0.82 | +17.6% |
 | UD-Q8_K_XL | 0.64 | 0.78 | +22.1% |
@@ -122,6 +122,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results.jsonl` is ski
 | 23 | 3 | qwen36 | UD-Q4_K_XL | 29.82 | 31.16 | 0.99 | later round |
 | 24 | 3 | dsv41 | IQ2_XXS | 33.21 | 52.45 | 0.29 | later round |
 | 25 | 4 | qwen36 | UD-Q6_K_XL | 34.75 | 42.35 | 0.73 | later round |
+| 26 | 4 | qwen36 | UD-Q2_K_XL | 28.26 | 28.93 | 1.07 | later round |
 
 ## Engine fixes made to run the matrix
 
