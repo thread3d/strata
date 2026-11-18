@@ -138,6 +138,20 @@ def native_pair(label: str):
     return one, two
 
 
+def ready(label: str) -> bool:
+    """A pack is ready when it can actually be opened: a repacked single file with its metadata pack, or a
+    complete two-shard ISTA pack with its metadata pack.  A download in progress is not ready."""
+    d = pack_dir(label)
+    if not d.is_dir():
+        return False
+    if repacked(label) is not None:
+        return (d / "pack" / "native_experts.txt").exists()
+    if len(list(d.glob("*-of-*.gguf"))) > 2:
+        return False          # a multi-shard set without its repacked single file
+    one, two = shards(label)
+    return one is not None and two is not None and (d / "pack" / "native_experts.txt").exists()
+
+
 def pack_size(label: str) -> int:
     """The pack's download size (a repacked copy beside it is a working file, not part of the pack)."""
     d = pack_dir(label)
@@ -632,11 +646,13 @@ def main():
     listed = [c for c in CONFIGS if a.only is None or c[1] in a.only]
     if a.list:
         for c in listed:
-            print(c[1], "downloaded" if shards(c[1])[0] else "missing")
+            st = "ready" if ready(c[1]) else ("repacked, no pack" if repacked(c[1]) else
+                                               ("downloaded" if shards(c[1])[0] else "missing"))
+            print(c[1], st)
         return 0
-    # a pack that is not on disk yet, or that this branch refuses, is not a run: it would only add failed rows
+    # a pack that is not ready, or that this branch refuses, is not a run: it would only add failed rows
     refused = {name for name, _ in REFUSED}
-    active = [c for c in listed if shards(c[1])[0] is not None and c[1] not in refused]
+    active = [c for c in listed if ready(c[1]) and c[1] not in refused]
     if not active:
         print("no pack on disk: nothing to run")
         return 0
