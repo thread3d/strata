@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 20:19 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 20:20 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -83,6 +83,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 1 | 1 | `IQ3_XXS` | 11.89 | 35.44 | 0.903 | first round (cold) |
 | 2 | 1 | `IQ3_S` | 12.10 | 38.08 | 0.840 | first round (cold) |
 | 3 | 1 | `IQ2_XS` | — | — | — | failed: strata generate: PCIe probe failed -> pcie_frac default 0.55 |
+| 4 | 2 | `IQ2_XS` | — | — | — | failed: strata generate: PCIe probe failed -> pcie_frac default 0.55 |
 
 ## Limits recorded here
 
