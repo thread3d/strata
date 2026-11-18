@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 09:34 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 09:36 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -27,7 +27,7 @@ Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next a
 | qwen36 | UD-Q4_K_XL | 21.3 GiB | 3 run(s), 0.96 tok/s decode |
 | qwen36 | UD-Q6_K_XL | 30.4 GiB | 3 run(s), 0.81 tok/s decode |
 | qwen36 | UD-Q8_K_XL | 36.4 GiB | 3 run(s), 0.73 tok/s decode |
-| dsv41 | IQ2_XXS | 239.2 GiB | 2 run(s), 0.29 tok/s decode |
+| dsv41 | IQ2_XXS | 239.2 GiB | 3 run(s), 0.29 tok/s decode |
 | dsv41 | UD-Q8_K_XL | — | refused: the dense weights (attention, shared experts, output head) need 15.61 GB of VRAM and the RX 580 has 8.59 GB |
 
 Two Qwen3.6 packs were refused when this sweep started, and the refusals were real defects rather than hardware limits; they were fixed on the branch before the sweep (see [Engine fixes](#engine-fixes)). The DeepSeek UD-Q8_K_XL pack is refused by the engine on this card because its dense weights alone need 15.61 GB of VRAM against the RX 580's 8.59 GB; that is a hardware limit, recorded here rather than worked around.
@@ -53,7 +53,7 @@ Two Qwen3.6 packs were refused when this sweep started, and the refusals were re
 | qwen36 | UD-Q4_K_XL | 3 | 0.96 ± 0.09 | 0.86 – 1.02 | 1.08 ± 0.01 |
 | qwen36 | UD-Q6_K_XL | 3 | 0.81 ± 0.10 | 0.70 – 0.87 | 0.93 ± 0.00 |
 | qwen36 | UD-Q8_K_XL | 3 | 0.73 ± 0.08 | 0.64 – 0.78 | 0.83 ± 0.00 |
-| dsv41 | IQ2_XXS | 2 | 0.29 ± 0.00 | 0.29 – 0.29 | 0.48 ± 0.00 |
+| dsv41 | IQ2_XXS | 3 | 0.29 ± 0.00 | 0.29 – 0.29 | 0.48 ± 0.00 |
 
 ## Prompt (prefill) throughput
 
@@ -120,6 +120,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results.jsonl` is ski
 | 21 | 3 | qwen36 | UD-Q2_K_XL | 28.22 | 32.25 | 0.96 | later round |
 | 22 | 3 | qwen36 | UD-Q8_K_XL | 38.53 | 40.02 | 0.77 | later round |
 | 23 | 3 | qwen36 | UD-Q4_K_XL | 29.82 | 31.16 | 0.99 | later round |
+| 24 | 3 | dsv41 | IQ2_XXS | 33.21 | 52.45 | 0.29 | later round |
 
 ## Engine fixes made to run the matrix
 
