@@ -278,7 +278,8 @@ public:
     // slot b's state <-> the main one (the GPU is idle between windows): the running state and the first `upto` cells of K/V
     bool slot_copy(bool into_slot, int b, int64_t upto, bool kv_only, std::string& err);
     void activate(int set);
-    void set_max_t(int t) { max_t_ = std::min(t, MAXT); }
+    // a caller that asks for no verify window (--spec 0: plain one-token decode) still needs a one-row window
+    void set_max_t(int t) { max_t_ = std::min(std::max(t, 1), MAXT); }
     // ---- the MTP draft layer (mtp.hpp's math on mac-kern's kernels; the MTP GGUF from tools/mtp_pack.py)
     bool mtp_load(const std::string& gguf, int max_t, std::string& err);
     bool mtp_prefill(const int32_t* next_tokens, int64_t n, int64_t cell0, std::string& err);
@@ -1476,6 +1477,10 @@ bool Window::run(int Tn, const int32_t* tokens, int64_t pos0, bool head, int32_t
             mtl::Arg* qa = nullptr;
             for (auto& g : d.args)
                 if (!g.bytes.empty()) qa = &g;
+            if (qa == nullptr) {   // a cached QSA dispatch without its inline QsaArgs: not patchable
+                std::fprintf(stderr, "strata metal: cached QSA dispatch %zu has no inline argument; its positions stay as built\n", (size_t) i);
+                continue;
+            }
             std::memcpy(qa->bytes.data(), &a, sizeof a);
             if (kind == 2) d.grid[0] = (uint32_t) (((pos0 + Tn) / 4 + 1 + 7) / 8);
         }
