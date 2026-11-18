@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 20:23 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 20:24 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -20,7 +20,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Quantisation | Source | On disk | Result |
 | --- | --- | --- | ---: | --- |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 2 runs, 1.06 tok/s decode (steady state) |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 3 runs, 1.06 tok/s decode (steady state) |
 | `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | queued |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 2 runs, 0.90 tok/s decode (steady state) |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 2 runs, 0.84 tok/s decode (steady state) |
@@ -48,7 +48,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Q2_0` | 2 | 1.06 ± 0.007 | 1.06 | 1.06 – 1.07 | 3.33 ± 0.007 |
+| `Q2_0` | 2 | 1.06 ± 0.001 | 1.06 | 1.05 – 1.06 | 3.35 ± 0.012 |
 | `IQ3_XXS` | 2 | 0.901 ± 0.003 | 0.901 | 0.899 – 0.903 | 2.63 ± 0.033 |
 | `IQ3_S` | 2 | 0.837 ± 0.005 | 0.837 | 0.834 – 0.840 | 2.55 ± 0.020 |
 
@@ -66,9 +66,9 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 
 ## What the numbers say
 
-- **Fastest decode:** `Q2_0` at 1.06 tok/s; **slowest:** `IQ3_S` at 0.84 tok/s (1.27× between them).
-- **Run-to-run spread:** coefficient of variation from 0.3% (`IQ3_XXS`) to 0.6% (`Q2_0`).
-- **Fastest prompt read:** `Q2_0` at 3.33 tok/s; slowest `IQ3_S` at 2.55 tok/s.
+- **Fastest decode:** `Q2_0` at 1.06 tok/s; **slowest:** `IQ3_S` at 0.84 tok/s (1.26× between them).
+- **Run-to-run spread:** coefficient of variation from 0.1% (`Q2_0`) to 0.6% (`IQ3_S`).
+- **Fastest prompt read:** `Q2_0` at 3.35 tok/s; slowest `IQ3_S` at 2.55 tok/s.
 
 The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages -0.7% over these 3 packs.
 
@@ -96,6 +96,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 5 | 2 | `IQ3_XXS` | 11.68 | 35.60 | 0.899 | later round |
 | 6 | 2 | `IQ3_S` | 12.23 | 38.39 | 0.834 | later round |
 | 7 | 2 | `Q2_0` | 9.29 | 30.31 | 1.06 | later round |
+| 8 | 3 | `Q2_0` | 9.24 | 30.35 | 1.05 | later round |
 
 ## Limits recorded here
 
