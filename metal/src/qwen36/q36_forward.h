@@ -67,4 +67,9 @@ bool embed_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward
 bool forward_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, int pos, int n_kv,
                    std::string& err);
 
+/// Zeroes the per-sequence state (GDN state and conv history, attention K/V rings) in place.  A benchmark uses it to
+/// warm every pipeline on one prompt and then measure a fresh sequence through the same Forward: the buffers stay
+/// allocated, and `pos` is the caller's (forward_token takes it), so the next call is a fresh sequence at 0.
+void forward_reset(Forward& f);
+
 }  // namespace strata::qwen36

@@ -1,10 +1,13 @@
 // metal/src/qwen36/q36_forward.cpp - every layer, once per token.
 #include "q36_forward.h"
 
-#include <cmath>
+#include "ref_quant.h"
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <vector>
 
 namespace strata::qwen36 {
 namespace {
@@ -31,6 +34,15 @@ uint64_t Forward::resident_bytes() const {
     return n;
 }
 
+void forward_reset(Forward& f) {
+    // The state a sequence leaves behind: a GDN layer's recurrent state and conv history, an attention layer's K/V
+    // ring.  Everything else a forward touches is scratch or the input.  Zeroed in place so a benchmark's warm-up pass
+    // does not need a second Forward (whose buffers are not freed: mtl::Buffer is a handle, not owner).
+    for (auto* v : {&f.state, &f.hist, &f.kring, &f.vring})
+        for (mtl::Buffer& b : *v)
+            if (b.ptr != nullptr && b.bytes > 0) std::memset(b.ptr, 0, b.bytes);
+}
+
 bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv_cap, uint64_t slot_budget_bytes, Forward& f,
                   std::string& err) {
     (void) d;
@@ -39,12 +51,19 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
     const GdnShape gsh{N, (int) m.g.ssm_k_heads, (int) m.g.ssm_v_heads, (int) m.g.ssm_state_size, m.eps};
     const AttnShape ash{N, (int) m.g.n_head, (int) m.g.n_head_kv, (int) m.g.head_dim, m.eps};
     const SharedShape ssh{N, (int) m.g.n_ff_shexp};
-    if (!attn_init(cx, f.ak, ash, err) || !gdn_init(cx, f.gk, err) || !layer_init(cx, f.lk, err) ||
-        !dense_init(cx, f.dk, err))
-        return false;
+    const bool trace = std::getenv("Q36_INIT_TRACE") != nullptr;   // where a refusing fixture/init stops, on stderr
+    if (trace) std::fprintf(stderr, "fi: attn_init\n");
+    if (!attn_init(cx, f.ak, ash, err)) return false;
+    if (trace) std::fprintf(stderr, "fi: gdn_init\n");
+    if (!gdn_init(cx, f.gk, err)) return false;
+    if (trace) std::fprintf(stderr, "fi: layer_init\n");
+    if (!layer_init(cx, f.lk, err)) return false;
+    if (trace) std::fprintf(stderr, "fi: dense_init\n");
+    if (!dense_init(cx, f.dk, err)) return false;
     if (!attn_scratch(cx, f.attn, ash, kv_cap, err) || !gdn_scratch(cx, f.gdn, gsh, err) ||
         !layer_scratch(cx, f.layer, N, err))
         return false;
+    if (trace) std::fprintf(stderr, "fi: shaped\n");
 
     // the expert slots: only if the caller's budget holds them all (the streaming path is what makes a real pack fit)
     // EVERY layer's slots count towards the budget, not the first one's: a `break` here made the sum a fortieth of the truth
@@ -54,7 +73,9 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
     uint64_t resident = 0;
     bool resolved = false;
     for (const Layer& L : m.layers) {
-        if (!L.gate_exps.ok()) continue;
+        // The MTP block is not run (forward_token skips it), so its slots are never packed or streamed.  Its experts can
+        // be a type no grouped kernel covers (UD-Q2_K_XL carries Q2_K there) without refusing the pack.
+        if (L.kind == strata::core::LayerKind::Mtp || !L.gate_exps.ok()) continue;
         const ExpertBlob b = blob_of(m, L);
         resident += b.slots((int) m.g.n_expert);
         if (!resolved) {
@@ -63,20 +84,27 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
             resolved = true;
         }
     }
+    if (trace) std::fprintf(stderr, "fi: resident %llu bytes over %zu layers\n", (unsigned long long) resident, m.layers.size());
     if (resident > slot_budget_bytes && !m.layers.empty()) {
         // STREAMING: top_k slots, filled per layer.  Every layer's experts share one pool because the layers run in sequence,
         // so the pool's slot stride must fit the LARGEST layer blob - a mixed pack (Q4_K_M) changes the down format from
         // layer 5 on and with it the blob's size.
         ExpertBlob b = blob_of(m, m.layers[0]);
         for (const Layer& L : m.layers)
-            if (L.gate_exps.ok()) {
+            if (L.kind != strata::core::LayerKind::Mtp && L.gate_exps.ok()) {
                 const ExpertBlob bl = blob_of(m, L);
                 if (bl.blob > b.blob) b = bl;
             }
+        if (trace) std::fprintf(stderr, "fi: stream_init blob %llu\n", (unsigned long long) b.blob);
         if (!stream_init(cx, f.stream, b, (int) m.top_k, (int) m.g.n_expert, err)) return false;
+        if (trace) std::fprintf(stderr, "fi: stream_init ok\n");
         f.streaming = true;
         const RoutedShape rsh{b, (int) m.g.n_expert, (int) m.top_k, 1};
-        if (!routed_init(cx, f.rk, rsh, err, true) || !routed_scratch(cx, f.routed, rsh, err)) return false;
+        if (trace) std::fprintf(stderr, "fi: routed_init\n");
+        if (!routed_init(cx, f.rk, rsh, err, true)) return false;
+        if (trace) std::fprintf(stderr, "fi: routed_init ok\n");
+        if (!routed_scratch(cx, f.routed, rsh, err)) return false;
+        if (trace) std::fprintf(stderr, "fi: routed_scratch ok\n");
         err.clear();
     }
     if (!f.streaming && resident > slot_budget_bytes) {
@@ -122,6 +150,7 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
     f.vring.assign(m.layers.size(), mtl::Buffer{});
     for (size_t i = 0; i < m.layers.size(); ++i) {
         const Layer& L = m.layers[i];
+        if (trace) std::fprintf(stderr, "fi: layer %zu %s\n", i, L.kind == strata::core::LayerKind::Gdn ? "gdn" : "attn/mtp");
         if (L.kind == strata::core::LayerKind::Gdn) {
             if (!gdn_state(cx, gsh, f.state[i], f.hist[i], err)) return false;
         } else {
@@ -133,7 +162,7 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
                 return false;
             }
         }
-        if (L.gate_exps.ok() && !f.streaming) {
+        if (L.kind != strata::core::LayerKind::Mtp && L.gate_exps.ok() && !f.streaming) {
             const ExpertBlob b = blob_of(m, L);
             f.slots[i] = cx.alloc((size_t) b.slots((int) m.g.n_expert));
             if (f.slots[i].ptr == nullptr) {
@@ -158,6 +187,19 @@ bool forward_init(mtl::Context& cx, const Model& m, const DeviceModel& d, int kv
 
 bool embed_token(mtl::Context& cx, const Model& m, const DeviceModel& d, Forward& f, uint32_t token, uint32_t etype, std::string& err) {
     const int N = (int) m.g.n_embd;
+    // The device kernel covers the three formats the first packs shipped (Q8_0, Q6_K, Q4_K).  Every other dense format
+    // decodes the one row on the host instead: n_embd values a token (2048 here) against 40 layers of expert work, so
+    // there is nothing to gain from a GPU path that would need a fourth template of the q36_embed branches.
+    if (etype != ref::Q8_0 && etype != ref::Q6_K && etype != ref::Q4_K) {
+        std::vector<float> row((size_t) N);
+        ref::dequant((int) etype, m.embed.data(*m.file) + (size_t) token * ref::row_bytes((int) etype, N), row.data(), (size_t) N);
+        if (f.x.ptr == nullptr) {
+            err = "embed_token: the residual buffer is not allocated";
+            return false;
+        }
+        std::memcpy(f.x.ptr, row.data(), 4 * (size_t) N);
+        return true;
+    }
     mtl::Pipeline emb;
     try {
         emb = cx.pipeline(f.lk.glue_lib, "q36_embed");

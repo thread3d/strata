@@ -22,6 +22,7 @@ using namespace q36fix;
 namespace {
 
 int g_fail = 0;
+static mtl::Context* g_cx = nullptr;   // set in main: a private destination has to be read back to be compared
 void check(bool ok, const std::string& what) {
     std::printf("  %-96s %s\n", what.c_str(), ok ? "ok" : "FAIL");
     if (!ok) ++g_fail;
@@ -40,13 +41,29 @@ bool same(const strata::qwen36::Model& m, const strata::qwen36::TensorRef& r, co
         why = std::string(what) + ": buffer is " + std::to_string(b.bytes) + " bytes, tensor is " + std::to_string(bytes);
         return false;
     }
+    // This Metal runtime uploads into PRIVATE storage (the AMD card cannot read CPU-written shared memory), whose
+    // ptr is the handle, not a CPU address.  Copy it back to a shared buffer before comparing; without that the
+    // memcmp reads the MTLBuffer object's own first bytes and every upload looks wrong.
+    mtl::Buffer back;
+    const uint8_t* got = (const uint8_t*) b.ptr;
+    if (g_cx != nullptr && b.ptr == b.handle) {
+        back = g_cx->alloc((size_t) bytes);
+        if (back.ptr == nullptr) {
+            why = std::string(what) + ": no readback buffer";
+            return false;
+        }
+        g_cx->blit_copy(back, b);
+        got = (const uint8_t*) back.ptr;
+    }
     const uint8_t* src = r.data(*m.file);
-    if (std::memcmp(b.ptr, src, (size_t) bytes) != 0) {
+    if (std::memcmp(got, src, (size_t) bytes) != 0) {
         size_t at = 0;
-        while (at < (size_t) bytes && ((const uint8_t*) b.ptr)[at] == src[at]) ++at;
+        while (at < (size_t) bytes && got[at] == src[at]) ++at;
         why = std::string(what) + ": differs at byte " + std::to_string(at) + " of " + std::to_string(bytes);
+        if (back.ptr != nullptr) g_cx->free(back);
         return false;
     }
+    if (back.ptr != nullptr) g_cx->free(back);
     compared += bytes;
     return true;
 }
@@ -55,6 +72,7 @@ bool same(const strata::qwen36::Model& m, const strata::qwen36::TensorRef& r, co
 
 int main() {
     mtl::Context cx;
+    g_cx = &cx;
     std::printf("device %s (%llu-byte buffers, simd width %d)\n", cx.device_name().c_str(),
                 (unsigned long long) cx.max_buffer_length(), cx.simd_width());
     TempDir dir;

@@ -37,16 +37,20 @@ void ones(mtl::Buffer& b) {
 }  // namespace
 
 int main() {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);   // a crash below must not hide the line that says where it got to
     mtl::Context cx;
     std::printf("device %s\n", cx.device_name().c_str());
     TempDir dir;
     const fs::path f = write_model(dir, "fwd", "qwen35moe", kSmall);
     if (f.empty()) { std::printf("the fixture could not be built\n"); return 1; }
+    std::printf("fixture built: %s\n", f.string().c_str());
     strata::qwen36::Model m;
     std::string err;
     if (!strata::qwen36::open(f.string(), m, err)) { std::printf("open: %s\n", err.c_str()); return 1; }
+    std::printf("opened (%zu layers)\n", m.layers.size());
     strata::qwen36::DeviceModel d;
     if (!strata::qwen36::upload_dense(cx, m, d, err)) { std::printf("upload: %s\n", err.c_str()); return 1; }
+    std::printf("uploaded\n");
 
     zero(d.output);
     ones(d.output_norm);

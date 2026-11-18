@@ -38,6 +38,7 @@ int main() {
     TempDir dir;
     const fs::path fp = write_model(dir, "gen", "qwen35moe", kSmall);
     if (fp.empty()) { std::printf("the fixture could not be built\n"); return 1; }
+    std::printf("fixture built: %s\n", fp.string().c_str());
     strata::qwen36::Model m;
     strata::qwen36::DeviceModel d;
     std::string err;
@@ -45,6 +46,7 @@ int main() {
         std::printf("model: %s\n", err.c_str());
         return 1;
     }
+    std::printf("opened and uploaded (%zu layers)\n", m.layers.size());
     ones(d.output_norm);
     for (strata::qwen36::DeviceLayer& L : d.layers) {
         ones(L.attn_norm);
@@ -58,9 +60,14 @@ int main() {
     }
     const int cap = 32;
     strata::qwen36::Forward f, f2;
-    if (!strata::qwen36::forward_init(cx, m, d, cap, (uint64_t) 1024, f, err) ||
-        !strata::qwen36::forward_init(cx, m, d, cap, (uint64_t) 1024, f2, err)) {
-        std::printf("forward_init: %s\n", err.c_str());
+    std::printf("forward_init 1\n");
+    if (!strata::qwen36::forward_init(cx, m, d, cap, (uint64_t) 1024, f, err)) {
+        std::printf("forward_init 1: %s\n", err.c_str());
+        return 1;
+    }
+    std::printf("forward_init 2\n");
+    if (!strata::qwen36::forward_init(cx, m, d, cap, (uint64_t) 1024, f2, err)) {
+        std::printf("forward_init 2: %s\n", err.c_str());
         return 1;
     }
     const std::vector<uint32_t> prompt{3, 1};
