@@ -41,13 +41,13 @@
 <circle cx="743.7" cy="209.8" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <text x="750.8" y="201.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.83</text>
 <text x="750.8" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 750.8 490.0)">IQ3_S</text>
-<rect x="982.2" y="273.7" width="64.0" height="196.3" fill="#0f766e" opacity="0.86"/>
-<line x1="1014.2" y1="273.6" x2="1014.2" y2="273.8" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="1003.2" y1="273.6" x2="1025.2" y2="273.6" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="1003.2" y1="273.8" x2="1025.2" y2="273.8" stroke="#1f2933" stroke-width="1.4"/>
-<circle cx="1000.2" cy="273.6" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<circle cx="1007.2" cy="273.8" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<text x="1014.2" y="264.7" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.62</text>
+<rect x="982.2" y="274.0" width="64.0" height="196.0" fill="#0f766e" opacity="0.86"/>
+<line x1="1014.2" y1="273.7" x2="1014.2" y2="274.2" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="1003.2" y1="273.7" x2="1025.2" y2="273.7" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="1003.2" y1="274.2" x2="1025.2" y2="274.2" stroke="#1f2933" stroke-width="1.4"/>
+<circle cx="1000.2" cy="273.8" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<circle cx="1007.2" cy="274.2" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<text x="1014.2" y="265.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.62</text>
 <text x="1014.2" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 1014.2 490.0)">UD-Q4_K_XL</text>
 <line x1="92.0" y1="470.0" x2="1146.0" y2="470.0" stroke="#9ca3af" stroke-width="1.4"/>
 <rect x="92.0" y="76.0" width="12.0" height="12.0" fill="#0f766e" opacity="0.86"/>
