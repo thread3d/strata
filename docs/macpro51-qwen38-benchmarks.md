@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next prompt-throughput benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 18:45 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 18:46 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 > **The engine does not answer yet.** Its forward pass goes non-finite at the first full-attention layer, so
 > there is no decode rate to report and none is claimed here. What this page measures is the prompt path: the
@@ -26,7 +26,7 @@ _Generated 2026-11-18 18:45 UTC by `bench/macpro51/run_bench_qwen38.py` after ev
 | `Q2_0`* | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 1 | 4.79 ± 0.00 | 4.79 | 4.79 – 4.79 |
 | `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | — | — | — | — |
 | `IQ3_XXS`* | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 1 | 2.06 ± 0.00 | 2.06 | 2.06 – 2.06 |
-| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | — | — | — | — |
+| `IQ3_S`* | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 1 | 2.96 ± 0.00 | 2.96 | 2.96 – 2.96 |
 | `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
 | `UD-IQ2_XS` | UD-IQ2_XS (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
@@ -82,4 +82,5 @@ or rebooted machine costs one run rather than the series.
 | ---: | ---: | --- | ---: | ---: | ---: | --- |
 | 1 | 1 | `Q2_0` | 31 | 6.48 | 4.79 | first round (cold) |
 | 1 | 1 | `IQ3_XXS` | 31 | 15.07 | 2.06 | first round (cold) |
+| 2 | 1 | `IQ3_S` | 31 | 10.47 | 2.96 | first round (cold) |
 
