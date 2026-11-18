@@ -5,6 +5,11 @@ Everything below is read from the code at that commit unless it is marked **meas
 was run on the Mac Pro (2 x 6-core Xeon X5675, 24 threads, 96 GB, Radeon RX 580 8 GB, Metal 2,
 macOS 11.7.11) on this date, on the merged tree, and the output is quoted.
 
+> **Update 2026-11-18.** The port now generates readable text on this card and runs every installed
+> Qwen3.6 pack, not only Q8_0. The measured matrix (five shuffled runs per pack, error bars, SVG charts)
+> is [macpro51-quant-benchmarks.md](macpro51-quant-benchmarks.md). Statements below that say "Q8_0 only"
+> or "the tokens are not text" describe the 2026-11-14 state and are kept as the port's history.
+
 ## 1. The gate the user hit
 
 There is no "Qwen3.6 is unsupported" message, because Qwen3.6 support exists — on the CUDA and HIP
@@ -365,11 +370,14 @@ and the first token that disagrees is the first part that is wrong.
 
 ## 13. Where this stands, and how to continue
 
-**What works** (all measured on the Mac Pro, Radeon RX 580, macOS 11.7.11): the Qwen3.6-35B-A3B Q8_0 pack (37.8 GB) opens, uploads its
-2.52 GiB dense half in 3.8 s, streams its 32.67 GiB of experts through an 8-slot pool refilled per layer from the file, and generates tokens
-at ~1.0 s a step with 64.6 MiB of engine state.  Entry point: `build-metal/strata-q36-metal --model PACK --tokens a,b,c --n N --text`.
+**What works** (all measured on the Mac Pro, Radeon RX 580, macOS 11.7.11): every installed Qwen3.6 pack opens and generates
+(Q4_K_M, Q6_K, Q8_0, UD-Q2_K_XL, UD-Q4_K_XL, UD-Q6_K_XL, UD-Q8_K_XL), each measured with five shuffled runs in
+[macpro51-quant-benchmarks.md](macpro51-quant-benchmarks.md): 0.72 tok/s decode for Q8_0 and 1.02 for UD-Q2_K_XL in steady state.
+The Q8_0 pack (37.8 GB) uploads its 2.52 GiB dense half, streams its 32.67 GiB of experts through an 8-slot pool refilled per layer,
+and keeps 64.6 MiB of engine state.  Entry point: `build-metal/strata-q36-metal --model PACK --tokens a,b,c --n N --text`.
 
-**What does not**: the tokens are not text.  The engine runs and is not correct.
+**What changed on 2026-11-18**: the tokens are text (the Q8_0 pack answers "The capital of France is **Paris**."), every installed
+pack runs, and the four defects the port found are fixed and re-tested.  Notes below that say otherwise describe the 2026-11-14 state.
 
 **What is verified against the real pack** (never wrong, unlike the three retracted findings):
 
@@ -463,7 +471,9 @@ A chat run of "The capital of France is" ends, at 200 tokens:
     dense resident  2.52 GiB uploaded in 3.8 s
     experts         32.67 GiB streamed: 8 slots refilled per layer, 8 x 3.19 MiB a layer, ~1 GiB read a token
     engine state    64.6 MiB (30 GDN states and histories, 10 KV rings at the window, all the scratch)
-    speed           ~1.0 s a token at a 64-token window; the prompt runs one token at a time
+    speed           0.72 tok/s decode for Q8_0 at a 32-token window, 0.64-0.81 across five runs (steady state);
+                    the prompt runs one token at a time, 0.86 tok/s.  Every pack's numbers are in
+                    macpro51-quant-benchmarks.md
     correctness     trunk hidden states cos 0.9999 against llama.cpp at every layer
 
 ### What is not done
@@ -474,8 +484,11 @@ A chat run of "The capital of France is" ends, at 200 tokens:
 * **sampling beyond temperature/top-p** - no repetition penalties, no min-p, no grammars.
 * **the MTP draft head** - the in-file MTP block is deliberately skipped in the trunk (it is a draft head, not a layer); speculative decoding is not
   implemented, so MTP is unused.
-* **other quantisations** - the pack must be Q8_0 for the dense half (the expert kernels take IQ3_S, IQ4_XS, Q2_0 and Q3_K..Q6_K through
-  `native_expert`); the gate refuses by name rather than mis-reading.
+* **other quantisations** - all seven installed packs run as of 2026-11-18 (Q4_K_M, Q6_K, Q8_0, UD-Q2_K_XL,
+  UD-Q4_K_XL, UD-Q6_K_XL, UD-Q8_K_XL), each measured with five shuffled runs in
+  [macpro51-quant-benchmarks.md](macpro51-quant-benchmarks.md). An embedding row outside `q36_embed`'s three
+  formats is dequantised on the host (2,048 values a token); BF16 grouped experts are instantiated in
+  `moe.metal`; the never-run MTP block's expert types are no longer validated.
 
 ### Building it
 
@@ -484,7 +497,8 @@ A chat run of "The capital of France is" ends, at 200 tokens:
           -DMETAL_CPP_DIR=$HOME/projects/metal-cpp/metal-cpp \
           -DSTRATA_GGML_DIR=$HOME/projects/llama.cpp
     ninja -C build-metal strata-q36-metal
-    ctest --test-dir build-metal -R q36_          # 17 checks, no pack needed (they build their own tiny GGUFs)
+    ctest --test-dir build-metal -R q36_          # 17 checks; 15 pass on this Metal 2 card (forward/generate abort in
+                                                  # attn_init for the synthetic eight-head fixture; see the matrix page)
 
 The engine needs: macOS with Metal 2 (this port is developed on 11.7.11 and an AMD RX 580, where `maxBufferLength` is 3.5 GB and the
 simdgroup width is 64 rather than 32 - the kernels handle both), `metal-cpp`, and a llama.cpp checkout for the shared `ggml` quantisation

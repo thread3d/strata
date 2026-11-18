@@ -431,8 +431,27 @@ fetched and built by hand as above.
 ### Qwen3.6-35B-A3B runs here (measured 2026-11-14)
 
 The three limits above still stop Strata's app and setup path on this Mac, and the Qwen3.8-Flash-Next family still does not run here. One
-family does: **Qwen3.6-35B-A3B (GGUF architecture `qwen35moe`), Q8_0**, through its own command-line engine. It is a separate program
+family does: **Qwen3.6-35B-A3B (GGUF architecture `qwen35moe`)**, through its own command-line engine. It is a separate program
 (`build-metal/strata-q36-metal`), not `strata launch`, and its page is [QWEN36-METAL.md](qwen36-metal.md).
+
+Since 2026-11-18 every installed pack runs and has been measured: Q4_K_M, Q6_K, Q8_0, UD-Q2_K_XL, UD-Q4_K_XL,
+UD-Q6_K_XL and UD-Q8_K_XL. Five shuffled runs each, a 32-token prompt and 32 greedy tokens, steady state
+(rounds 2-5, mean ± 1 sample standard deviation), on the Mac Pro above:
+
+| pack | decode (tok/s) | prompt (tok/s) |
+| --- | ---: | ---: |
+| UD-Q2_K_XL | 1.02 ± 0.07 | 1.14 ± 0.01 |
+| UD-Q4_K_XL | 1.00 ± 0.01 | 1.07 ± 0.01 |
+| Q6_K | 0.87 ± 0.08 | 0.97 ± 0.01 |
+| Q4_K_M | 0.80 ± 0.08 | 0.94 ± 0.00 |
+| UD-Q6_K_XL | 0.79 ± 0.09 | 0.92 ± 0.01 |
+| UD-Q8_K_XL | 0.78 ± 0.00 | 0.83 ± 0.00 |
+| Q8_0 | 0.72 ± 0.09 | 0.86 ± 0.01 |
+
+The first pass of each pack is cold and costs about 10% more than its steady state; the whole matrix,
+with the per-run log, the cold pass priced separately and SVG charts, is
+[macpro51-quant-benchmarks.md](macpro51-quant-benchmarks.md). The block below describes Q8_0: its
+0.72 tok/s is the same card, five runs instead of the single early run that gave "~1.0 s a token".
 
 Measured on the Mac Pro above (RX 580 8 GB, Metal 2, macOS 11.7.11):
 
@@ -441,7 +460,7 @@ pack            37.8 GB (Qwen3.6-35B-A3B-Q8_0.gguf)
 dense resident  2.52 GiB, uploaded in 3.8 s          <- fits the 3.8 GB maxBufferLength
 experts         32.67 GiB, streamed from the file: 8 slots refilled per layer, 8 x 3.19 MiB a layer, ~1 GiB read a token
 engine state    64.6 MiB
-speed           ~1.0 s a token at a 64-token window
+speed           0.72 tok/s decode, 0.86 tok/s prompt (steady state, five runs; the matrix above)
 correctness     the trunk's hidden states are cos 0.9999 against llama.cpp's, at every layer
 ```
 
