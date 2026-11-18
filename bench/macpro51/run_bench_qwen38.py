@@ -139,10 +139,11 @@ def native_pair(label: str):
 
 
 def pack_size(label: str) -> int:
+    """The pack's download size (a repacked copy beside it is a working file, not part of the pack)."""
     d = pack_dir(label)
     if not d.is_dir():
         return 0
-    return sum(p.stat().st_size for p in d.glob("*.gguf"))
+    return sum(p.stat().st_size for p in d.glob("*.gguf") if not p.name.endswith("-metal.gguf"))
 
 
 def git(*args, check=True):
