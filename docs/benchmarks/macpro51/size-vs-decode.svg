@@ -36,6 +36,8 @@
 <text x="182.1" y="151.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q6_K</text>
 <circle cx="157.0" cy="145.6" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="166.0" y="138.6" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
+<circle cx="184.7" cy="203.1" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="193.7" y="196.1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q6_K_XL</text>
 <circle cx="203.2" cy="226.3" r="5.0" fill="#2563eb" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="212.2" y="219.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q8_K_XL</text>
 <circle cx="822.3" cy="354.7" r="5.0" fill="#c2410c" stroke="white" stroke-width="1.2" opacity="1.00"/>
