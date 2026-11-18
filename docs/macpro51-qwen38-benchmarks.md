@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next prompt-throughput benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 18:50 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 18:51 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 > **The engine does not answer yet.** Its forward pass goes non-finite at the first full-attention layer, so
 > there is no decode rate to report and none is claimed here. What this page measures is the prompt path: the
@@ -23,7 +23,7 @@ _Generated 2026-11-18 18:50 UTC by `bench/macpro51/run_bench_qwen38.py` after ev
 
 | Pack | Quantisation | Source | On disk | Runs | Prompt, steady (mean ± sd) | All runs (mean) | Steady range |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 3 | 4.72 ± 0.034 | 4.74 | 4.69 – 4.74 |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 4 | 4.74 ± 0.047 | 4.75 | 4.69 – 4.79 |
 | `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | — | — | — | — |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 3 | 3.65 ± 0.017 | 3.12 | 3.64 – 3.66 |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 3 | 3.37 ± 0.035 | 3.23 | 3.35 – 3.40 |
@@ -64,7 +64,7 @@ bytes a token actually touches decide this number more than the file size does.
 
 ## What the numbers say
 
-- **Fastest prompt read:** `Q2_0` at 4.72 tok/s; **slowest:** `IQ3_S` at 3.37 tok/s (1.40× between them).
+- **Fastest prompt read:** `Q2_0` at 4.74 tok/s; **slowest:** `IQ3_S` at 3.37 tok/s (1.41× between them).
 - **Run-to-run spread:** coefficient of variation from 0.5% (`IQ3_XXS`) to 1.0% (`IQ3_S`).
 
 The first round is the first pass over each pack (cold page cache, cold clocks); the later rounds are the
@@ -94,4 +94,5 @@ or rebooted machine costs one run rather than the series.
 | 10 | 3 | `IQ2_XS` | — | — | — | failed: mtl: shared-event waits 2320 times, 33.2 ms (0.014 ms a wait) |
 | 11 | 3 | `IQ3_S` | 31 | 9.13 | 3.40 | later round |
 | 12 | 4 | `IQ2_XS` | — | — | — | failed: mtl: shared-event waits 2320 times, 32.8 ms (0.014 ms a wait) |
+| 13 | 4 | `Q2_0` | 31 | 6.48 | 4.79 | later round |
 
