@@ -83,4 +83,5 @@ or rebooted machine costs one run rather than the series.
 | 1 | 1 | `Q2_0` | 31 | 6.48 | 4.79 | first round (cold) |
 | 1 | 1 | `IQ3_XXS` | 31 | 15.07 | 2.06 | first round (cold) |
 | 2 | 1 | `IQ3_S` | 31 | 10.47 | 2.96 | first round (cold) |
+| 3 | 1 | `IQ2_XS` | — | — | — | failed: mtl: shared-event waits 2320 times, 33.3 ms (0.014 ms a wait) |
 
