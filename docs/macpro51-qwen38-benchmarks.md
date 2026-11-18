@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 20:34 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 20:37 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -21,22 +21,15 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | Pack | Quantisation | Source | On disk | Result |
 | --- | --- | --- | ---: | --- |
 | `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 5 runs, 1.06 tok/s decode (steady state) |
-| `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | queued |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 5 runs, 0.90 tok/s decode (steady state) |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 5 runs, 0.83 tok/s decode (steady state) |
-| `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 0.0 GiB | not downloaded |
-| `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 0.0 GiB | not downloaded |
-| `UD-IQ2_XS` | UD-IQ2_XS (Unsloth v3.1) | unsloth | 0.0 GiB | not downloaded |
-| `UD-Q2_K_XL` | UD-Q2_K_XL (Unsloth v3.1) | unsloth | 0.0 GiB | not downloaded |
-| `UD-IQ4_XS` | UD-IQ4_XS (Unsloth) | unsloth | 0.0 GiB | not downloaded |
-| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 0.0 GiB | not downloaded |
-| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 0.0 GiB | not downloaded |
-| `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 0.0 GiB | not downloaded |
-| `Q8_0` | Q8_0 (Unsloth) | unsloth | 0.0 GiB | not downloaded |
+| `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
+
+Not on disk yet (not attempted, and not counted as a failure): `UD-IQ1_M`, `UD-Q2_0`, `UD-IQ2_XS`, `UD-Q2_K_XL`, `UD-IQ4_XS`, `UD-Q4_K_XL`, `UD-Q5_K_XL`, `UD-Q6_K_XL`, `Q8_0`.
 
 ## Method
 
-- **One process per run.** `strata generate` opens the shard, builds the pack metadata once, reads the dense side and the expert arena, then times the prompt and the decode separately. Load time is reported on its own and is not part of either throughput.
+- **One process per run.** `strata` opens the shard, builds the pack metadata once, reads the dense side and the expert arena, then times the prompt and the decode separately. Load time is reported on its own and is not part of either throughput.
 - **Fixed workload.** The same 32 token ids for every pack (the Qwen 248 320-entry vocabulary, a varied English sentence rather than repeated ids, so routing is not narrowed), read one at a time, then 32 greedy tokens.
 - **Mixed order.** Each round contains every downloaded pack once, in a fresh shuffled order (seed in the run's `meta.json`). No pack is always first or last, so thermal drift, page-cache state and SSD behaviour are spread across the matrix.
 - **Error bars.** Mean ± 1 sample standard deviation over the steady-state runs (rounds 2+); round 1 is each pack's first pass and is priced separately. Individual runs are the dots on the charts.
@@ -89,25 +82,25 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | # | Round | Pack | Prefill s | Decode s | Decode tok/s | Note |
 | ---: | ---: | --- | ---: | ---: | ---: | --- |
 | 1 | 1 | `Q2_0` | 9.32 | 30.04 | 1.07 | first round (cold) |
-| 1 | 1 | `IQ3_XXS` | 11.89 | 35.44 | 0.903 | first round (cold) |
-| 2 | 1 | `IQ3_S` | 12.10 | 38.08 | 0.840 | first round (cold) |
-| 3 | 1 | `IQ2_XS` | — | — | — | failed: strata generate: PCIe probe failed -> pcie_frac default 0.55 |
-| 4 | 2 | `IQ2_XS` | — | — | — | failed: strata generate: PCIe probe failed -> pcie_frac default 0.55 |
-| 5 | 2 | `IQ3_XXS` | 11.68 | 35.60 | 0.899 | later round |
-| 6 | 2 | `IQ3_S` | 12.23 | 38.39 | 0.834 | later round |
-| 7 | 2 | `Q2_0` | 9.29 | 30.31 | 1.06 | later round |
-| 8 | 3 | `Q2_0` | 9.24 | 30.35 | 1.05 | later round |
-| 9 | 3 | `IQ3_XXS` | 11.91 | 36.12 | 0.886 | later round |
-| 10 | 3 | `IQ2_XS` | — | — | — | failed: strata generate: PCIe probe failed -> pcie_frac default 0.55 |
-| 11 | 3 | `IQ3_S` | 12.15 | 38.28 | 0.836 | later round |
-| 12 | 4 | `IQ2_XS` | — | — | — | failed: strata generate: PCIe probe failed -> pcie_frac default 0.55 |
-| 13 | 4 | `Q2_0` | 9.38 | 30.36 | 1.05 | later round |
-| 14 | 4 | `IQ3_XXS` | 11.89 | 35.67 | 0.897 | later round |
-| 15 | 4 | `IQ3_S` | 12.18 | 38.31 | 0.835 | later round |
-| 16 | 5 | `IQ3_S` | 12.45 | 38.34 | 0.835 | later round |
-| 17 | 5 | `Q2_0` | 9.30 | 30.29 | 1.06 | later round |
-| 18 | 5 | `IQ3_XXS` | 11.74 | 35.57 | 0.900 | later round |
-| 19 | 5 | `IQ2_XS` | — | — | — | failed: strata generate: PCIe probe failed -> pcie_frac default 0.55 |
+| 2 | 1 | `IQ3_XXS` | 11.89 | 35.44 | 0.903 | first round (cold) |
+| 3 | 1 | `IQ3_S` | 12.10 | 38.08 | 0.840 | first round (cold) |
+| 4 | 1 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
+| 5 | 2 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
+| 6 | 2 | `IQ3_XXS` | 11.68 | 35.60 | 0.899 | later round |
+| 7 | 2 | `IQ3_S` | 12.23 | 38.39 | 0.834 | later round |
+| 8 | 2 | `Q2_0` | 9.29 | 30.31 | 1.06 | later round |
+| 9 | 3 | `Q2_0` | 9.24 | 30.35 | 1.05 | later round |
+| 10 | 3 | `IQ3_XXS` | 11.91 | 36.12 | 0.886 | later round |
+| 11 | 3 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
+| 12 | 3 | `IQ3_S` | 12.15 | 38.28 | 0.836 | later round |
+| 13 | 4 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
+| 14 | 4 | `Q2_0` | 9.38 | 30.36 | 1.05 | later round |
+| 15 | 4 | `IQ3_XXS` | 11.89 | 35.67 | 0.897 | later round |
+| 16 | 4 | `IQ3_S` | 12.18 | 38.31 | 0.835 | later round |
+| 17 | 5 | `IQ3_S` | 12.45 | 38.34 | 0.835 | later round |
+| 18 | 5 | `Q2_0` | 9.30 | 30.29 | 1.06 | later round |
+| 19 | 5 | `IQ3_XXS` | 11.74 | 35.57 | 0.900 | later round |
+| 20 | 5 | `IQ2_XS` | — | — | — | failed: mtl: no function moe_gu_29_32_1_4 Function moe_gu_29_32_1_4 was not found in the library |
 
 ## Limits recorded here
 

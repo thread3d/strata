@@ -464,21 +464,31 @@ def render_doc(agg, records, meta):
     L.append("")
     L.append("| Pack | Quantisation | Source | On disk | Result |")
     L.append("| --- | --- | --- | ---: | --- |")
+    missing = []
+    refused_names = {n for n, _ in REFUSED}
     for cfg in CONFIGS:
         label = cfg[1]
+        if label in refused_names:
+            continue
         a = agg.get(label)
         size = pack_size(cfg[0])
+        if not size:
+            missing.append(label)
+            continue
         if a and a["n"]:
             verdict = f"{a['n']} run{'s' if a['n'] != 1 else ''}, {mean(a['decode']):.2f} tok/s decode (steady state)"
-        elif not size:
-            verdict = "not downloaded"
         else:
             verdict = "queued"
         L.append(f"| `{label}` | {cfg[2]} | {cfg[3]} | {size/1073741824.0:.1f} GiB | {verdict} |")
+    for name, why in REFUSED:
+        L.append(f"| `{name}` | refused on this branch | — | {pack_size(name)/1073741824.0:.1f} GiB | {why} |")
+    if missing:
+        L.append("")
+        L.append("Not on disk yet (not attempted, and not counted as a failure): " + ", ".join(f"`{m}`" for m in missing) + ".")
     L.append("")
     L.append("## Method")
     L.append("")
-    L.append(f"- **One process per run.** `strata generate` opens the shard, builds the pack metadata once, reads the dense side and the expert arena, then times the prompt and the decode separately. Load time is reported on its own and is not part of either throughput.")
+    L.append(f"- **One process per run.** `strata` opens the shard, builds the pack metadata once, reads the dense side and the expert arena, then times the prompt and the decode separately. Load time is reported on its own and is not part of either throughput.")
     L.append(f"- **Fixed workload.** The same {PREFILL} token ids for every pack (the Qwen 248 320-entry vocabulary, a varied English sentence rather than repeated ids, so routing is not narrowed), read one at a time, then {DECODE} greedy tokens.")
     L.append(f"- **Mixed order.** Each round contains every downloaded pack once, in a fresh shuffled order (seed in the run's `meta.json`). No pack is always first or last, so thermal drift, page-cache state and SSD behaviour are spread across the matrix.")
     L.append(f"- **Error bars.** Mean ± 1 sample standard deviation over the steady-state runs (rounds 2+); round 1 is each pack's first pass and is priced separately. Individual runs are the dots on the charts.")
@@ -552,12 +562,12 @@ def render_doc(agg, records, meta):
     L.append("")
     L.append("| # | Round | Pack | Prefill s | Decode s | Decode tok/s | Note |")
     L.append("| ---: | ---: | --- | ---: | ---: | ---: | --- |")
-    for r in sorted(records, key=lambda r: r.get("order", 0)):
+    for n, r in enumerate(sorted(records, key=lambda r: r.get("order", 0)), start=1):
         if r.get("rc") == 0 and "decode_s" in r:
             note = "first round (cold)" if r.get("round", 0) == 0 else "later round"
-            L.append(f"| {r.get('order', 0)+1} | {r.get('round', 0)+1} | `{r['label']}` | {fmt(r.get('prefill_s', 0))} | {fmt(r['decode_s'])} | {fmt(rate(r, 'decode'))} | {note} |")
+            L.append(f"| {n} | {r.get('round', 0)+1} | `{r['label']}` | {fmt(r.get('prefill_s', 0))} | {fmt(r['decode_s'])} | {fmt(rate(r, 'decode'))} | {note} |")
         else:
-            L.append(f"| {r.get('order', 0)+1} | {r.get('round', 0)+1} | `{r.get('label','?')}` | — | — | — | failed: {r.get('error', 'unknown')} |")
+            L.append(f"| {n} | {r.get('round', 0)+1} | `{r.get('label','?')}` | — | — | — | failed: {r.get('error', 'unknown')} |")
     L.append("")
     L.append("## Limits recorded here")
     L.append("")
@@ -590,8 +600,9 @@ def main():
         for c in listed:
             print(c[1], "downloaded" if shards(c[1])[0] else "missing")
         return 0
-    # a pack that is not on disk yet is not a run: it would only add a failed row to the log
-    active = [c for c in listed if shards(c[1])[0] is not None]
+    # a pack that is not on disk yet, or that this branch refuses, is not a run: it would only add failed rows
+    refused = {name for name, _ in REFUSED}
+    active = [c for c in listed if shards(c[1])[0] is not None and c[1] not in refused]
     if not active:
         print("no pack on disk: nothing to run")
         return 0
