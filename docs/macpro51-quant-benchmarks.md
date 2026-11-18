@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 10:17 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 10:19 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -10,7 +10,7 @@ _Generated 2026-11-18 10:17 UTC by `bench/macpro51/run_bench.py`. Every number b
 | GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |
 | OS | macOS 11.7.11 (Big Sur, 20G1443) |
 | Engine | `strata-q36-metal` (Qwen3.6) and `strata_ds4` (DeepSeek V4.1-Flash), built Release with Ninja |
-| Branch / commit at the last run | `macpro51` / `046c6c26c1` |
+| Branch / commit at the last run | `macpro51` / `0628397e45` |
 
 The Metal runtime here is the workaround path: kernels take buffer offsets instead of raw device addresses, the DeepSeek engine flushes command buffers one at a time (`DS4_FLUSH_EVERY`), and `simdgroup_matrix`/Metal 3 features are skipped. Numbers are therefore this card's, not a Metal 3 Mac's.
 
@@ -152,7 +152,7 @@ These were found by opening every installed pack before the sweep, and are on th
 
 The Qwen3.6 checks: 15 of the 18 registered ctest tests pass on this build. The three that do not are not on a real pack's path:
 
-- `q36_forward_check` and `q36_generate_check` abort inside `attn_init` while compiling the synthetic eight-head fixture's attention kernels on this Metal 2 driver; the sweep below is the evidence that a real pack's shapes compile and run.
+- `q36_forward_check` and `q36_generate_check` abort inside `attn_init` while compiling the synthetic eight-head fixture's attention kernels on this Metal 2 driver; the sweep above is the evidence that a real pack's shapes compile and run.
 - `runtime_hello` fails its device-address and graph-replay cases because macOS 11 has neither; the engine's documented workarounds are why these benchmarks run at all.
 
 The BF16 grouped-expert kernels added for UD-Q8_K_XL pass `expert_parity --gu BF16 --dn BF16` at 1 and 8 tokens (h rel L2 1.4e-07, y 1.1e-07), against the same double reference the other formats are held to.
