@@ -43,10 +43,16 @@ Q36_DIR = HOME / "models" / "qwen36"
 DS_DIR = HOME / "models" / "deepseek-v4.1-flash"
 
 # The same ids for every pack of a family: the workload must not change between the things being compared.
-# 760/6511/314 is the "What is the capital of France? Answer:" prompt used by the branch's earlier runs; the rest
-# come from the same tokenizer's vocabulary so the prompt is long enough for prefill to be more than overhead.
-QWEN_IDS = [760, 6511, 314, 9338, 369, 2972, 57590, 279, 220, 17, 24, 23, 13, 271, 248068, 248069]
-DS_IDS = [760, 6511, 314, 9338, 369, 2972, 57590, 279, 220, 17, 24, 23, 13, 271, 248068, 248069]
+# Qwen's 32 ids are the first 32 of the pack tokenizer's encoding of
+#     "Explain, in two short sentences, why the sky looks blue during the day and red at sunset. Then say
+#      why the Moon looks orange near the horizon."
+# (34 tokens, read back with strata-q36-metal --prompt).  A varied sentence rather than a repeated id list:
+# a repeated prompt makes a greedy model echo it, which routes to a narrower set of experts than a real one.
+# DeepSeek's tokenizer is a different vocabulary; its 16 ids are a fixed, varied sequence inside its vocabulary
+# (the same numbers are not the same rendered text, so the two families are compared within themselves).
+QWEN_IDS = [3, 1, 42498, 456, 11, 303, 1330, 2716, 22157, 11, 3069, 279, 12515, 5686, 6105, 2261, 279, 1834, 321,
+            2438, 506, 41564, 13, 4844, 1910, 3069, 279, 16820, 5686, 18016, 3043, 279]
+DS_IDS = [3, 1, 42498, 456, 11, 303, 1330, 2716, 22157, 11, 3069, 279, 12515, 5686, 6105, 2261]
 
 # Prompt and decode lengths.  The Qwen engine reads a prompt one token at a time and decodes one token at a time,
 # so each run is (prefill + decode) forwards; 32+32 keeps a run near a minute and a half on the RX 580 while still
@@ -325,8 +331,8 @@ def render_doc(agg, records, meta):
     lines.append("Two Qwen3.6 packs were refused when this sweep started, and the refusals were real defects "
                  "rather than hardware limits; they were fixed on the branch before the sweep (see "
                  "[Engine fixes](#engine-fixes)). The DeepSeek UD-Q8_K_XL pack is refused by the engine on "
-                 "this card because its dense weights alone need about 19 GB of VRAM; that is a hardware limit, "
-                 "recorded here rather than worked around.")
+                 "this card because its dense weights alone need 15.61 GB of VRAM against the RX 580's "
+                 "8.59 GB; that is a hardware limit, recorded here rather than worked around.")
     lines.append("")
     lines.append("## Method")
     lines.append("")
@@ -341,8 +347,9 @@ def render_doc(agg, records, meta):
                  f"(seed in `bench/macpro51/meta.json`). No pack is always first or always last, so thermal or "
                  f"page-cache drift is spread across the matrix.")
     lines.append(f"- **Error bars.** Mean ± 1 sample standard deviation over the completed runs of that pack; "
-                 f"the individual runs are drawn as dots on the charts. With {meta.get('rounds', 'N')} rounds the "
-                 f"bars describe run-to-run spread on this machine, not a confidence interval for another one.")
+                 f"the individual runs are drawn as dots on the charts. With {meta.get('rounds', 'N')} "
+                 f"round{'s' if meta.get('rounds', 2) != 1 else ''} the bars describe run-to-run spread on this "
+                 f"machine, not a confidence interval for another one.")
     lines.append(f"- **Steady state.** Qwen runs use a 2 GiB expert-slot budget, which selects the streaming "
                  f"path for every pack here; the warm-up pass is what fills the OS page cache and compiles the "
                  f"pipelines before the first measured token.")
@@ -391,7 +398,7 @@ def render_doc(agg, records, meta):
     lines.append("| ---: | ---: | --- | --- | ---: | ---: | ---: | --- |")
     for r in sorted(records, key=lambda r: r.get("order", 0)):
         if r.get("rc") == 0 and "decode_tok_s" in r:
-            note = "warm" if r.get("order", 0) >= len(CONFIGS) else "cold page cache"
+            note = "first round (cold cache)" if r.get("round", 0) == 0 else "later round"
             lines.append(f"| {r.get('order', 0) + 1} | {r.get('round', 0) + 1} | {r['family']} | {r['label']} | "
                          f"{fmt(r['prefill_s'])} | {fmt(r['decode_s'])} | {fmt(r['decode_tok_s'])} | {note} |")
         else:
@@ -419,9 +426,21 @@ def render_doc(agg, records, meta):
     lines.append("")
     lines.append("`gemv_parity` passes on this build for Q2_0, IQ3_S, Q3_K, Q4_K, Q5_K and Q6_K at n_in 2560 "
                  "and 10240 and 1/3/8 tokens (rel L2 6e-08…4e-07, and the multi-token window is bitwise equal "
-                 "to the one-token path). `q36_moe_routed_parity` and `q36_layer_check` pass. The full ctest "
-                 "line-up is recorded in `~/logs/` on the machine; tests that need a fixture or a model path "
-                 "are run by hand with the pack, not by bare `ctest` (see the log for the exact list).")
+                 "to the one-token path).")
+    lines.append("")
+    lines.append("The Qwen3.6 checks: 15 of the 18 registered ctest tests pass on this build. The three that "
+                 "do not are not on a real pack's path:")
+    lines.append("")
+    lines.append("- `q36_forward_check` and `q36_generate_check` abort inside `attn_init` while compiling the "
+                 "synthetic eight-head fixture's attention kernels on this Metal 2 driver; the sweep below is "
+                 "the evidence that a real pack's shapes compile and run.")
+    lines.append("- `runtime_hello` fails its device-address and graph-replay cases because macOS 11 has "
+                 "neither; the engine's documented workarounds are why these benchmarks run at all.")
+    lines.append("")
+    lines.append("`q36_model_check`, `q36_glue_parity` and `q36_upload_check` were repaired as part of this "
+                 "work (a stale kernel argument, an error message that looked a type up in the wrong table, "
+                 "and a byte comparison against a private buffer's handle, which now blits the buffer back "
+                 "first). `q36_upload_check` verifies 34.5 MB of dense and embedding bytes and passes.")
     lines.append("")
     lines.append("## Reproduce")
     lines.append("")
