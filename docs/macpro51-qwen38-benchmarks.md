@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next prompt-throughput benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 18:48 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 18:49 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 > **The engine does not answer yet.** Its forward pass goes non-finite at the first full-attention layer, so
 > there is no decode rate to report and none is claimed here. What this page measures is the prompt path: the
@@ -25,7 +25,7 @@ _Generated 2026-11-18 18:48 UTC by `bench/macpro51/run_bench_qwen38.py` after ev
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 3 | 4.72 ± 0.034 | 4.74 | 4.69 – 4.74 |
 | `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | — | — | — | — |
-| `IQ3_XXS`* | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 2 | 2.86 ± 1.13 | 2.86 | 2.06 – 3.66 |
+| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 3 | 3.65 ± 0.017 | 3.12 | 3.64 – 3.66 |
 | `IQ3_S`* | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 2 | 3.15 ± 0.272 | 3.15 | 2.96 – 3.35 |
 | `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
@@ -64,8 +64,8 @@ bytes a token actually touches decide this number more than the file size does.
 
 ## What the numbers say
 
-- **Fastest prompt read:** `Q2_0` at 4.72 tok/s; **slowest:** `IQ3_XXS` at 2.86 tok/s (1.65× between them).
-- **Run-to-run spread:** coefficient of variation from 0.7% (`Q2_0`) to 39.6% (`IQ3_XXS`).
+- **Fastest prompt read:** `Q2_0` at 4.72 tok/s; **slowest:** `IQ3_S` at 3.15 tok/s (1.50× between them).
+- **Run-to-run spread:** coefficient of variation from 0.5% (`IQ3_XXS`) to 8.6% (`IQ3_S`).
 
 The first round is the first pass over each pack (cold page cache, cold clocks); the later rounds are the
 steady state. The round-1 and steady numbers are kept apart in the table and the per-run log.
@@ -90,4 +90,5 @@ or rebooted machine costs one run rather than the series.
 | 6 | 2 | `IQ3_S` | 31 | 9.26 | 3.35 | later round |
 | 7 | 2 | `Q2_0` | 31 | 6.54 | 4.74 | later round |
 | 8 | 3 | `Q2_0` | 31 | 6.61 | 4.69 | later round |
+| 9 | 3 | `IQ3_XXS` | 31 | 8.52 | 3.64 | later round |
 
