@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-18 21:56 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-18 21:57 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -20,7 +20,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Quantisation | Source | On disk | Result |
 | --- | --- | --- | ---: | --- |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | queued |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 1 run, 1.06 tok/s decode (steady state) |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | queued |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 1 run, 0.82 tok/s decode (steady state) |
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | queued |
@@ -43,6 +43,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ1_M`, `UD-Q
 
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
+| `Q2_0` | 1 | 1.06 ± 0.00 | 1.06 | 1.06 – 1.06 | 3.38 ± 0.00 |
 | `IQ3_S` | 1 | 0.824 ± 0.00 | 0.824 | 0.824 – 0.824 | 2.38 ± 0.00 |
 
 ## Prompt (prefill) throughput
@@ -59,7 +60,8 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 
 ## What the numbers say
 
-_Not enough completed packs yet; this section fills in as the rounds finish._
+- **Fastest decode:** `Q2_0` at 1.06 tok/s; **slowest:** `IQ3_S` at 0.82 tok/s (1.29× between them).
+- **Fastest prompt read:** `Q2_0` at 3.38 tok/s; slowest `IQ3_S` at 2.38 tok/s.
 
 ## Run order (mixing)
 
@@ -72,6 +74,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | # | Round | Pack | Prefill s | Decode s | Decode tok/s | Note |
 | ---: | ---: | --- | ---: | ---: | ---: | --- |
 | 1 | 1 | `IQ3_S` | 13.05 | 38.82 | 0.824 | first round (cold) |
+| 2 | 1 | `Q2_0` | 9.17 | 30.07 | 1.06 | first round (cold) |
 
 ## Limits recorded here
 
