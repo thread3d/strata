@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 08:53 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 08:55 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -24,7 +24,7 @@ Strata's three public families are DeepSeekV4.1-Flash-1017, Qwen3.8-Flash-Next a
 | qwen36 | Q6_K | 26.6 GiB | 1 run(s), 0.82 tok/s decode |
 | qwen36 | Q8_0 | 35.2 GiB | no completed run yet |
 | qwen36 | UD-Q2_K_XL | 11.7 GiB | no completed run yet |
-| qwen36 | UD-Q4_K_XL | 21.3 GiB | no completed run yet |
+| qwen36 | UD-Q4_K_XL | 21.3 GiB | 1 run(s), 0.86 tok/s decode |
 | qwen36 | UD-Q6_K_XL | 30.4 GiB | no completed run yet |
 | qwen36 | UD-Q8_K_XL | 36.4 GiB | 1 run(s), 0.64 tok/s decode |
 | dsv41 | IQ2_XXS | 239.2 GiB | 1 run(s), 0.29 tok/s decode |
@@ -47,6 +47,7 @@ Two Qwen3.6 packs were refused when this sweep started, and the refusals were re
 | Family | Pack | Runs | Decode tok/s (mean ± sd) | Range | Prefill tok/s (mean ± sd) |
 | --- | --- | ---: | ---: | ---: | ---: |
 | qwen36 | Q6_K | 1 | 0.82 ± 0.00 | 0.82 – 0.82 | 1.01 ± 0.00 |
+| qwen36 | UD-Q4_K_XL | 1 | 0.86 ± 0.00 | 0.86 – 0.86 | 1.08 ± 0.00 |
 | qwen36 | UD-Q8_K_XL | 1 | 0.64 ± 0.00 | 0.64 – 0.64 | 0.83 ± 0.00 |
 | dsv41 | IQ2_XXS | 1 | 0.29 ± 0.00 | 0.29 – 0.29 | 0.48 ± 0.00 |
 
@@ -64,8 +65,9 @@ On this card a token streams its routed experts from RAM/SSD through an 8 GB win
 
 ## What the numbers say
 
-- **Fastest decode:** `Q6_K` at 0.82 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (2.83× between them).
-- **Fastest prompt read:** `Q6_K` at 1.01 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
+- **Fastest decode:** `UD-Q4_K_XL` at 0.86 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (2.95× between them).
+- **Fastest prompt read:** `UD-Q4_K_XL` at 1.08 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
+- **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q4_K_XL` 0.86, `Q6_K` 0.82, `UD-Q8_K_XL` 0.64 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
 
 ## Run order (mixing)
 
@@ -80,6 +82,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results.jsonl` is ski
 | 1 | 1 | qwen36 | UD-Q8_K_XL | 38.71 | 48.67 | 0.64 | first round (cold cache) |
 | 2 | 1 | qwen36 | Q6_K | 31.60 | 37.77 | 0.82 | first round (cold cache) |
 | 3 | 1 | dsv41 | IQ2_XXS | 33.23 | 52.20 | 0.29 | first round (cold cache) |
+| 4 | 1 | qwen36 | UD-Q4_K_XL | 29.53 | 36.25 | 0.86 | first round (cold cache) |
 
 ## Engine fixes made to run the matrix
 
