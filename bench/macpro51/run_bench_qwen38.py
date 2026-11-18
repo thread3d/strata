@@ -40,6 +40,11 @@ MODELS = HOME / "models" / "qwen38"
 PACK_TOOL = REPO / "tools" / "iq_pack.py"
 PY = "python3"
 
+# Packs the Metal kernels of this branch cannot run, with the engine's own message (recorded, never timed).
+REFUSED = [
+    ("IQ2_XS", "the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4`"),
+]
+
 PREFILL, DECODE = 32, 32
 PREFILL_ONLY = False   # --prefill-only: one token after the prompt, so the prompt is measured and no decode rate is claimed
 # Qwen3.6's ids (the same 248 320-entry Qwen vocabulary): the first 32 of
@@ -171,7 +176,10 @@ def run_one(cfg, round_no, order):
     if lm:
         rec["dense_gb"], rec["dense_load_s"] = float(lm.group(1)), float(lm.group(2))
     if proc.returncode != 0 or dm is None:
-        rec.update(error=(err.strip().splitlines() or [""])[-1] or "no decode line",
+        lines = [ln.strip() for ln in err.strip().splitlines() if ln.strip()]
+        pick = next((ln for ln in lines if "no function " in ln or "no Metal implementation" in ln or
+                     ln.startswith("strata generate:") or ln.startswith("strata: ")), None)
+        rec.update(error=pick or (lines[-1] if lines else "no decode line"),
                    stderr_tail=err[-2000:], stdout_tail=out[-800:])
         return rec
     rec["decode_tokens"] = int(dm.group(1))
@@ -335,18 +343,36 @@ def render_doc_prompt_only(agg, records, meta):
     L.append("")
     L.append("| Pack | Quantisation | Source | On disk | Runs | Prompt, steady (mean ± sd) | All runs (mean) | Steady range |")
     L.append("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |")
+    starred = False
+    missing = []
     for cfg in CONFIGS:
-        a = agg.get(cfg[1])
         size = pack_size(cfg[0])
+        if not size:
+            missing.append(cfg[1])
+            continue
+        a = agg.get(cfg[1])
         if not a or not a["n"]:
             L.append(f"| `{cfg[1]}` | {cfg[2]} | {cfg[3]} | {size/1073741824.0:.1f} GiB | — | — | — | — |")
             continue
         p = a["prefill"]
         star = "" if a.get("used_steady") else "*"
+        starred = starred or bool(star)
         L.append(f"| `{cfg[1]}`{star} | {cfg[2]} | {cfg[3]} | {size/1073741824.0:.1f} GiB | {a['n']} | "
                  f"{fmt(mean(p))} ± {fmt(stdev(p))} | {fmt(mean(a['prefill_all']))} | {fmt(min(p))} – {fmt(max(p))} |")
-    L.append("")
-    L.append("\\* fewer than two steady-state runs (rounds 2+) so far, so this row uses every completed run.")
+    if starred:
+        L.append("")
+        L.append("\\* fewer than two steady-state runs (rounds 2+) so far, so this row uses every completed run.")
+    if missing:
+        L.append("")
+        L.append("Not on disk yet (not attempted, and not counted as a failure): " + ", ".join(f"`{m}`" for m in missing) + ".")
+    if REFUSED:
+        L.append("")
+        L.append("Refused on this branch (recorded, not timed):")
+        L.append("")
+        L.append("| Pack | Why |")
+        L.append("| --- | --- |")
+        for name, why in REFUSED:
+            L.append(f"| `{name}` | {why} |")
     L.append("")
     L.append("## Method")
     L.append("")
@@ -549,6 +575,7 @@ def main():
     ap.add_argument("--only", action="append", default=None)
     ap.add_argument("--no-push", action="store_true")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--render-only", action="store_true", help="rewrite the page and charts from the results file")
     ap.add_argument("--prefill-only", action="store_true",
                     help="measure the prompt only (one token after it); for a forward that does not answer yet")
     a = ap.parse_args()
@@ -568,6 +595,13 @@ def main():
         return 0
 
     records = load_records()
+    if a.render_only:
+        agg = aggregate(records)
+        render_charts(agg)
+        render_timeline(records, agg)
+        render_doc(agg, records, json.loads((HERE / "meta-qwen38.json").read_text()))
+        print("page and charts rewritten from", len(records), "records")
+        return 0
     done = {(r.get("round"), r.get("label")) for r in records if r.get("rc") == 0}
     meta = {"host": "macpro51", "rounds": a.rounds, "seed": a.seed, "prefill": PREFILL, "decode": DECODE,
             "git_head": git_head(), "prefill_only": PREFILL_ONLY,

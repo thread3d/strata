@@ -27,17 +27,14 @@ _Generated 2026-11-18 18:54 UTC by `bench/macpro51/run_bench_qwen38.py` after ev
 | `IQ2_XS` | IQ2_XS (GSQ-RCO) | ISTA-DASLab | 63.4 GiB | — | — | — | — |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 5 | 3.67 ± 0.028 | 3.35 | 3.64 – 3.70 |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 5 | 3.38 ± 0.029 | 3.30 | 3.35 – 3.42 |
-| `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
-| `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
-| `UD-IQ2_XS` | UD-IQ2_XS (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
-| `UD-Q2_K_XL` | UD-Q2_K_XL (Unsloth v3.1) | unsloth | 0.0 GiB | — | — | — | — |
-| `UD-IQ4_XS` | UD-IQ4_XS (Unsloth) | unsloth | 0.0 GiB | — | — | — | — |
-| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 0.0 GiB | — | — | — | — |
-| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 0.0 GiB | — | — | — | — |
-| `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 0.0 GiB | — | — | — | — |
-| `Q8_0` | Q8_0 (Unsloth) | unsloth | 0.0 GiB | — | — | — | — |
 
-\* fewer than two steady-state runs (rounds 2+) so far, so this row uses every completed run.
+Not on disk yet (not attempted, and not counted as a failure): `UD-IQ1_M`, `UD-Q2_0`, `UD-IQ2_XS`, `UD-Q2_K_XL`, `UD-IQ4_XS`, `UD-Q4_K_XL`, `UD-Q5_K_XL`, `UD-Q6_K_XL`, `Q8_0`.
+
+Refused on this branch (recorded, not timed):
+
+| Pack | Why |
+| --- | --- |
+| `IQ2_XS` | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
 
 ## Method
 
