@@ -1,6 +1,6 @@
 # Strata quantisation benchmarks on macpro51 (Intel Mac Pro, Radeon RX 580)
 
-_Generated 2026-11-18 10:14 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
+_Generated 2026-11-18 10:15 UTC by `bench/macpro51/run_bench.py`. Every number below was produced on the machine named here, during this sweep._
 
 ## The machine
 
@@ -10,7 +10,7 @@ _Generated 2026-11-18 10:14 UTC by `bench/macpro51/run_bench.py`. Every number b
 | GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |
 | OS | macOS 11.7.11 (Big Sur, 20G1443) |
 | Engine | `strata-q36-metal` (Qwen3.6) and `strata_ds4` (DeepSeek V4.1-Flash), built Release with Ninja |
-| Branch / commit at the last run | `macpro51` / `6f647aa095` |
+| Branch / commit at the last run | `macpro51` / `7085178a1b` |
 
 The Metal runtime here is the workaround path: kernels take buffer offsets instead of raw device addresses, the DeepSeek engine flushes command buffers one at a time (`DS4_FLUSH_EVERY`), and `simdgroup_matrix`/Metal 3 features are skipped. Numbers are therefore this card's, not a Metal 3 Mac's.
 
@@ -46,14 +46,14 @@ Two Qwen3.6 packs were refused when this sweep started, and the refusals were re
 
 | Family | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| qwen36 | Q4_K_M | 4 | 0.80 ± 0.08 | 0.79 | 0.73 – 0.87 | 0.94 ± 0.00 |
-| qwen36 | Q6_K | 4 | 0.87 ± 0.08 | 0.86 | 0.76 – 0.92 | 0.96 ± 0.01 |
-| qwen36 | Q8_0 | 4 | 0.72 ± 0.09 | 0.70 | 0.64 – 0.81 | 0.86 ± 0.01 |
-| qwen36 | UD-Q2_K_XL | 4 | 1.02 ± 0.07 | 1.01 | 0.96 – 1.09 | 1.14 ± 0.01 |
-| qwen36 | UD-Q4_K_XL | 4 | 1.00 ± 0.01 | 0.97 | 0.99 – 1.02 | 1.07 ± 0.01 |
-| qwen36 | UD-Q6_K_XL | 4 | 0.79 ± 0.09 | 0.77 | 0.70 – 0.87 | 0.92 ± 0.01 |
-| qwen36 | UD-Q8_K_XL | 4 | 0.78 ± 0.00 | 0.75 | 0.77 – 0.78 | 0.83 ± 0.00 |
-| dsv41 | IQ2_XXS | 4 | 0.29 ± 0.00 | 0.29 | 0.29 – 0.29 | 0.48 ± 0.00 |
+| qwen36 | Q4_K_M | 4 | 0.801 ± 0.076 | 0.788 | 0.735 – 0.870 | 0.943 ± 0.004 |
+| qwen36 | Q6_K | 4 | 0.872 ± 0.077 | 0.862 | 0.756 – 0.915 | 0.965 ± 0.013 |
+| qwen36 | Q8_0 | 4 | 0.717 ± 0.088 | 0.702 | 0.642 – 0.808 | 0.864 ± 0.008 |
+| qwen36 | UD-Q2_K_XL | 4 | 1.02 ± 0.070 | 1.01 | 0.959 – 1.09 | 1.14 ± 0.009 |
+| qwen36 | UD-Q4_K_XL | 4 | 1.00 ± 0.009 | 0.973 | 0.995 – 1.02 | 1.07 ± 0.013 |
+| qwen36 | UD-Q6_K_XL | 4 | 0.792 ± 0.089 | 0.773 | 0.699 – 0.869 | 0.921 ± 0.011 |
+| qwen36 | UD-Q8_K_XL | 4 | 0.776 ± 0.003 | 0.748 | 0.775 – 0.781 | 0.828 ± 0.003 |
+| dsv41 | IQ2_XXS | 4 | 0.286 ± 0.000 | 0.286 | 0.285 – 0.286 | 0.481 ± 0.001 |
 
 ## Prompt (prefill) throughput
 
@@ -70,7 +70,7 @@ On this card a token streams its routed experts from RAM/SSD through an 8 GB win
 ## What the numbers say
 
 - **Fastest decode:** `UD-Q2_K_XL` at 1.02 tok/s; **slowest:** `IQ2_XXS` at 0.29 tok/s (3.57× between them).
-- **Run-to-run spread:** largest for `Q8_0` at 12.2% of its mean (coefficient of variation), smallest for `IQ2_XXS` at 0.2%. A spread this small is what a fixed workload on one machine should show; a bar that is much wider is a pack whose expert streaming is not in steady state.
+- **Run-to-run spread:** the coefficient of variation runs from 0.2% (`IQ2_XXS`) to 12.2% (`Q8_0`). A fixed workload on one machine has no reason to vary by much; a pack whose bar is much wider is one whose expert streaming did not reach steady state in every round.
 - **Fastest prompt read:** `UD-Q2_K_XL` at 1.14 tok/s; slowest `IQ2_XXS` at 0.48 tok/s. Prefill is per-token latency on this engine, not just bandwidth, so its ranking need not follow decode's.
 - **Size alone does not order speed.** Qwen3.6 packs from smallest to largest decode at `UD-Q2_K_XL` 1.02, `Q4_K_M` 0.80, `UD-Q4_K_XL` 1.00, `Q6_K` 0.87, `UD-Q6_K_XL` 0.79, `Q8_0` 0.72, `UD-Q8_K_XL` 0.78 tok/s; the formats a pack uses for its routed experts and its dense side matter as much as its GiB.
 
@@ -97,46 +97,46 @@ The sweep is resumable: a `(round, pack)` pair already in `results.jsonl` is ski
 
 | # | Round | Family | Pack | Prefill s | Decode s | Decode tok/s | Note |
 | ---: | ---: | --- | --- | ---: | ---: | ---: | --- |
-| 1 | 1 | qwen36 | UD-Q8_K_XL | 38.71 | 48.67 | 0.64 | first round (cold cache) |
-| 2 | 1 | qwen36 | Q6_K | 31.60 | 37.77 | 0.82 | first round (cold cache) |
-| 3 | 1 | dsv41 | IQ2_XXS | 33.23 | 52.20 | 0.29 | first round (cold cache) |
-| 4 | 1 | qwen36 | UD-Q4_K_XL | 29.53 | 36.25 | 0.86 | first round (cold cache) |
-| 5 | 1 | qwen36 | UD-Q6_K_XL | 34.35 | 44.30 | 0.70 | first round (cold cache) |
-| 6 | 1 | qwen36 | Q4_K_M | 33.87 | 42.07 | 0.74 | first round (cold cache) |
-| 7 | 1 | qwen36 | Q8_0 | 37.34 | 48.51 | 0.64 | first round (cold cache) |
-| 8 | 1 | qwen36 | UD-Q2_K_XL | 27.86 | 32.31 | 0.96 | first round (cold cache) |
-| 9 | 2 | qwen36 | Q8_0 | 37.38 | 39.86 | 0.78 | later round |
+| 1 | 1 | qwen36 | UD-Q8_K_XL | 38.71 | 48.67 | 0.637 | first round (cold cache) |
+| 2 | 1 | qwen36 | Q6_K | 31.60 | 37.77 | 0.821 | first round (cold cache) |
+| 3 | 1 | dsv41 | IQ2_XXS | 33.23 | 52.20 | 0.287 | first round (cold cache) |
+| 4 | 1 | qwen36 | UD-Q4_K_XL | 29.53 | 36.25 | 0.855 | first round (cold cache) |
+| 5 | 1 | qwen36 | UD-Q6_K_XL | 34.35 | 44.30 | 0.700 | first round (cold cache) |
+| 6 | 1 | qwen36 | Q4_K_M | 33.87 | 42.07 | 0.737 | first round (cold cache) |
+| 7 | 1 | qwen36 | Q8_0 | 37.34 | 48.51 | 0.639 | first round (cold cache) |
+| 8 | 1 | qwen36 | UD-Q2_K_XL | 27.86 | 32.31 | 0.960 | first round (cold cache) |
+| 9 | 2 | qwen36 | Q8_0 | 37.38 | 39.86 | 0.778 | later round |
 | 10 | 2 | qwen36 | UD-Q2_K_XL | 27.76 | 28.42 | 1.09 | later round |
-| 11 | 2 | qwen36 | Q4_K_M | 33.93 | 35.65 | 0.87 | later round |
-| 12 | 2 | qwen36 | Q6_K | 32.95 | 33.94 | 0.91 | later round |
-| 13 | 2 | qwen36 | UD-Q8_K_XL | 38.52 | 39.70 | 0.78 | later round |
+| 11 | 2 | qwen36 | Q4_K_M | 33.93 | 35.65 | 0.870 | later round |
+| 12 | 2 | qwen36 | Q6_K | 32.95 | 33.94 | 0.913 | later round |
+| 13 | 2 | qwen36 | UD-Q8_K_XL | 38.52 | 39.70 | 0.781 | later round |
 | 14 | 2 | qwen36 | UD-Q4_K_XL | 29.58 | 30.54 | 1.02 | later round |
-| 15 | 2 | qwen36 | UD-Q6_K_XL | 34.35 | 35.70 | 0.87 | later round |
-| 16 | 2 | dsv41 | IQ2_XXS | 33.36 | 52.57 | 0.29 | later round |
-| 17 | 3 | qwen36 | Q6_K | 32.68 | 33.87 | 0.92 | later round |
-| 18 | 3 | qwen36 | Q4_K_M | 33.74 | 42.18 | 0.73 | later round |
-| 19 | 3 | qwen36 | UD-Q6_K_XL | 34.57 | 35.74 | 0.87 | later round |
-| 20 | 3 | qwen36 | Q8_0 | 37.01 | 48.28 | 0.64 | later round |
-| 21 | 3 | qwen36 | UD-Q2_K_XL | 28.22 | 32.25 | 0.96 | later round |
-| 22 | 3 | qwen36 | UD-Q8_K_XL | 38.53 | 40.02 | 0.77 | later round |
-| 23 | 3 | qwen36 | UD-Q4_K_XL | 29.82 | 31.16 | 0.99 | later round |
-| 24 | 3 | dsv41 | IQ2_XXS | 33.21 | 52.45 | 0.29 | later round |
-| 25 | 4 | qwen36 | UD-Q6_K_XL | 34.75 | 42.35 | 0.73 | later round |
+| 15 | 2 | qwen36 | UD-Q6_K_XL | 34.35 | 35.70 | 0.869 | later round |
+| 16 | 2 | dsv41 | IQ2_XXS | 33.36 | 52.57 | 0.285 | later round |
+| 17 | 3 | qwen36 | Q6_K | 32.68 | 33.87 | 0.915 | later round |
+| 18 | 3 | qwen36 | Q4_K_M | 33.74 | 42.18 | 0.735 | later round |
+| 19 | 3 | qwen36 | UD-Q6_K_XL | 34.57 | 35.74 | 0.867 | later round |
+| 20 | 3 | qwen36 | Q8_0 | 37.01 | 48.28 | 0.642 | later round |
+| 21 | 3 | qwen36 | UD-Q2_K_XL | 28.22 | 32.25 | 0.961 | later round |
+| 22 | 3 | qwen36 | UD-Q8_K_XL | 38.53 | 40.02 | 0.775 | later round |
+| 23 | 3 | qwen36 | UD-Q4_K_XL | 29.82 | 31.16 | 0.995 | later round |
+| 24 | 3 | dsv41 | IQ2_XXS | 33.21 | 52.45 | 0.286 | later round |
+| 25 | 4 | qwen36 | UD-Q6_K_XL | 34.75 | 42.35 | 0.732 | later round |
 | 26 | 4 | qwen36 | UD-Q2_K_XL | 28.26 | 28.93 | 1.07 | later round |
-| 27 | 4 | qwen36 | Q6_K | 33.75 | 40.98 | 0.76 | later round |
-| 28 | 4 | qwen36 | Q4_K_M | 33.98 | 42.14 | 0.74 | later round |
-| 29 | 4 | qwen36 | UD-Q4_K_XL | 30.45 | 31.05 | 1.00 | later round |
-| 30 | 4 | qwen36 | UD-Q8_K_XL | 38.85 | 40.00 | 0.78 | later round |
-| 31 | 4 | dsv41 | IQ2_XXS | 33.22 | 52.37 | 0.29 | later round |
-| 32 | 4 | qwen36 | Q8_0 | 36.60 | 48.28 | 0.64 | later round |
-| 33 | 5 | qwen36 | Q8_0 | 37.15 | 38.38 | 0.81 | later round |
-| 34 | 5 | qwen36 | Q6_K | 33.31 | 34.40 | 0.90 | later round |
-| 35 | 5 | qwen36 | UD-Q8_K_XL | 38.62 | 40.00 | 0.78 | later round |
-| 36 | 5 | qwen36 | Q4_K_M | 34.03 | 35.90 | 0.86 | later round |
+| 27 | 4 | qwen36 | Q6_K | 33.75 | 40.98 | 0.756 | later round |
+| 28 | 4 | qwen36 | Q4_K_M | 33.98 | 42.14 | 0.736 | later round |
+| 29 | 4 | qwen36 | UD-Q4_K_XL | 30.45 | 31.05 | 0.998 | later round |
+| 30 | 4 | qwen36 | UD-Q8_K_XL | 38.85 | 40.00 | 0.775 | later round |
+| 31 | 4 | dsv41 | IQ2_XXS | 33.22 | 52.37 | 0.286 | later round |
+| 32 | 4 | qwen36 | Q8_0 | 36.60 | 48.28 | 0.642 | later round |
+| 33 | 5 | qwen36 | Q8_0 | 37.15 | 38.38 | 0.808 | later round |
+| 34 | 5 | qwen36 | Q6_K | 33.31 | 34.40 | 0.901 | later round |
+| 35 | 5 | qwen36 | UD-Q8_K_XL | 38.62 | 40.00 | 0.775 | later round |
+| 36 | 5 | qwen36 | Q4_K_M | 34.03 | 35.90 | 0.864 | later round |
 | 37 | 5 | qwen36 | UD-Q4_K_XL | 29.79 | 30.94 | 1.00 | later round |
-| 38 | 5 | dsv41 | IQ2_XXS | 33.23 | 52.46 | 0.29 | later round |
-| 39 | 5 | qwen36 | UD-Q6_K_XL | 35.30 | 44.36 | 0.70 | later round |
-| 40 | 5 | qwen36 | UD-Q2_K_XL | 28.09 | 32.32 | 0.96 | later round |
+| 38 | 5 | dsv41 | IQ2_XXS | 33.23 | 52.46 | 0.286 | later round |
+| 39 | 5 | qwen36 | UD-Q6_K_XL | 35.30 | 44.36 | 0.699 | later round |
+| 40 | 5 | qwen36 | UD-Q2_K_XL | 28.09 | 32.32 | 0.959 | later round |
 
 ## Engine fixes made to run the matrix
 
@@ -144,7 +144,7 @@ These were found by opening every installed pack before the sweep, and are on th
 
 1. **Embedding rows outside the three kernel formats.** `q36_embed` had device branches for Q8_0, Q6_K and Q4_K only, so UD-Q2_K_XL (Q5_K token embeddings) was refused at open. The row is now dequantised on the host for any other dense format the port accepts; it is 2,048 values per token against forty layers of expert work.
 2. **The never-run MTP block's expert types.** The MTP block is a draft head the engine skips, but type validation and slot accounting still walked it, and UD-Q2_K_XL's MTP block carries Q2_K gate/up (no kernel, because nothing dispatches it). Validation, slot sizing and slot packing now skip the MTP block, as the forward pass already did.
-3. **BF16 grouped experts.** UD-Q8_K_XL promotes three layers' routed experts to BF16 (layers 34, 38 and 39). `moe.metal` now instantiates the gate/up and down kernels for BF16 as well, and the type tables accept it. The pack then runs; its first generated token matches the Q8_0-era 279.
+3. **BF16 grouped experts.** UD-Q8_K_XL promotes three layers' routed experts to BF16 (layers 34, 38 and 39). `moe.metal` now instantiates the gate/up and down kernels for BF16 as well, and the type tables accept it. The pack then runs; its first generated token matches the Q8_0-era 279. The new kernels are checked against the double reference: `expert_parity --gu BF16 --dn BF16` passes at 1 and 8 tokens (h rel L2 1.4e-07, y 1.1e-07).
 
 ## Tests
 
@@ -154,6 +154,8 @@ The Qwen3.6 checks: 15 of the 18 registered ctest tests pass on this build. The 
 
 - `q36_forward_check` and `q36_generate_check` abort inside `attn_init` while compiling the synthetic eight-head fixture's attention kernels on this Metal 2 driver; the sweep below is the evidence that a real pack's shapes compile and run.
 - `runtime_hello` fails its device-address and graph-replay cases because macOS 11 has neither; the engine's documented workarounds are why these benchmarks run at all.
+
+The BF16 grouped-expert kernels added for UD-Q8_K_XL pass `expert_parity --gu BF16 --dn BF16` at 1 and 8 tokens (h rel L2 1.4e-07, y 1.1e-07), against the same double reference the other formats are held to.
 
 `q36_model_check`, `q36_glue_parity` and `q36_upload_check` were repaired as part of this work (a stale kernel argument, an error message that looked a type up in the wrong table, and a byte comparison against a private buffer's handle, which now blits the buffer back first). `q36_upload_check` verifies 34.5 MB of dense and embedding bytes and passes.
 
