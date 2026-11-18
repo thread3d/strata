@@ -140,6 +140,13 @@ def run_one(cfg, rounds_left):
                    prefill_tok_s=float(pm.group(3)),
                    decode_tokens=int(dm.group(1)), decode_s=float(dm.group(2)) / 1000.0,
                    decode_tok_s=float(dm.group(3)))
+        # The engine prints its rates to two decimals; its milliseconds and token counts are the measurement.
+        # Recompute the same ratios the engine uses (decode excludes the first token, which carries the prompt
+        # tail) so five runs that all print 0.29 still have a spread and a real standard deviation.
+        if rec["prefill_s"] > 0:
+            rec["prefill_tok_s"] = rec["prefill_tokens"] / rec["prefill_s"]
+        if rec["decode_s"] > 0 and rec["decode_tokens"] > 1:
+            rec["decode_tok_s"] = (rec["decode_tokens"] - 1) / rec["decode_s"]
         lm = re.search(r"token latency ms: p50 (\d+) p95 (\d+) p99 (\d+) max (\d+) mean (\d+)", err)
         if lm:
             rec["latency_ms"] = {"p50": int(lm.group(1)), "p95": int(lm.group(2)),
@@ -199,6 +206,17 @@ def load_records():
     return out
 
 
+def rate(r, which):
+    """The measured rate.  A DeepSeek record written before this recomputation carries the engine's rounded
+    printed value; the milliseconds it also carries are the measurement, so derive the rate from those."""
+    if r.get("kind") == "ds4" and r.get(which + "_s"):
+        if which == "prefill":
+            return r.get("prefill_tokens", 0) / r["prefill_s"] if r["prefill_s"] > 0 else 0.0
+        if r.get("decode_tokens", 0) > 1:
+            return (r["decode_tokens"] - 1) / r["decode_s"] if r["decode_s"] > 0 else 0.0
+    return r.get(which + "_tok_s", 0.0)
+
+
 def aggregate(records):
     by = {}
     for r in records:
@@ -206,13 +224,22 @@ def aggregate(records):
     agg = {}
     for label, rs in by.items():
         ok = [r for r in rs if r.get("rc") == 0 and "decode_tok_s" in r]
+        # Round 0 is each pack's first pass on this machine: cold page cache, cold GPU clocks.  The headline
+        # numbers are the steady state (rounds 2+); round 1 is kept and priced separately.  A pack with fewer
+        # than two steady runs (early in the sweep) falls back to all its runs and says so.
+        steady = [r for r in ok if r.get("round", 0) > 0]
+        use = steady if len(steady) >= 2 else ok
         agg[label] = {
             "family": rs[0]["family"],
             "label": label,
             "runs": sorted(rs, key=lambda r: r.get("order", 0)),
-            "decode": [r["decode_tok_s"] for r in ok],
-            "prefill": [r["prefill_tok_s"] for r in ok],
+            "decode": [rate(r, "decode") for r in use],
+            "prefill": [rate(r, "prefill") for r in use],
+            "decode_all": [rate(r, "decode") for r in ok],
+            "prefill_all": [rate(r, "prefill") for r in ok],
             "n": len(ok),
+            "n_steady": len(steady),
+            "used_steady": bool(steady) and len(steady) >= 2,
             "failed": len(rs) - len(ok),
         }
     return agg
@@ -236,7 +263,7 @@ def render_charts(agg, records):
     charts.grouped_bar_chart(
         CHART_DIR / "decode-throughput.svg",
         "Decode throughput by quantisation",
-        "Strata on macpro51 (RX 580 8 GB, Metal 2); greedy; mean ± 1 sample standard deviation; dots are individual runs",
+        "Strata on macpro51 (RX 580 8 GB, Metal 2); greedy; steady state (rounds 2+), mean ± 1 sample standard deviation; dots are individual runs",
         groups, "tokens per second (decode)", "higher is better")
     groups = []
     for family in ("qwen36", "dsv41"):
@@ -254,7 +281,7 @@ def render_charts(agg, records):
     charts.grouped_bar_chart(
         CHART_DIR / "prefill-throughput.svg",
         "Prompt (prefill) throughput by quantisation",
-        "Strata on macpro51 (RX 580 8 GB, Metal 2); the fixed prompt read one token at a time; mean ± 1 sample standard deviation",
+        "Strata on macpro51 (RX 580 8 GB, Metal 2); the fixed prompt read one token at a time; steady state (rounds 2+), mean ± 1 sample standard deviation",
         groups, "tokens per second (prefill)", "higher is better")
 
     pts = []
@@ -323,7 +350,7 @@ def render_doc(agg, records, meta):
         if not a or not a["n"]:
             verdict = "no completed run yet"
         else:
-            verdict = f"{a['n']} run(s), {mean(a['decode']):.2f} tok/s decode"
+            verdict = f"{a['n']} run(s), {mean(a['decode']):.2f} tok/s decode (steady state)"
         lines.append(f"| {family} | {label} | {size/1073741824.0:.1f} GiB | {verdict} |")
     for family, label, quant, reason in UNSUPPORTED:
         lines.append(f"| {family} | {label} | — | {reason} |")
@@ -345,11 +372,14 @@ def render_doc(agg, records, meta):
                  f"token ids are used for every pack of a family.")
     lines.append(f"- **Mixed order.** Each round contains every runnable pack once, in a fresh shuffled order "
                  f"(seed in `bench/macpro51/meta.json`). No pack is always first or always last, so thermal or "
-                 f"page-cache drift is spread across the matrix.")
-    lines.append(f"- **Error bars.** Mean ± 1 sample standard deviation over the completed runs of that pack; "
-                 f"the individual runs are drawn as dots on the charts. With {meta.get('rounds', 'N')} "
-                 f"round{'s' if meta.get('rounds', 2) != 1 else ''} the bars describe run-to-run spread on this "
-                 f"machine, not a confidence interval for another one.")
+                 f"page-cache drift is spread across the matrix. The DeepSeek pack is 239 GiB and its runs can "
+                 f"evict Qwen pages from the 128 GiB page cache; that is one reason every pack is measured in "
+                 f"every round and why the error bars, not a single run, are the result.")
+    lines.append(f"- **Error bars.** Mean ± 1 sample standard deviation over the steady-state runs of that pack "
+                 f"(rounds 2 and later; round 1 is each pack's first pass, with a cold page cache, and is priced "
+                 f"separately below). The individual runs are drawn as dots on the charts. With "
+                 f"{meta.get('rounds', 'N')} round{'s' if meta.get('rounds', 2) != 1 else ''} the bars describe "
+                 f"run-to-run spread on this machine, not a confidence interval for another one.")
     lines.append(f"- **Steady state.** Qwen runs use a 2 GiB expert-slot budget, which selects the streaming "
                  f"path for every pack here; the warm-up pass is what fills the OS page cache and compiles the "
                  f"pipelines before the first measured token.")
@@ -358,15 +388,24 @@ def render_doc(agg, records, meta):
     lines.append("")
     lines.append(f"![Decode throughput by quantisation](benchmarks/macpro51/decode-throughput.svg)")
     lines.append("")
-    lines.append("| Family | Pack | Runs | Decode tok/s (mean ± sd) | Range | Prefill tok/s (mean ± sd) |")
-    lines.append("| --- | --- | ---: | ---: | ---: | ---: |")
+    lines.append("| Family | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |")
+    lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: |")
+    short = []
     for cfg in CONFIGS:
         a = agg.get(cfg[1])
         if not a or not a["n"]:
             continue
         d, p = a["decode"], a["prefill"]
-        lines.append(f"| {cfg[0]} | {cfg[1]} | {a['n']} | {fmt(mean(d))} ± {fmt(stdev(d))} | "
+        star = "" if a.get("used_steady", True) else "*"
+        if star:
+            short.append(cfg[1])
+        lines.append(f"| {cfg[0]} | {cfg[1]}{star} | {a.get('n_steady', a['n']) if a.get('used_steady', True) else a['n']} | "
+                     f"{fmt(mean(d))} ± {fmt(stdev(d))} | {fmt(mean(a['decode_all']))} | "
                      f"{fmt(min(d))} – {fmt(max(d))} | {fmt(mean(p))} ± {fmt(stdev(p))} |")
+    if short:
+        lines.append("")
+        lines.append(f"\\* fewer than two steady-state runs so far, so this row uses every completed run "
+                     f"({', '.join(short)}).")
     lines.append("")
     lines.append("## Prompt (prefill) throughput")
     lines.append("")
@@ -420,15 +459,17 @@ def render_doc(agg, records, meta):
                 a = agg.get(cfg[1])
                 if not a or not a["n"]:
                     continue
-                r1 = [r["decode_tok_s"] for r in a["runs"] if r.get("round") == 0 and r.get("rc") == 0]
-                rn = [r["decode_tok_s"] for r in a["runs"] if r.get("round", 0) > 0 and r.get("rc") == 0]
+                r1 = [rate(r, "decode") for r in a["runs"] if r.get("round") == 0 and r.get("rc") == 0]
+                rn = [rate(r, "decode") for r in a["runs"] if r.get("round", 0) > 0 and r.get("rc") == 0]
                 if r1 and rn:
                     rows.append((cfg[1], mean(r1), mean(rn)))
             if rows:
+                changes = [100.0 * (b - a) / max(1e-9, a) for _, a, b in rows]
                 lines.append("")
                 lines.append("The first round is the first pass over each pack (cold page cache, cold GPU "
                              "clocks); the later rounds are the steady state. The difference is the price of "
-                             "a first run, not a property of the pack:")
+                             f"a first run, not a property of the pack: it averages {mean(changes):+.1f}% "
+                             f"over these {len(rows)} pack(s).")
                 lines.append("")
                 lines.append("| Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |")
                 lines.append("| --- | ---: | ---: | ---: |")
@@ -452,7 +493,7 @@ def render_doc(agg, records, meta):
         if r.get("rc") == 0 and "decode_tok_s" in r:
             note = "first round (cold cache)" if r.get("round", 0) == 0 else "later round"
             lines.append(f"| {r.get('order', 0) + 1} | {r.get('round', 0) + 1} | {r['family']} | {r['label']} | "
-                         f"{fmt(r['prefill_s'])} | {fmt(r['decode_s'])} | {fmt(r['decode_tok_s'])} | {note} |")
+                         f"{fmt(r['prefill_s'])} | {fmt(r['decode_s'])} | {fmt(rate(r, 'decode'))} | {note} |")
         else:
             lines.append(f"| {r.get('order', 0) + 1} | {r.get('round', 0) + 1} | {r['family']} | {r['label']} | — | — | — | "
                          f"failed: {r.get('error', 'unknown')} |")
@@ -599,7 +640,7 @@ def main():
             render_doc(agg, records, meta)
             files = [RESULTS, META, DOC] + sorted(CHART_DIR.glob("*.svg"))
             msg = (f"[Benchmark] macpro51: {cfg[1]} run {rec['round']+1}/{args.rounds} "
-                   f"({rec['decode_tok_s']:.2f} tok/s decode)" if rec.get("rc") == 0
+                   f"({rate(rec, 'decode'):.2f} tok/s decode)" if rec.get("rc") == 0
                    else f"[Benchmark] macpro51: {cfg[1]} run {rec['round']+1}/{args.rounds} failed")
             if not args.dry_run:
                 commit_and_push(files, msg, push=not args.no_push)
