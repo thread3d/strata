@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 11:44 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 11:46 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -29,7 +29,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 4 runs, 0.62 tok/s decode (steady state) |
 | `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 4 runs, 0.57 tok/s decode (steady state) |
 | `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 4 runs, 0.53 tok/s decode (steady state) |
-| `Q8_0` | Q8_0 (Unsloth) | unsloth | 175.3 GiB | 3 runs, 0.53 tok/s decode (steady state) |
+| `Q8_0` | Q8_0 (Unsloth) | unsloth | 175.3 GiB | 4 runs, 0.53 tok/s decode (steady state) |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
 | `UD-Q2_0` | refused on this branch | — | 65.7 GiB | its greedy answer is `76 76 1544 7509 ...` where every other pack gives the reference tokens; its gate/up experts are IQ2_XXS (16), the same type as UD-IQ1_M's, and `expert_parity` passes on this pack's real layer-0 data at every GU tile |
 | `UD-IQ2_XS` | refused on this branch | — | 70.6 GiB | its greedy answer is `4960 4654 1544 159578 ...`, not the reference tokens; a v3.1 set like UD-Q2_0 and UD-IQ1_M, whose expert formats are all used by the answering IQ3_XXS and IQ3_S packs |
@@ -62,7 +62,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-Q4_K_XL` | 3 | 0.618 ± 0.001 | 0.618 | 0.617 – 0.619 | 1.90 ± 0.006 |
 | `UD-Q5_K_XL` | 3 | 0.574 ± 0.001 | 0.574 | 0.573 – 0.575 | 1.80 ± 0.017 |
 | `UD-Q6_K_XL` | 3 | 0.531 ± 0.003 | 0.530 | 0.527 – 0.534 | 1.39 ± 0.016 |
-| `Q8_0` | 2 | 0.528 ± 0.000 | 0.528 | 0.528 – 0.528 | 1.52 ± 0.014 |
+| `Q8_0` | 3 | 0.528 ± 0.001 | 0.528 | 0.527 – 0.528 | 1.52 ± 0.011 |
 
 ## Prompt (prefill) throughput
 
@@ -91,7 +91,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 | `UD-Q4_K_XL` | 3.99 MB | 0.618 ± 0.001 tok/s |
 | `UD-Q5_K_XL` | 4.43 MB | 0.574 ± 0.001 tok/s |
 | `UD-Q6_K_XL` | 5.22 MB | 0.531 ± 0.003 tok/s |
-| `Q8_0` | 5.22 MB | 0.528 ± 0.000 tok/s |
+| `Q8_0` | 5.22 MB | 0.528 ± 0.001 tok/s |
 
 Every token pulls its ten routed experts per layer from the SSD, so the blob one expert costs is the number a token actually pays for; the pack file is mostly experts a token never asks for.  Two packs whose blobs are the same size land at nearly the same rate, which is why the Unsloth 4.5-bit set is slower than the 2-bit one even though their files differ by less than 2x.
 
@@ -117,7 +117,7 @@ The formats are the packs' own metadata (`native_experts.txt`), and they are wha
 ## What the numbers say
 
 - **Fastest decode:** `Q2_0` at 1.05 tok/s; **slowest:** `Q8_0` at 0.53 tok/s (1.99× between them).
-- **Run-to-run spread:** coefficient of variation from 0.0% (`Q8_0`) to 0.7% (`UD-Q6_K_XL`).
+- **Run-to-run spread:** coefficient of variation from 0.0% (`UD-IQ3_XXS`) to 0.7% (`UD-Q6_K_XL`).
 - **Fastest prompt read:** `Q2_0` at 3.27 tok/s; slowest `UD-Q6_K_XL` at 1.39 tok/s.
 
 The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages +0.2% over these 10 packs.
@@ -133,7 +133,7 @@ The first round is the first pass over each pack (cold page cache, cold GPU cloc
 | `UD-Q4_K_XL` | 0.62 | 0.62 | -0.1% |
 | `UD-Q5_K_XL` | 0.57 | 0.57 | +0.2% |
 | `UD-Q6_K_XL` | 0.53 | 0.53 | +0.6% |
-| `Q8_0` | 0.53 | 0.53 | +0.0% |
+| `Q8_0` | 0.53 | 0.53 | -0.1% |
 
 ## Run order (mixing)
 
@@ -183,6 +183,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 36 | 4 | `UD-Q4_K_XL` | 16.30 | 51.73 | 0.619 | later round |
 | 37 | 4 | `UD-Q6_K_XL` | 22.15 | 59.88 | 0.534 | later round |
 | 38 | 4 | `IQ3_XXS` | 11.64 | 35.37 | 0.905 | later round |
+| 39 | 4 | `Q8_0` | 20.38 | 60.75 | 0.527 | later round |
 
 ## Reproduce
 
