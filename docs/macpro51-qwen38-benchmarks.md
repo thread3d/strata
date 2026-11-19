@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 11:32 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 11:33 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -23,7 +23,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 3 runs, 1.05 tok/s decode (steady state) |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 3 runs, 0.90 tok/s decode (steady state) |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 3 runs, 0.82 tok/s decode (steady state) |
-| `UD-IQ3_XXS` | UD-IQ3_XXS (Unsloth v3.1) | unsloth | 77.9 GiB | 2 runs, 0.74 tok/s decode (steady state) |
+| `UD-IQ3_XXS` | UD-IQ3_XXS (Unsloth v3.1) | unsloth | 77.9 GiB | 3 runs, 0.74 tok/s decode (steady state) |
 | `UD-Q3_K_XL` | UD-Q3_K_XL (Unsloth v3.1) | unsloth | 83.3 GiB | 3 runs, 0.71 tok/s decode (steady state) |
 | `UD-IQ4_XS` | UD-IQ4_XS (Unsloth v3.1) | unsloth | 87.2 GiB | 3 runs, 0.71 tok/s decode (steady state) |
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 3 runs, 0.62 tok/s decode (steady state) |
@@ -56,7 +56,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `Q2_0` | 2 | 1.05 ± 0.002 | 1.05 | 1.05 – 1.05 | 3.25 ± 0.070 |
 | `IQ3_XXS` | 2 | 0.902 ± 0.001 | 0.902 | 0.902 – 0.903 | 2.60 ± 0.076 |
 | `IQ3_S` | 2 | 0.817 ± 0.002 | 0.816 | 0.815 – 0.818 | 2.38 ± 0.011 |
-| `UD-IQ3_XXS` | 2 | 0.737 ± 0.001 | 0.737 | 0.736 – 0.737 | 2.21 ± 0.016 |
+| `UD-IQ3_XXS` | 2 | 0.738 ± 0.000 | 0.737 | 0.737 – 0.738 | 2.24 ± 0.023 |
 | `UD-Q3_K_XL` | 2 | 0.710 ± 0.002 | 0.709 | 0.708 – 0.711 | 1.98 ± 0.027 |
 | `UD-IQ4_XS` | 2 | 0.708 ± 0.002 | 0.708 | 0.707 – 0.710 | 1.96 ± 0.033 |
 | `UD-Q4_K_XL` | 2 | 0.618 ± 0.001 | 0.618 | 0.617 – 0.618 | 1.90 ± 0.009 |
@@ -85,7 +85,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 | `Q2_0` | 1.38 MB | 1.05 ± 0.002 tok/s |
 | `IQ3_XXS` | 2.33 MB | 0.902 ± 0.001 tok/s |
 | `IQ3_S` | 2.66 MB | 0.817 ± 0.002 tok/s |
-| `UD-IQ3_XXS` | 2.66 MB | 0.737 ± 0.001 tok/s |
+| `UD-IQ3_XXS` | 2.66 MB | 0.738 ± 0.000 tok/s |
 | `UD-Q3_K_XL` | 2.87 MB | 0.710 ± 0.002 tok/s |
 | `UD-IQ4_XS` | 2.87 MB | 0.708 ± 0.002 tok/s |
 | `UD-Q4_K_XL` | 3.99 MB | 0.618 ± 0.001 tok/s |
@@ -103,7 +103,7 @@ Every token pulls its ten routed experts per layer from the SSD, so the blob one
 | `Q2_0` | Q2_0 / Q2_0 (48) | 1.38 MB | 1.05 tok/s |
 | `IQ3_XXS` | IQ2_XXS / Q2_0 (8), IQ3_S / Q2_0 (7), IQ2_XS / Q2_0 (6), IQ2_S / Q2_0 (6), IQ3_S / IQ4_NL (6), IQ2_XS / IQ4_NL (4), IQ2_S / IQ4_NL (4), IQ3_XXS / IQ4_NL (3), IQ3_XXS / Q2_0 (3), IQ2_XXS / IQ4_NL (1) | 2.33 MB | 0.902 tok/s |
 | `IQ3_S` | IQ2_S / IQ4_NL (15), IQ3_XXS / IQ4_NL (14), IQ3_S / IQ4_NL (9), IQ2_S / Q2_0 (5), IQ3_XXS / Q2_0 (3), IQ3_S / Q2_0 (1), IQ4_XS / IQ4_NL (1) | 2.66 MB | 0.817 tok/s |
-| `UD-IQ3_XXS` | IQ2_S / IQ4_NL (23), IQ3_XXS / IQ4_NL (21), IQ2_S / Q2_0 (3), IQ4_XS / IQ4_NL (1) | 2.66 MB | 0.737 tok/s |
+| `UD-IQ3_XXS` | IQ2_S / IQ4_NL (23), IQ3_XXS / IQ4_NL (21), IQ2_S / Q2_0 (3), IQ4_XS / IQ4_NL (1) | 2.66 MB | 0.738 tok/s |
 | `UD-Q3_K_XL` | IQ3_XXS / IQ4_NL (21), IQ3_XXS / Q5_0 (17), IQ4_XS / IQ4_NL (4), IQ2_S / Q2_0 (2), IQ4_XS / Q5_0 (2), IQ2_S / Q5_0 (1), IQ2_S / IQ4_NL (1) | 2.87 MB | 0.710 tok/s |
 | `UD-IQ4_XS` | IQ3_XXS / Q5_0 (20), IQ4_XS / Q5_0 (13), IQ3_XXS / IQ4_NL (8), IQ4_XS / IQ4_NL (4), IQ2_S / Q2_0 (2), IQ2_S / IQ4_NL (1) | 2.87 MB | 0.708 tok/s |
 | `UD-Q4_K_XL` | Q4_K / Q5_1 (43), Q4_K / Q8_0 (4), Q5_K / Q8_0 (1) | 3.99 MB | 0.618 tok/s |
@@ -174,6 +174,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 27 | 3 | `UD-Q5_K_XL` | 17.06 | 55.64 | 0.575 | later round |
 | 28 | 3 | `UD-IQ4_XS` | 15.63 | 45.10 | 0.710 | later round |
 | 29 | 3 | `UD-Q3_K_XL` | 15.53 | 44.99 | 0.711 | later round |
+| 30 | 3 | `UD-IQ3_XXS` | 13.75 | 43.37 | 0.738 | later round |
 
 ## Reproduce
 
