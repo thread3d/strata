@@ -34,8 +34,11 @@
 <text x="550.0" y="514.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600">pack size on disk (GiB)</text>
 <circle cx="375.3" cy="139.6" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="384.3" y="132.6" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q2_0</text>
-<circle cx="415.5" cy="186.2" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="424.5" y="179.2" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_XXS</text>
+<line x1="415.5" y1="183.9" x2="415.5" y2="186.6" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="407.5" y1="183.9" x2="423.5" y2="183.9" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="407.5" y1="186.6" x2="423.5" y2="186.6" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="415.5" cy="185.3" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="424.5" y="178.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_XXS</text>
 <line x1="448.7" y1="209.2" x2="448.7" y2="212.9" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="440.7" y1="209.2" x2="456.7" y2="209.2" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="440.7" y1="212.9" x2="456.7" y2="212.9" stroke="#0f766e" stroke-width="1.2"/>
