@@ -165,7 +165,11 @@ A second pack shares the fault: **UD-Q2_0** (downloaded later) decodes at 0.82 t
 `76 76 1544 7509 …`. Both packs' gate/up experts are `IQ2_XXS` (16) — the only type they share that no answering pack
 uses — while `expert_parity` passes on each pack's real layer-0 experts at every GU tile tried (32,1,4 / 32,2,4 /
 32,4,4 / 16,1,4 / 8,1,4). The harness now fails such a run instead of reporting its rate: a pack whose greedy output
-differs from the reference answer is not a slower quantisation.
+differs from the reference answer is not a slower quantisation. The wrong answer is prompt-dependent (UD-Q2_0: the
+32-id prompt gives `76 76 1544 7509`, the same prompt cut to 8 ids `76 942 76 368`, an unrelated prompt
+`8565 1060 4960 76`), and `--prefill 1` — the prompt read through the decode window instead of the prompt chain —
+does not change it, so it is neither a fixed embedding fallback nor the prompt path: the forward runs, responds to
+its input, and is wrong in the type-16 runtime path alone.
 
 A second tap (`STRATA_WIN_MIDDUMP`) placed the break more precisely: the residual after layer 1's **attention** is
 0.1734 — normal, Q2_0 0.1735 and UD-Q4 0.1702 — and it is 15.14 after layer 1's **expert dispatch** (UD-Q4 0.348).
