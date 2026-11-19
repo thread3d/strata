@@ -42,11 +42,11 @@
 <line x1="439.7" y1="182.3" x2="455.7" y2="182.3" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="447.7" cy="182.0" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="456.7" y="175.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_XXS</text>
-<line x1="498.1" y1="208.9" x2="498.1" y2="209.2" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="490.1" y1="208.9" x2="506.1" y2="208.9" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="498.1" y1="208.6" x2="498.1" y2="209.2" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="490.1" y1="208.6" x2="506.1" y2="208.6" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="490.1" y1="209.2" x2="506.1" y2="209.2" stroke="#0f766e" stroke-width="1.2"/>
-<circle cx="498.1" cy="209.1" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="507.1" y="202.1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
+<circle cx="498.1" cy="208.9" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="507.1" y="201.9" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
 <line x1="392.8" y1="209.1" x2="392.8" y2="209.3" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="384.8" y1="209.1" x2="400.8" y2="209.1" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="384.8" y1="209.3" x2="400.8" y2="209.3" stroke="#0f766e" stroke-width="1.2"/>
