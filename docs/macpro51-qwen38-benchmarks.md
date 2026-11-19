@@ -20,7 +20,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Quantisation | Source | On disk | Result |
 | --- | --- | --- | ---: | --- |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 1 run, 1.05 tok/s decode (steady state) |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 2 runs, 1.05 tok/s decode (steady state) |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 2 runs, 0.90 tok/s decode (steady state) |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 2 runs, 0.81 tok/s decode (steady state) |
 | `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 63.3 GiB | queued |
@@ -46,7 +46,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-
 
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Q2_0` | 1 | 1.05 ± 0.00 | 1.05 | 1.05 – 1.05 | 3.16 ± 0.00 |
+| `Q2_0` | 2 | 1.05 ± 0.004 | 1.05 | 1.05 – 1.05 | 3.25 ± 0.133 |
 | `IQ3_XXS` | 2 | 0.898 ± 0.004 | 0.898 | 0.895 – 0.901 | 2.58 ± 0.129 |
 | `IQ3_S` | 2 | 0.814 ± 0.006 | 0.814 | 0.810 – 0.818 | 2.36 ± 0.093 |
 | `UD-Q4_K_XL` | 2 | 0.615 ± 0.002 | 0.615 | 0.614 – 0.617 | 1.89 ± 0.034 |
@@ -71,7 +71,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 
 | Pack | Largest expert blob | Decode, steady |
 | --- | ---: | ---: |
-| `Q2_0` | 1.38 MB | 1.05 ± 0.00 tok/s |
+| `Q2_0` | 1.38 MB | 1.05 ± 0.004 tok/s |
 | `IQ3_XXS` | 2.33 MB | 0.898 ± 0.004 tok/s |
 | `IQ3_S` | 2.66 MB | 0.814 ± 0.006 tok/s |
 | `UD-Q4_K_XL` | 3.99 MB | 0.615 ± 0.002 tok/s |
@@ -85,12 +85,13 @@ Every token pulls its ten routed experts per layer from the SSD, so the blob one
 
 - **Fastest decode:** `Q2_0` at 1.05 tok/s; **slowest:** `UD-Q6_K_XL` at 0.54 tok/s (1.94× between them).
 - **Run-to-run spread:** coefficient of variation from 0.0% (`UD-Q6_K_XL`) to 0.7% (`IQ3_S`).
-- **Fastest prompt read:** `Q2_0` at 3.16 tok/s; slowest `UD-Q6_K_XL` at 1.40 tok/s.
+- **Fastest prompt read:** `Q2_0` at 3.25 tok/s; slowest `UD-Q6_K_XL` at 1.40 tok/s.
 
-The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages +0.5% over these 5 packs.
+The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages +0.5% over these 6 packs.
 
 | Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |
 | --- | ---: | ---: | ---: |
+| `Q2_0` | 1.05 | 1.05 | +0.6% |
 | `IQ3_XXS` | 0.89 | 0.90 | +0.7% |
 | `IQ3_S` | 0.81 | 0.82 | +1.0% |
 | `UD-Q4_K_XL` | 0.61 | 0.62 | +0.5% |
@@ -118,6 +119,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 9 | 2 | `UD-Q5_K_XL` | 17.12 | 55.77 | 0.574 | later round |
 | 10 | 2 | `UD-Q4_K_XL` | 16.23 | 51.87 | 0.617 | later round |
 | 11 | 2 | `IQ3_XXS` | 11.61 | 35.53 | 0.901 | later round |
+| 12 | 2 | `Q2_0` | 9.27 | 30.43 | 1.05 | later round |
 
 ## Limits recorded here
 
