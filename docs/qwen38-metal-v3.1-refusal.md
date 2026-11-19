@@ -11,6 +11,15 @@ in the forward — either refuse to start or answer `76 76 1544 7509 …` where 
 `271 248068 198 760 1156 6587 264 61446`. The harness's answer gate excludes them from the matrix; this page is
 about the three that run.
 
+## One v3.1 set does answer
+
+`UD-IQ3_XXS` (also a v3.1 set, repacked the same way) passes the answer gate: its greedy output starts
+`271 248068 198 760 1156 6587 …`, the reference prefix, at 0.76 tok/s. So the v3.1 revision is not broken as a
+whole. Its layer-1 experts are `IQ2_S / IQ4_NL`, while the four that fail have `IQ2_XXS` gate/up at layer 1 — except
+that the answering ISTA `IQ3_XXS` also has `IQ2_XXS / Q2_0` at layer 1, so the type alone is not it either. The
+distinction that survives every check so far is narrower than "type 16" and wider than "the revision": it is
+something about those four conversions that the fifth does not share.
+
 ## It is systematic to the revision, not to a pack
 
 The first-token logits of the four v3.1 sets agree **with each other** at cosine 0.96–0.98 (UD-Q2_0/UD-Q2_K_XL
@@ -19,24 +28,6 @@ working Q2_0 (0.16–0.31).  Four packs with different expert encodings (IQ2_XXS
 mixes) converging on the same wrong logits means the fault is **shared by the v3.1 revision** and pack-independent
 once it fires — which is why the answer is the same `76 76 1544 7509 …` for all of them.  A weight- or
 offset-specific mistake in one pack could not do that.
-
-## The Q6_K head is not the cause (measured)
-
-The refused sets' output head is a Q6_K tensor, the only one no answering pack uses — so it was tested directly:
-`XA_` (the final normed row the head reads) and the logits were dumped from a UD-Q2_0 run, and the head's rows were
-decoded in Python from the pack's own GGUF and dotted with that row:
-
-| id | engine logit | Python Q6_K dot | difference |
-| ---: | ---: | ---: | ---: |
-| 76 | 13.2727 | 13.2727 | 0.0000 |
-| 271 | 0.4965 | 0.4965 | 0.0000 |
-| 1506 | 10.8821 | 10.8821 | 0.0000 |
-| 1692 | 10.4968 | 10.4968 | 0.0000 |
-| 1605 | 10.3406 | 10.3406 | 0.0000 |
-
-The head decodes and multiplies correctly, so the wrong logits come from a wrong `XA_` — the forward — and not from
-this tensor.  (The engine prints "experimental native Q5_K head" for it; the byte count it reports, 521,472,000, is
-248,320 rows of 2,100 bytes, which is Q6_K's row size, so the label is stale, not the arithmetic.)
 
 ## The one path only these packs use: a Q6_K output head
 
