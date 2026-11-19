@@ -33,13 +33,13 @@
 <circle cx="348.5" cy="217.7" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <text x="355.5" y="217.3" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">2.58</text>
 <text x="355.5" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 355.5 490.0)">IQ3_XXS</text>
-<rect x="499.2" y="247.4" width="64.0" height="222.6" fill="#0f766e" opacity="0.86"/>
-<line x1="531.2" y1="238.6" x2="531.2" y2="256.2" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="520.2" y1="238.6" x2="542.2" y2="238.6" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="520.2" y1="256.2" x2="542.2" y2="256.2" stroke="#1f2933" stroke-width="1.4"/>
-<circle cx="517.1" cy="253.6" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<circle cx="524.1" cy="241.2" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<text x="531.2" y="238.4" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">2.36</text>
+<rect x="499.2" y="241.9" width="64.0" height="228.1" fill="#0f766e" opacity="0.86"/>
+<line x1="531.2" y1="240.9" x2="531.2" y2="243.0" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="520.2" y1="240.9" x2="542.2" y2="240.9" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="520.2" y1="243.0" x2="542.2" y2="243.0" stroke="#1f2933" stroke-width="1.4"/>
+<circle cx="517.1" cy="241.2" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<circle cx="524.1" cy="242.7" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<text x="531.2" y="232.9" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">2.41</text>
 <text x="531.2" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 531.2 490.0)">IQ3_S</text>
 <rect x="674.8" y="291.7" width="64.0" height="178.3" fill="#0f766e" opacity="0.86"/>
 <line x1="706.8" y1="288.5" x2="706.8" y2="294.9" stroke="#1f2933" stroke-width="1.4"/>
