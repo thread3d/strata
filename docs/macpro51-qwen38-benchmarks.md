@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 03:19 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 03:21 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -26,7 +26,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 65.7 GiB | 4 runs, 0.82 tok/s decode (steady state) |
 | `UD-IQ2_XS` | UD-IQ2_XS (Unsloth v3.1) | unsloth | 65.0 GiB | queued |
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 4 runs, 0.62 tok/s decode (steady state) |
-| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 4 runs, 0.58 tok/s decode (steady state) |
+| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 5 runs, 0.58 tok/s decode (steady state) |
 | `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 4 runs, 0.53 tok/s decode (steady state) |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
 | `UD-IQ1_M` | refused on this branch | — | 63.3 GiB | runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`, first-token logits at cosine 0.16 to Q2_0's); the residual is healthy after layer 0 (0.177; Q2_0 0.181), still healthy after layer 1's attention (0.173; Q2_0 0.174, UD-Q4 0.170), and 15.1 after layer 1's expert dispatch (UD-Q4 0.348), then stays there.  The PLE block's own outputs (keyn/qn/gated/normW) match the healthy packs to three digits, the experts pass `expert_parity` on this pack's real data (rel L2 1.3e-7), and layer 1 uses the same expert types as layer 0 - so the fault is inside layer 1's routed/shared expert path (plan, gu, swiglu, down, combine), not the quantisation |
@@ -52,7 +52,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-Q2_K_XL`, `UD
 | `IQ3_S` | 3 | 0.820 ± 0.000 | 0.821 | 0.820 – 0.821 | 2.40 ± 0.010 |
 | `UD-Q2_0` | 3 | 0.820 ± 0.000 | 0.820 | 0.819 – 0.820 | 3.18 ± 0.012 |
 | `UD-Q4_K_XL` | 3 | 0.618 ± 0.005 | 0.618 | 0.613 – 0.622 | 1.92 ± 0.014 |
-| `UD-Q5_K_XL` | 3 | 0.577 ± 0.000 | 0.577 | 0.577 – 0.577 | 1.80 ± 0.013 |
+| `UD-Q5_K_XL` | 4 | 0.577 ± 0.000 | 0.577 | 0.577 – 0.577 | 1.81 ± 0.011 |
 | `UD-Q6_K_XL` | 3 | 0.531 ± 0.002 | 0.532 | 0.529 – 0.533 | 1.42 ± 0.007 |
 
 ## Prompt (prefill) throughput
@@ -140,6 +140,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 26 | 4 | `IQ3_XXS` | 11.59 | 35.20 | 0.909 | later round |
 | 27 | 4 | `Q2_0` | 9.31 | 30.16 | 1.06 | later round |
 | 28 | 4 | `IQ3_S` | 12.97 | 38.99 | 0.821 | later round |
+| 29 | 5 | `UD-Q5_K_XL` | 17.11 | 55.48 | 0.577 | later round |
 
 ## Limits recorded here
 
