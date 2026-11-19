@@ -35,13 +35,14 @@
 <circle cx="317.9" cy="183.6" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <text x="317.9" y="174.9" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.91</text>
 <text x="317.9" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 317.9 490.0)">IQ3_XXS</text>
-<rect x="436.4" y="211.7" width="64.0" height="258.3" fill="#0f766e" opacity="0.86"/>
-<line x1="468.4" y1="211.6" x2="468.4" y2="211.7" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="457.4" y1="211.6" x2="479.4" y2="211.6" stroke="#1f2933" stroke-width="1.4"/>
+<rect x="436.4" y="211.6" width="64.0" height="258.4" fill="#0f766e" opacity="0.86"/>
+<line x1="468.4" y1="211.5" x2="468.4" y2="211.7" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="457.4" y1="211.5" x2="479.4" y2="211.5" stroke="#1f2933" stroke-width="1.4"/>
 <line x1="457.4" y1="211.7" x2="479.4" y2="211.7" stroke="#1f2933" stroke-width="1.4"/>
 <circle cx="454.3" cy="211.7" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <circle cx="461.4" cy="211.6" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<text x="468.4" y="202.7" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.82</text>
+<circle cx="468.4" cy="211.5" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<text x="468.4" y="202.6" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.82</text>
 <text x="468.4" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 468.4 490.0)">IQ3_S</text>
 <rect x="587.0" y="211.7" width="64.0" height="258.3" fill="#0f766e" opacity="0.86"/>
 <line x1="619.0" y1="211.6" x2="619.0" y2="211.9" stroke="#1f2933" stroke-width="1.4"/>
