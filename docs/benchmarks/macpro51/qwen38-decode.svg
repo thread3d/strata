@@ -25,9 +25,13 @@
 <circle cx="355.5" cy="188.2" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <text x="355.5" y="179.2" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.89</text>
 <text x="355.5" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 355.5 490.0)">IQ3_XXS</text>
-<rect x="499.2" y="214.9" width="64.0" height="255.1" fill="#0f766e" opacity="0.86"/>
-<circle cx="531.2" cy="214.9" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<text x="531.2" y="205.9" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.81</text>
+<rect x="499.2" y="213.6" width="64.0" height="256.4" fill="#0f766e" opacity="0.86"/>
+<line x1="531.2" y1="211.7" x2="531.2" y2="215.5" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="520.2" y1="211.7" x2="542.2" y2="211.7" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="520.2" y1="215.5" x2="542.2" y2="215.5" stroke="#1f2933" stroke-width="1.4"/>
+<circle cx="517.1" cy="214.9" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<circle cx="524.1" cy="212.3" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<text x="531.2" y="204.6" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.81</text>
 <text x="531.2" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 531.2 490.0)">IQ3_S</text>
 <rect x="674.8" y="276.7" width="64.0" height="193.3" fill="#0f766e" opacity="0.86"/>
 <circle cx="706.8" cy="276.7" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
