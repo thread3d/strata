@@ -34,6 +34,8 @@
 <text x="550.0" y="514.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600">largest expert blob (MB)</text>
 <circle cx="344.8" cy="139.6" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="353.8" y="132.6" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q2_0</text>
+<circle cx="579.3" cy="212.3" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="588.3" y="205.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
 <circle cx="823.0" cy="272.8" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="832.0" y="265.8" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
 <circle cx="903.6" cy="285.9" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>

@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 00:20 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 00:21 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -22,7 +22,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | --- | --- | --- | ---: | --- |
 | `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 1 run, 1.05 tok/s decode (steady state) |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | queued |
-| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | queued |
+| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 1 run, 0.81 tok/s decode (steady state) |
 | `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 63.3 GiB | queued |
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 5.7 GiB | queued |
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 1 run, 0.61 tok/s decode (steady state) |
@@ -47,6 +47,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `Q2_0` | 1 | 1.05 ± 0.00 | 1.05 | 1.05 – 1.05 | 3.16 ± 0.00 |
+| `IQ3_S` | 1 | 0.810 ± 0.00 | 0.810 | 0.810 – 0.810 | 2.29 ± 0.00 |
 | `UD-Q4_K_XL` | 1 | 0.614 ± 0.00 | 0.614 | 0.614 – 0.614 | 1.86 ± 0.00 |
 | `UD-Q5_K_XL` | 1 | 0.571 ± 0.00 | 0.571 | 0.571 – 0.571 | 1.79 ± 0.00 |
 
@@ -69,6 +70,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 | Pack | Largest expert blob | Decode, steady |
 | --- | ---: | ---: |
 | `Q2_0` | 1.38 MB | 1.05 ± 0.00 tok/s |
+| `IQ3_S` | 2.66 MB | 0.810 ± 0.00 tok/s |
 | `UD-Q4_K_XL` | 3.99 MB | 0.614 ± 0.00 tok/s |
 | `UD-Q5_K_XL` | 4.43 MB | 0.571 ± 0.00 tok/s |
 
@@ -93,6 +95,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 1 | 1 | `UD-Q5_K_XL` | 17.29 | 56.03 | 0.571 | first round (cold) |
 | 2 | 1 | `UD-Q4_K_XL` | 16.64 | 52.14 | 0.614 | first round (cold) |
 | 3 | 1 | `Q2_0` | 9.82 | 30.60 | 1.05 | first round (cold) |
+| 4 | 1 | `IQ3_S` | 13.54 | 39.52 | 0.810 | first round (cold) |
 
 ## Limits recorded here
 
