@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 01:34 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 01:52 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -28,7 +28,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 5 runs, 0.57 tok/s decode (steady state) |
 | `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 5 runs, 0.54 tok/s decode (steady state) |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
-| `UD-IQ1_M` | refused on this branch | — | 63.3 GiB | runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`) where every other pack answers identically; its IQ2_XXS expert kernel passes `expert_parity` on the pack's real layer-0 experts (rel L2 1.3e-7), so the quant decode is not the cause - the divergence is elsewhere in the engine's path for this pack |
+| `UD-IQ1_M` | refused on this branch | — | 63.3 GiB | runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`, first-token logits at cosine 0.16 to Q2_0's); the divergence is localised to layer 1: the residual is 0.177 after layer 0 (Q2_0 0.181) and 22.2 after layer 1 (Q2_0 0.393), then stays there.  Its experts pass `expert_parity` on the pack's real layer-0 data (rel L2 1.3e-7) and swapping in Q2_0's PLE table changes nothing, so neither the quant decode nor the n-gram read is the cause - layer 1's PLE block is where to look |
 
 Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-Q2_K_XL`, `UD-IQ3_XXS`, `UD-Q3_K_XL`, `UD-IQ4_XS`, `Q8_0`, `Gyro-S`, `Gyro-M`.
 

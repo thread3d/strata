@@ -150,13 +150,20 @@ Measured in the six-pack mixed sweep: UD-Q4_K_XL **0.62 tok/s decode, 1.91 tok/s
 reads more bytes).  **All five prepared packs continue with the same eight tokens as Q2_0**
 (`271 248068 198 760 1156 6587 264 61446`): on this prompt the quantisation changes the speed, not the answer.
 
-**One Unsloth pack does not answer:** `UD-IQ1_M` runs at 0.79 tok/s but returns
-`76 76 1544 7509 4654 76 88 76` where every pack that uses `Q2_0`, `IQ3_XXS`, `IQ3_S` or the `Q4_K`–`Q6_K` families
-returns the same eight tokens — at every `STRATA_METAL_MOE_GU` tile, with the constant table off and with the fp16
-experts on. Its gate/up experts are type `IQ2_XXS` (16), but `expert_parity --gu IQ2_XXS --dn Q2_0` passes on the
-pack's **real layer-0 experts** (rel L2 1.3e-7), so the quant decode is not the cause: something else in the
-engine's path for this pack diverges. The matrix records it as refused rather than a slow number; the next probe is
-a first-token logits dump (`STRATA_DUMP_FIRST_LOGITS`) against Q2_0's.
+**One Unsloth pack does not answer**, and it is localised. `UD-IQ1_M` runs at 0.79 tok/s but returns
+`76 76 1544 7509 4654 76 88 76` where every other pack returns the same eight tokens; its first-token logits are at
+**cosine 0.163** to Q2_0's. `STRATA_WIN_LAYERCHECK` places the divergence in **layer 1**: the residual is 0.1767
+after layer 0 (Q2_0: 0.1809) and **22.20** after layer 1 (Q2_0: 0.3931), then stays near 22. Three separate checks
+clear the obvious suspects:
+
+- `expert_parity --gu IQ2_XXS --dn Q2_0` passes on the pack's **real layer-0 experts** (rel L2 1.3e-7), and layer 1
+  uses the same expert types (16/42) as layer 0;
+- every `STRATA_METAL_MOE_GU` tile, `STRATA_METAL_CTAB=0` and `STRATA_METAL_F16=1` give the same degenerate answer;
+- swapping in Q2_0's **PLE shard** (the same n-gram table bytes) changes nothing, so the table read is not it.
+
+Layer 1 is the one place the window runs the PLE block (key/value projections, the conv over the 9-row history,
+the residual add), and it is the only layer whose tensor list adds the `blk.1.ple_*` weights — so that block, not the
+experts, is where the next tap goes. The matrix records the pack as refused rather than as a slow number.
 
 Gyro is one file with the n-gram table inside (no repack), and its trellis experts are covered in the window after
 all: `moe.metal` instantiates `GU_SET(T_TQK6)`, `GU_SET(T_TQ2T)`, `DN_SET(T_TQK7)` and `DN_SET(T_TQ2T)`, with their

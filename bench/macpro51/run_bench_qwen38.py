@@ -46,10 +46,12 @@ REFUSED = [
     # UD-IQ1_M runs but does not answer: the same prompt gives 76 76 1544 7509 ... where every pack that uses
     # Q2_0 / IQ3_XXS / IQ3_S / Q4_K-Q6_K experts gives 271 248068 198 760 1156 6587 264 61446, at every GU tile
     # (32,1,4 / 32,2,4 / 16,2,4 / 8,1,4).  Its gate/up type is T_IQ2_XXS (16), which no other measured pack uses.
-    ("UD-IQ1_M", "runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`) where every other pack "
-                 "answers identically; its IQ2_XXS expert kernel passes `expert_parity` on the pack's real layer-0 "
-                 "experts (rel L2 1.3e-7), so the quant decode is not the cause - the divergence is elsewhere in "
-                 "the engine's path for this pack"),
+    ("UD-IQ1_M", "runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`, first-token logits at "
+                 "cosine 0.16 to Q2_0's); the divergence is localised to layer 1: the residual is 0.177 after layer "
+                 "0 (Q2_0 0.181) and 22.2 after layer 1 (Q2_0 0.393), then stays there.  Its experts pass "
+                 "`expert_parity` on the pack's real layer-0 data (rel L2 1.3e-7) and swapping in Q2_0's PLE table "
+                 "changes nothing, so neither the quant decode nor the n-gram read is the cause - layer 1's PLE "
+                 "block is where to look"),
 ]
 
 PREFILL, DECODE = 32, 32
