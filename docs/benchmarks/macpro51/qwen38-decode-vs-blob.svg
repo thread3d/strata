@@ -62,9 +62,9 @@
 <line x1="760.3" y1="284.1" x2="776.3" y2="284.1" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="768.3" cy="284.1" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="777.3" y="277.1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q5_K_XL</text>
-<line x1="888.9" y1="297.6" x2="888.9" y2="298.2" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="880.9" y1="297.6" x2="896.9" y2="297.6" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="880.9" y1="298.2" x2="896.9" y2="298.2" stroke="#0f766e" stroke-width="1.2"/>
-<circle cx="888.9" cy="297.9" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="897.9" y="290.9" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q6_K_XL</text>
+<line x1="888.9" y1="297.7" x2="888.9" y2="298.7" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="880.9" y1="297.7" x2="896.9" y2="297.7" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="880.9" y1="298.7" x2="896.9" y2="298.7" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="888.9" cy="298.2" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="897.9" y="291.2" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q6_K_XL</text>
 </svg>
