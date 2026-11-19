@@ -49,6 +49,12 @@ REFUSED = [
     ("UD-Q2_0", "its greedy answer is `76 76 1544 7509 ...` where every other pack gives the reference tokens; its "
                 "gate/up experts are IQ2_XXS (16), the same type as UD-IQ1_M's, and `expert_parity` passes on this "
                 "pack's real layer-0 data at every GU tile"),
+    # The v3.1 sets answer differently: UD-IQ2_XS joins UD-Q2_0 and UD-IQ1_M (same divergent first tokens, same
+    # v3.1 revision).  Their expert formats are all types that the answering IQ3_XXS/IQ3_S packs also use, so the
+    # matrix records them as refused on the answer gate, not as slow quantisations.
+    ("UD-IQ2_XS", "its greedy answer is `4960 4654 1544 159578 ...`, not the reference tokens; a v3.1 set like "
+                  "UD-Q2_0 and UD-IQ1_M, whose expert formats are all used by the answering IQ3_XXS and IQ3_S "
+                  "packs"),
     # UD-IQ1_M runs but does not answer: the same prompt gives 76 76 1544 7509 ... where every pack that uses
     # Q2_0 / IQ3_XXS / IQ3_S / Q4_K-Q6_K experts gives 271 248068 198 760 1156 6587 264 61446, at every GU tile
     # (32,1,4 / 32,2,4 / 16,2,4 / 8,1,4).  Its gate/up type is T_IQ2_XXS (16), which no other measured pack uses.
