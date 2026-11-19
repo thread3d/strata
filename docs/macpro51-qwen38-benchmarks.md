@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 00:52 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 00:53 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -25,7 +25,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 4 runs, 0.82 tok/s decode (steady state) |
 | `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 63.3 GiB | queued |
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 5.7 GiB | queued |
-| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 4 runs, 0.62 tok/s decode (steady state) |
+| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 5 runs, 0.62 tok/s decode (steady state) |
 | `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 4 runs, 0.57 tok/s decode (steady state) |
 | `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 5 runs, 0.54 tok/s decode (steady state) |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
@@ -49,7 +49,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-
 | `Q2_0` | 4 | 1.05 ± 0.001 | 1.05 | 1.05 – 1.05 | 3.32 ± 0.020 |
 | `IQ3_XXS` | 3 | 0.901 ± 0.001 | 0.900 | 0.900 – 0.903 | 2.67 ± 0.015 |
 | `IQ3_S` | 3 | 0.817 ± 0.001 | 0.816 | 0.817 – 0.818 | 2.41 ± 0.011 |
-| `UD-Q4_K_XL` | 3 | 0.617 ± 0.000 | 0.616 | 0.617 – 0.618 | 1.91 ± 0.008 |
+| `UD-Q4_K_XL` | 4 | 0.617 ± 0.000 | 0.617 | 0.617 – 0.618 | 1.91 ± 0.008 |
 | `UD-Q5_K_XL` | 3 | 0.574 ± 0.000 | 0.573 | 0.574 – 0.574 | 1.81 ± 0.003 |
 | `UD-Q6_K_XL` | 4 | 0.539 ± 0.002 | 0.539 | 0.537 – 0.541 | 1.43 ± 0.025 |
 
@@ -134,6 +134,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 24 | 4 | `IQ3_XXS` | 11.56 | 35.54 | 0.900 | later round |
 | 25 | 5 | `UD-Q6_K_XL` | 21.48 | 59.20 | 0.541 | later round |
 | 26 | 5 | `Q2_0` | 9.38 | 30.44 | 1.05 | later round |
+| 27 | 5 | `UD-Q4_K_XL` | 16.15 | 51.86 | 0.617 | later round |
 
 ## Limits recorded here
 
