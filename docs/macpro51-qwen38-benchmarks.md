@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 09:07 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 10:52 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -10,7 +10,7 @@ _Generated 2026-11-19 09:07 UTC by `bench/macpro51/run_bench_qwen38.py` after ev
 | GPU | AMD Radeon RX 580, 8 GB, Metal 2 (no Metal 3, no bf16, no device addresses) |
 | OS | macOS 11.7.11 (Big Sur, 20G1443) |
 | Engine | `strata` 0.1.59-metal (`metal/` build, Ninja Release), branch `macpro51` |
-| Branch / commit at the last run | `macpro51` / `4e2f30f748` |
+| Branch / commit at the last run | `macpro51` / `f813d27aa5` |
 
 The engine's Metal decode window reads the model's GGUF in place. The RX 580 cannot hold a 40–160 GB pack in 8 GB of VRAM, so the dense side (norms, hyper-connection projections, the shared expert and the attention/GDN projections) is read once into host memory and the routed experts stream from the SSD through an arena; a token's experts are looked up after its router and the next layer's are read ahead. Nothing is copied into a second file.
 
@@ -20,15 +20,16 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Quantisation | Source | On disk | Result |
 | --- | --- | --- | ---: | --- |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 5 runs, 1.05 tok/s decode (steady state) |
-| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 5 runs, 0.90 tok/s decode (steady state) |
-| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 5 runs, 0.82 tok/s decode (steady state) |
-| `UD-IQ3_XXS` | UD-IQ3_XXS (Unsloth v3.1) | unsloth | 77.9 GiB | 5 runs, 0.74 tok/s decode (steady state) |
-| `UD-Q3_K_XL` | UD-Q3_K_XL (Unsloth v3.1) | unsloth | 83.3 GiB | 5 runs, 0.71 tok/s decode (steady state) |
-| `UD-IQ4_XS` | UD-IQ4_XS (Unsloth v3.1) | unsloth | 87.2 GiB | 5 runs, 0.71 tok/s decode (steady state) |
-| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 5 runs, 0.62 tok/s decode (steady state) |
-| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 5 runs, 0.57 tok/s decode (steady state) |
-| `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 5 runs, 0.53 tok/s decode (steady state) |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | queued |
+| `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | queued |
+| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | queued |
+| `UD-IQ3_XXS` | UD-IQ3_XXS (Unsloth v3.1) | unsloth | 77.9 GiB | queued |
+| `UD-Q3_K_XL` | UD-Q3_K_XL (Unsloth v3.1) | unsloth | 83.3 GiB | queued |
+| `UD-IQ4_XS` | UD-IQ4_XS (Unsloth v3.1) | unsloth | 87.2 GiB | queued |
+| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | queued |
+| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | queued |
+| `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 1 run, 0.53 tok/s decode (steady state) |
+| `Q8_0` | Q8_0 (Unsloth) | unsloth | 175.3 GiB | queued |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
 | `UD-Q2_0` | refused on this branch | — | 65.7 GiB | its greedy answer is `76 76 1544 7509 ...` where every other pack gives the reference tokens; its gate/up experts are IQ2_XXS (16), the same type as UD-IQ1_M's, and `expert_parity` passes on this pack's real layer-0 data at every GU tile |
 | `UD-IQ2_XS` | refused on this branch | — | 70.6 GiB | its greedy answer is `4960 4654 1544 159578 ...`, not the reference tokens; a v3.1 set like UD-Q2_0 and UD-IQ1_M, whose expert formats are all used by the answering IQ3_XXS and IQ3_S packs |
@@ -36,8 +37,6 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `Gyro-S` | refused on this branch | — | 54.5 GiB | runs through the trellis expert path (no missing kernel) but its greedy answer does not match the reference: `198 18 18 18 18 18 18 18` in its own smoke, and the sweep runs diverge as well |
 | `Gyro-M` | refused on this branch | — | 85.6 GiB | same: the TQ path runs and its greedy answer diverges from the reference |
 | `UD-IQ1_M` | refused on this branch | — | 63.3 GiB | runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`, first-token logits at cosine 0.16 to Q2_0's); the residual is healthy after layer 0 (0.177; Q2_0 0.181), still healthy after layer 1's attention (0.173; Q2_0 0.174, UD-Q4 0.170), and 15.1 after layer 1's expert dispatch (UD-Q4 0.348), then stays there.  The PLE block's own outputs (keyn/qn/gated/normW) match the healthy packs to three digits, the experts pass `expert_parity` on this pack's real data (rel L2 1.3e-7), and layer 1 uses the same expert types as layer 0 - so the fault is inside layer 1's routed/shared expert path (plan, gu, swiglu, down, combine), not the quantisation |
-
-Not on disk yet (not attempted, and not counted as a failure): `Q8_0`.
 
 ## Method
 
@@ -54,15 +53,7 @@ Not on disk yet (not attempted, and not counted as a failure): `Q8_0`.
 
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Q2_0` | 4 | 1.05 ± 0.001 | 1.05 | 1.05 – 1.05 | 3.23 ± 0.061 |
-| `IQ3_XXS` | 4 | 0.904 ± 0.001 | 0.903 | 0.903 – 0.905 | 2.60 ± 0.052 |
-| `IQ3_S` | 4 | 0.817 ± 0.002 | 0.817 | 0.816 – 0.821 | 2.35 ± 0.064 |
-| `UD-IQ3_XXS` | 4 | 0.738 ± 0.002 | 0.738 | 0.737 – 0.740 | 2.23 ± 0.030 |
-| `UD-Q3_K_XL` | 4 | 0.712 ± 0.002 | 0.712 | 0.710 – 0.714 | 2.00 ± 0.017 |
-| `UD-IQ4_XS` | 4 | 0.707 ± 0.001 | 0.707 | 0.707 – 0.708 | 1.96 ± 0.030 |
-| `UD-Q4_K_XL` | 4 | 0.618 ± 0.000 | 0.618 | 0.617 – 0.618 | 1.89 ± 0.021 |
-| `UD-Q5_K_XL` | 4 | 0.573 ± 0.001 | 0.573 | 0.571 – 0.574 | 1.79 ± 0.014 |
-| `UD-Q6_K_XL` | 4 | 0.530 ± 0.002 | 0.530 | 0.529 – 0.533 | 1.39 ± 0.040 |
+| `UD-Q6_K_XL` | 1 | 0.528 ± 0.00 | 0.528 | 0.528 – 0.528 | 1.35 ± 0.00 |
 
 ## Prompt (prefill) throughput
 
@@ -82,15 +73,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 
 | Pack | Largest expert blob | Decode, steady |
 | --- | ---: | ---: |
-| `Q2_0` | 1.38 MB | 1.05 ± 0.001 tok/s |
-| `IQ3_XXS` | 2.33 MB | 0.904 ± 0.001 tok/s |
-| `IQ3_S` | 2.66 MB | 0.817 ± 0.002 tok/s |
-| `UD-IQ3_XXS` | 2.66 MB | 0.738 ± 0.002 tok/s |
-| `UD-Q3_K_XL` | 2.87 MB | 0.712 ± 0.002 tok/s |
-| `UD-IQ4_XS` | 2.87 MB | 0.707 ± 0.001 tok/s |
-| `UD-Q4_K_XL` | 3.99 MB | 0.618 ± 0.000 tok/s |
-| `UD-Q5_K_XL` | 4.43 MB | 0.573 ± 0.001 tok/s |
-| `UD-Q6_K_XL` | 5.22 MB | 0.530 ± 0.002 tok/s |
+| `UD-Q6_K_XL` | 5.22 MB | 0.528 ± 0.00 tok/s |
 
 Every token pulls its ten routed experts per layer from the SSD, so the blob one expert costs is the number a token actually pays for; the pack file is mostly experts a token never asks for.  Two packs whose blobs are the same size land at nearly the same rate, which is why the Unsloth 4.5-bit set is slower than the 2-bit one even though their files differ by less than 2x.
 
@@ -99,38 +82,14 @@ Every token pulls its ten routed experts per layer from the SSD, so the blob one
 
 | Pack | Gate/up / down experts (layers) | Largest blob | Decode, steady |
 | --- | --- | ---: | ---: |
-| `Q2_0` | Q2_0 / Q2_0 (48) | 1.38 MB | 1.05 tok/s |
-| `IQ3_XXS` | IQ2_XXS / Q2_0 (8), IQ3_S / Q2_0 (7), IQ2_XS / Q2_0 (6), IQ2_S / Q2_0 (6), IQ3_S / IQ4_NL (6), IQ2_XS / IQ4_NL (4), IQ2_S / IQ4_NL (4), IQ3_XXS / IQ4_NL (3), IQ3_XXS / Q2_0 (3), IQ2_XXS / IQ4_NL (1) | 2.33 MB | 0.904 tok/s |
-| `IQ3_S` | IQ2_S / IQ4_NL (15), IQ3_XXS / IQ4_NL (14), IQ3_S / IQ4_NL (9), IQ2_S / Q2_0 (5), IQ3_XXS / Q2_0 (3), IQ3_S / Q2_0 (1), IQ4_XS / IQ4_NL (1) | 2.66 MB | 0.817 tok/s |
-| `UD-IQ3_XXS` | IQ2_S / IQ4_NL (23), IQ3_XXS / IQ4_NL (21), IQ2_S / Q2_0 (3), IQ4_XS / IQ4_NL (1) | 2.66 MB | 0.738 tok/s |
-| `UD-Q3_K_XL` | IQ3_XXS / IQ4_NL (21), IQ3_XXS / Q5_0 (17), IQ4_XS / IQ4_NL (4), IQ2_S / Q2_0 (2), IQ4_XS / Q5_0 (2), IQ2_S / Q5_0 (1), IQ2_S / IQ4_NL (1) | 2.87 MB | 0.712 tok/s |
-| `UD-IQ4_XS` | IQ3_XXS / Q5_0 (20), IQ4_XS / Q5_0 (13), IQ3_XXS / IQ4_NL (8), IQ4_XS / IQ4_NL (4), IQ2_S / Q2_0 (2), IQ2_S / IQ4_NL (1) | 2.87 MB | 0.707 tok/s |
-| `UD-Q4_K_XL` | Q4_K / Q5_1 (43), Q4_K / Q8_0 (4), Q5_K / Q8_0 (1) | 3.99 MB | 0.618 tok/s |
-| `UD-Q5_K_XL` | Q5_K / Q8_0 (47), Q6_K / Q8_0 (1) | 4.43 MB | 0.573 tok/s |
-| `UD-Q6_K_XL` | Q6_K / Q8_0 (47), Q8_0 / Q8_0 (1) | 5.22 MB | 0.530 tok/s |
+| `UD-Q6_K_XL` | Q6_K / Q8_0 (47), Q8_0 / Q8_0 (1) | 5.22 MB | 0.528 tok/s |
 
 The formats are the packs' own metadata (`native_experts.txt`), and they are what the blob column is made of: the ISTA sets spend the same 2–3 bits on every expert of every layer, while the Unsloth UD sets mix formats layer by layer to keep the important ones wider.
 
 
 ## What the numbers say
 
-- **Fastest decode:** `Q2_0` at 1.05 tok/s; **slowest:** `UD-Q6_K_XL` at 0.53 tok/s (1.98× between them).
-- **Run-to-run spread:** coefficient of variation from 0.1% (`UD-Q4_K_XL`) to 0.3% (`UD-Q6_K_XL`).
-- **Fastest prompt read:** `Q2_0` at 3.23 tok/s; slowest `UD-Q6_K_XL` at 1.39 tok/s.
-
-The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages +0.1% over these 9 packs.
-
-| Pack | Round 1 (tok/s) | Rounds 2+ (tok/s) | Change |
-| --- | ---: | ---: | ---: |
-| `Q2_0` | 1.05 | 1.05 | +0.0% |
-| `IQ3_XXS` | 0.90 | 0.90 | +0.3% |
-| `IQ3_S` | 0.82 | 0.82 | +0.1% |
-| `UD-IQ3_XXS` | 0.74 | 0.74 | +0.1% |
-| `UD-Q3_K_XL` | 0.71 | 0.71 | +0.1% |
-| `UD-IQ4_XS` | 0.71 | 0.71 | +0.2% |
-| `UD-Q4_K_XL` | 0.62 | 0.62 | +0.0% |
-| `UD-Q5_K_XL` | 0.57 | 0.57 | -0.1% |
-| `UD-Q6_K_XL` | 0.53 | 0.53 | +0.2% |
+_Not enough completed packs yet; this section fills in as the rounds finish._
 
 ## Run order (mixing)
 
@@ -142,61 +101,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 
 | # | Round | Pack | Prefill s | Decode s | Decode tok/s | Note |
 | ---: | ---: | --- | ---: | ---: | ---: | --- |
-| 1 | 1 | `UD-Q6_K_XL` | 22.18 | 60.43 | 0.530 | first round (cold) |
-| 2 | 1 | `IQ3_S` | 13.33 | 39.21 | 0.816 | first round (cold) |
-| 3 | 1 | `UD-Q3_K_XL` | 15.49 | 44.99 | 0.711 | first round (cold) |
-| 4 | 1 | `Gyro-S` | 12.65 | 35.16 | 0.910 | answer diverges |
-| 5 | 1 | `UD-Q5_K_XL` | 17.55 | 55.84 | 0.573 | first round (cold) |
-| 6 | 1 | `UD-Q4_K_XL` | 16.55 | 51.81 | 0.618 | first round (cold) |
-| 7 | 1 | `Q2_0` | 9.63 | 30.43 | 1.05 | first round (cold) |
-| 8 | 1 | `IQ3_XXS` | 12.01 | 35.50 | 0.901 | first round (cold) |
-| 9 | 1 | `UD-IQ4_XS` | 15.90 | 45.35 | 0.706 | first round (cold) |
-| 10 | 1 | `UD-IQ3_XXS` | 14.02 | 43.41 | 0.737 | first round (cold) |
-| 11 | 1 | `Gyro-M` | 13.96 | 46.39 | 0.690 | answer diverges |
-| 12 | 2 | `Gyro-M` | 13.62 | 45.59 | 0.702 | answer diverges |
-| 13 | 2 | `UD-Q6_K_XL` | 22.36 | 60.49 | 0.529 | later round |
-| 14 | 2 | `UD-IQ4_XS` | 15.76 | 45.29 | 0.707 | later round |
-| 15 | 2 | `Gyro-S` | 12.67 | 35.41 | 0.904 | answer diverges |
-| 16 | 2 | `UD-Q5_K_XL` | 17.52 | 55.89 | 0.573 | later round |
-| 17 | 2 | `UD-Q3_K_XL` | 15.63 | 45.05 | 0.710 | later round |
-| 18 | 2 | `IQ3_XXS` | 11.97 | 35.42 | 0.903 | later round |
-| 19 | 2 | `Q2_0` | 9.78 | 30.48 | 1.05 | later round |
-| 20 | 2 | `UD-IQ3_XXS` | 14.09 | 43.40 | 0.737 | later round |
-| 21 | 2 | `IQ3_S` | 13.48 | 39.20 | 0.816 | later round |
-| 22 | 2 | `UD-Q4_K_XL` | 16.42 | 51.82 | 0.617 | later round |
-| 23 | 3 | `IQ3_S` | 13.22 | 39.21 | 0.816 | later round |
-| 24 | 3 | `UD-Q4_K_XL` | 16.47 | 51.81 | 0.618 | later round |
-| 25 | 3 | `Q2_0` | 9.60 | 30.43 | 1.05 | later round |
-| 26 | 3 | `Gyro-M` | 13.74 | 46.21 | 0.692 | answer diverges |
-| 27 | 3 | `Gyro-S` | 12.62 | 35.29 | 0.907 | answer diverges |
-| 28 | 3 | `UD-Q6_K_XL` | 22.15 | 60.31 | 0.531 | later round |
-| 29 | 3 | `UD-Q5_K_XL` | 17.33 | 55.74 | 0.574 | later round |
-| 30 | 3 | `UD-IQ3_XXS` | 13.90 | 43.37 | 0.738 | later round |
-| 31 | 3 | `IQ3_XXS` | 12.11 | 35.38 | 0.905 | later round |
-| 32 | 3 | `UD-IQ4_XS` | 16.19 | 45.28 | 0.707 | later round |
-| 33 | 3 | `UD-Q3_K_XL` | 15.55 | 44.93 | 0.712 | later round |
-| 34 | 4 | `UD-Q6_K_XL` | 23.11 | 60.47 | 0.529 | later round |
-| 35 | 4 | `UD-IQ4_XS` | 15.77 | 45.24 | 0.707 | later round |
-| 36 | 4 | `Gyro-S` | 12.62 | 35.09 | 0.912 | answer diverges |
-| 37 | 4 | `Gyro-M` | 13.73 | 46.52 | 0.688 | answer diverges |
-| 38 | 4 | `IQ3_S` | 13.38 | 39.20 | 0.816 | later round |
-| 39 | 4 | `UD-Q3_K_XL` | 15.59 | 45.02 | 0.711 | later round |
-| 40 | 4 | `IQ3_XXS` | 12.06 | 35.44 | 0.903 | later round |
-| 41 | 4 | `UD-Q5_K_XL` | 17.40 | 56.06 | 0.571 | later round |
-| 42 | 4 | `Q2_0` | 9.68 | 30.39 | 1.05 | later round |
-| 43 | 4 | `UD-IQ3_XXS` | 14.06 | 43.42 | 0.737 | later round |
-| 44 | 4 | `UD-Q4_K_XL` | 16.52 | 51.75 | 0.618 | later round |
-| 45 | 5 | `UD-Q6_K_XL` | 21.57 | 60.05 | 0.533 | later round |
-| 46 | 5 | `Gyro-S` | 12.25 | 34.93 | 0.916 | answer diverges |
-| 47 | 5 | `UD-Q4_K_XL` | 16.13 | 51.80 | 0.618 | later round |
-| 48 | 5 | `UD-IQ3_XXS` | 13.68 | 43.22 | 0.740 | later round |
-| 49 | 5 | `Gyro-M` | 13.35 | 46.34 | 0.690 | answer diverges |
-| 50 | 5 | `UD-Q5_K_XL` | 17.18 | 55.79 | 0.574 | later round |
-| 51 | 5 | `IQ3_S` | 12.69 | 38.99 | 0.821 | later round |
-| 52 | 5 | `UD-Q3_K_XL` | 15.34 | 44.84 | 0.714 | later round |
-| 53 | 5 | `IQ3_XXS` | 11.60 | 35.40 | 0.904 | later round |
-| 54 | 5 | `Q2_0` | 9.36 | 30.39 | 1.05 | later round |
-| 55 | 5 | `UD-IQ4_XS` | 15.61 | 45.21 | 0.708 | later round |
+| 1 | 1 | `UD-Q6_K_XL` | 22.97 | 60.62 | 0.528 | first round (cold) |
 
 ## Reproduce
 
