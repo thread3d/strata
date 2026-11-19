@@ -43,6 +43,12 @@ PY = "python3"
 # Packs the Metal kernels of this branch cannot run, with the engine's own message (recorded, never timed).
 REFUSED = [
     ("IQ2_XS", "the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4`"),
+    # Two packs whose gate/up experts are IQ2_XXS (16) return the same wrong answer; the kernels pass
+    # expert_parity on their real data, so the engine's type-16 path (x planes/sums binding, plan, arena) is the
+    # suspect, not the decoder.
+    ("UD-Q2_0", "its greedy answer is `76 76 1544 7509 ...` where every other pack gives the reference tokens; its "
+                "gate/up experts are IQ2_XXS (16), the same type as UD-IQ1_M's, and `expert_parity` passes on this "
+                "pack's real layer-0 data at every GU tile"),
     # UD-IQ1_M runs but does not answer: the same prompt gives 76 76 1544 7509 ... where every pack that uses
     # Q2_0 / IQ3_XXS / IQ3_S / Q4_K-Q6_K experts gives 271 248068 198 760 1156 6587 264 61446, at every GU tile
     # (32,1,4 / 32,2,4 / 16,2,4 / 8,1,4).  Its gate/up type is T_IQ2_XXS (16), which no other measured pack uses.
@@ -56,6 +62,10 @@ REFUSED = [
 ]
 
 PREFILL, DECODE = 32, 32
+# The same prompt gives the same first tokens on every pack that answers (measured on Q2_0, IQ3_XXS, IQ3_S, UD-Q4,
+# UD-Q5 and UD-Q6_K_XL).  A pack whose greedy output starts elsewhere is not answering, whatever its rate, so it is
+# not reported as a slow quantisation.
+EXPECT = [271, 248068, 198, 760]
 PREFILL_ONLY = False   # --prefill-only: one token after the prompt, so the prompt is measured and no decode rate is claimed
 # Qwen3.6's ids (the same 248 320-entry Qwen vocabulary): the first 32 of
 #   "Explain, in two short sentences, why the sky looks blue during the day and red at sunset. Then say
@@ -292,6 +302,8 @@ def run_one(cfg, round_no, order):
     rec["decode_tokens"] = int(dm.group(1))
     rec["decode_s"] = float(dm.group(2)) / 1000.0
     rec["decode_ok"] = (not PREFILL_ONLY) and int(dm.group(1)) > 1
+    gen = rec.get("generated") or []
+    rec["answer_ok"] = gen[:len(EXPECT)] == EXPECT
     rec["decode_tok_s"] = int(dm.group(1)) / rec["decode_s"] if rec["decode_s"] > 0 else 0.0
     if pm:
         rec["prefill_tokens"] = int(pm.group(1))
@@ -336,8 +348,13 @@ def aggregate(records):
     for r in records:
         by.setdefault(r["label"], []).append(r)
     agg = {}
+    def answers(r):
+        """A run counts only if its greedy output is the reference answer (records before the check: computed)."""
+        if "answer_ok" in r:
+            return bool(r["answer_ok"])
+        return (r.get("generated") or [])[:len(EXPECT)] == EXPECT
     for label, rs in by.items():
-        ok = [r for r in rs if r.get("rc") == 0 and r.get("prefill_s")]
+        ok = [r for r in rs if r.get("rc") == 0 and r.get("prefill_s") and answers(r)]
         dec = [r for r in ok if r.get("decode_ok")]
         steady_p = [r for r in ok if r.get("round", 0) > 0]
         steady_d = [r for r in dec if r.get("round", 0) > 0]
@@ -598,6 +615,8 @@ def render_doc(agg, records, meta):
             continue
         if a and a["n"]:
             verdict = f"{a['n']} run{'s' if a['n'] != 1 else ''}, {mean(a['decode']):.2f} tok/s decode (steady state)"
+        elif a and [r for r in a["runs"] if r.get("rc") == 0]:
+            verdict = "runs, but its greedy answer diverges from every other pack's"
         else:
             verdict = "queued"
         L.append(f"| `{label}` | {cfg[2]} | {cfg[3]} | {size/1073741824.0:.1f} GiB | {verdict} |")
@@ -703,7 +722,9 @@ def render_doc(agg, records, meta):
     L.append("| ---: | ---: | --- | ---: | ---: | ---: | --- |")
     for n, r in enumerate(sorted(records, key=lambda r: r.get("order", 0)), start=1):
         if r.get("rc") == 0 and "decode_s" in r:
-            note = "first round (cold)" if r.get("round", 0) == 0 else "later round"
+            ok = r["answer_ok"] if "answer_ok" in r else (r.get("generated") or [])[:len(EXPECT)] == EXPECT
+            note = ("first round (cold)" if r.get("round", 0) == 0 else "later round") if ok else "answer diverges"
+
             L.append(f"| {n} | {r.get('round', 0)+1} | `{r['label']}` | {fmt(r.get('prefill_s', 0))} | {fmt(r['decode_s'])} | {fmt(rate(r, 'decode'))} | {note} |")
         else:
             L.append(f"| {n} | {r.get('round', 0)+1} | `{r.get('label','?')}` | — | — | — | failed: {r.get('error', 'unknown')} |")
