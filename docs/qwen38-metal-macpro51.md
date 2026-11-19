@@ -185,7 +185,13 @@ shared expert does.  A vector tap settles the layer: the residual after layer 0 
 layer 1, and since its expert outputs match, the fold that puts them back into the four streams is what remains to
 instrument (`bo_` and the fold's inputs at layer 1's cut).  Per row (the sampling window is one row), the residual
 norm goes from 0.375 (cosine 0.9945) after layer 0 to **38.4** (cosine 0.188) after layer 1, against Q2_0's 1.10 —
-a single row, not one bad position in a batch.  The matrix records the pack as refused rather than as a
+a single row, not one bad position in a batch.  A fourth tap dumps the fold's own inputs: `bo` (the attention output
+being folded) rms 0.063 against Q2_0's 0.129, `ysh` 0.089 against 0.088, `ye` 0.0041 against 0.0037, the injects
+3.5/8.2 against 14.1/26.0 (their sigmoid gate is 0..2), and `hc_ffn_norm.weight` is small in both (first values
+0.107 … against 0.0199 …).  The residual the fold produces is rms 0.390 and max 22.6 against 0.021 and 0.393 — a
+value its inputs cannot make, since |bo| ≤ 0.54 times a gate ≤ 2 on top of a 0.375-norm residual is under 1.  The
+fold therefore reads or writes something wrong for this pack rather than computing a different function: the same
+class of fault as the `gr_norm2` reduction that started this page, and the next thing to instrument.  The matrix records the pack as refused rather than as a
 slow number.
 
 Gyro is one file with the n-gram table inside (no repack), and its trellis experts are covered in the window after
