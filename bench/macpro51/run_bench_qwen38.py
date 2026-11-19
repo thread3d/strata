@@ -838,7 +838,11 @@ def main():
     rng = random.Random(a.seed)
     listed = [c for c in CONFIGS if a.only is None or c[1] in a.only]
     if a.list:
+        refused = {n for n, _ in REFUSED}
         for c in listed:
+            if c[1] in refused:
+                print(c[1], "refused")
+                continue
             st = "ready" if ready(c[1]) else ("repacked, no pack" if repacked(c[1]) else
                                                ("downloaded" if shards(c[1])[0] else "missing"))
             print(c[1], st)
