@@ -825,15 +825,22 @@ def render_doc(agg, records, meta):
              "`tools/iq_pack.py --compat-bf16`; `bench/macpro51/prep_unsloth.sh <PACK>` does both and a smoke run. "
              "The repacked file is passed as `--native` **and** `--native-dense-gguf`.")
     L.append("")
+    L.append("The whole pipeline that produced this page is in this directory too: the two manifests of exactly what was "
+             "fetched (with each file's size and sha256) are `qwen38_unsloth_manifest.tsv` and `qwen38_q8_manifest.tsv`; "
+             "`download_qwen38.sh` verifies/resumes them into `~/models/qwen38`, `prep_all_unsloth.sh` repacks and packs each "
+             "as it lands, `final_sweep.sh` waits for that, runs the sweep above and restarts the downloads, and "
+             "`verify_page.py` re-derives every number in the tables from `results-qwen38.jsonl`.")
+    L.append("")
     L.append("## Limits recorded here")
     L.append("")
     L.append("- The pack's second shard is the 28.8 GB PLE n-gram table. It is read from the SSD a few rows at a time and is never loaded whole; its size counts in the download, not in VRAM.")
     L.append("- Metal 2 on this card has no device addresses; kernels take buffer + offset, and the engine hands every weight that way. No Metal 3 feature is used.")
     L.append("- The output head is 512 wide in the draft path and 248 320 wide in the sample; greedy decoding is used throughout so the comparison is not a sampler's.")
-    L.append("- Refused, with the reason on each row: `IQ2_XS` needs an IQ1_M expert kernel this branch does not have, "
-             "and the Unsloth v3.1 sets (`UD-Q2_0`, `UD-IQ1_M`, `UD-IQ2_XS`, `UD-Q2_K_XL`) answer differently from "
-             "every working pack - the defect is written up in [qwen38-metal-v3.1-refusal.md](qwen38-metal-v3.1-refusal.md), "
-             "localised to layer 1's fold.")
+    L.append("- Refused, with the reason on each row: seven packs start and decode but answer differently from every "
+             "working pack - `IQ2_XS` (now that the IQ1_M expert decode exists), the Unsloth v3.1 sets `UD-Q2_0`, "
+             "`UD-IQ1_M`, `UD-IQ2_XS`, `UD-Q2_K_XL`, and the two Gyro packs.  Only `IQ2_XS` was ever blocked by a missing "
+             "kernel; the other six and it share one forward-level fault, written up in "
+             "[qwen38-metal-v3.1-refusal.md](qwen38-metal-v3.1-refusal.md) and localised to layer 1's fold.")
     L.append("")
     DOC.write_text("\n".join(L) + "\n", encoding="utf-8")
 
