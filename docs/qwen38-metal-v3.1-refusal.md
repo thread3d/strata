@@ -11,11 +11,13 @@ in the forward — either refuse to start or answer `76 76 1544 7509 …` where 
 `271 248068 198 760 1156 6587 264 61446`. The harness's answer gate excludes them from the matrix; this page is
 about the three that run.
 
-## Two v3.1 sets do answer
+## Three v3.1 sets do answer
 
-`UD-IQ3_XXS` and `UD-Q3_K_XL` (also v3.1 sets, repacked the same way) pass the answer gate: UD-IQ3_XXS starts
-`271 248068 198 760 1156 6587 …` at 0.76 tok/s and UD-Q3_K_XL reproduces the reference's full eight tokens
-(`271 248068 198 760 1156 6587 264 61446`) at 0.73 tok/s. So the v3.1 revision is not broken as a
+`UD-IQ3_XXS`, `UD-Q3_K_XL` and `UD-IQ4_XS` (also v3.1 sets, repacked the same way) pass the answer gate: UD-IQ3_XXS
+starts `271 248068 198 760 1156 6587 …` at 0.76 tok/s, and UD-Q3_K_XL and UD-IQ4_XS both reproduce the reference's
+full eight tokens (`271 248068 198 760 1156 6587 264 61446`) at 0.73 and 0.72 tok/s.  Three of the seven v3.1 sets
+measured answer, four do not.  (The `agentionai` Gyro-S pack, a different converter again, also answers with the
+same eight tokens at 0.72 tok/s.) So the v3.1 revision is not broken as a
 whole. Their layer-1 experts are `IQ2_S / IQ4_NL` and `IQ3_XXS / Q5_0`, while the four that fail have `IQ2_XXS`
 gate/up at layer 1 — except that the answering ISTA `IQ3_XXS` also has `IQ2_XXS / Q2_0` at layer 1, so the type
 alone is not it either: it is **`IQ2_XXS` in a v3.1 pack** that fails, while `IQ2_XXS` in an ISTA pack answers. The
