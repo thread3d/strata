@@ -59,13 +59,14 @@
 <circle cx="875.5" cy="298.4" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <text x="882.5" y="289.6" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">1.81</text>
 <text x="882.5" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 882.5 490.0)">UD-Q5_K_XL</text>
-<rect x="1026.2" y="335.6" width="64.0" height="134.4" fill="#0f766e" opacity="0.86"/>
-<line x1="1058.2" y1="331.9" x2="1058.2" y2="339.3" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="1047.2" y1="331.9" x2="1069.2" y2="331.9" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="1047.2" y1="339.3" x2="1069.2" y2="339.3" stroke="#1f2933" stroke-width="1.4"/>
+<rect x="1026.2" y="335.1" width="64.0" height="134.9" fill="#0f766e" opacity="0.86"/>
+<line x1="1058.2" y1="332.3" x2="1058.2" y2="337.8" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="1047.2" y1="332.3" x2="1069.2" y2="332.3" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="1047.2" y1="337.8" x2="1069.2" y2="337.8" stroke="#1f2933" stroke-width="1.4"/>
 <circle cx="1044.1" cy="338.2" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <circle cx="1051.1" cy="333.0" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<text x="1058.2" y="326.6" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">1.42</text>
+<circle cx="1058.2" cy="334.0" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<text x="1058.2" y="326.1" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">1.43</text>
 <text x="1058.2" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 1058.2 490.0)">UD-Q6_K_XL</text>
 <line x1="92.0" y1="470.0" x2="1146.0" y2="470.0" stroke="#9ca3af" stroke-width="1.4"/>
 <rect x="92.0" y="76.0" width="12.0" height="12.0" fill="#0f766e" opacity="0.86"/>
