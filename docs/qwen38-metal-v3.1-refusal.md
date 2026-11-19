@@ -67,6 +67,9 @@ One row (the sampling window is one row), so this is not a batch artefact. Layer
 - **The n-gram table, the prompt path, the tile screen, the constant table, fp16 experts.** A swapped table, `--prefill 1`,
   four `STRATA_METAL_MOE_GU` tiles, `STRATA_METAL_CTAB=0` and
   `STRATA_METAL_F16=1` all give the same wrong answer.
+- **The `--compat-bf16` conversion set and the PLE tensor types.** All the Unsloth packs convert the same 195 Q8_0
+  hyper-connection tensors to BF16, and `blk.1.ple_key.weight` is F32 in the *answering* ISTA IQ3_XXS/IQ3_S as well as
+  in the four refused sets — neither separates them.
 - **The fold kernels as a 64-lane reduction bug.** `gr.metal`/`gr2.metal` already take `sg32`/`lane32`, reduce with
   `sum32` and write all eight `part[]` slots.
 
