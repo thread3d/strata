@@ -818,6 +818,10 @@ def render_doc(agg, records, meta):
     L.append("- The pack's second shard is the 28.8 GB PLE n-gram table. It is read from the SSD a few rows at a time and is never loaded whole; its size counts in the download, not in VRAM.")
     L.append("- Metal 2 on this card has no device addresses; kernels take buffer + offset, and the engine hands every weight that way. No Metal 3 feature is used.")
     L.append("- The output head is 512 wide in the draft path and 248 320 wide in the sample; greedy decoding is used throughout so the comparison is not a sampler's.")
+    L.append("- Refused, with the reason on each row: `IQ2_XS` needs an IQ1_M expert kernel this branch does not have, "
+             "and the Unsloth v3.1 sets (`UD-Q2_0`, `UD-IQ1_M`, `UD-IQ2_XS`, `UD-Q2_K_XL`) answer differently from "
+             "every working pack - the defect is written up in [qwen38-metal-v3.1-refusal.md](qwen38-metal-v3.1-refusal.md), "
+             "localised to layer 1's fold.")
     L.append("")
     DOC.write_text("\n".join(L) + "\n", encoding="utf-8")
 
