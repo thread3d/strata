@@ -42,7 +42,10 @@ PY = "python3"
 
 # Packs the Metal kernels of this branch cannot run, with the engine's own message (recorded, never timed).
 REFUSED = [
-    ("IQ2_XS", "the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4`"),
+    # (the IQ1_M expert decode is in now - `deq<T_IQ1_M>`, parity 1.5e-07 on this pack's own layer 8 - so it starts;
+    # the answer still diverges, the same forward-level fault as the sets below.)
+    ("IQ2_XS", "runs now that the IQ1_M expert decode exists (1.02 tok/s), but its greedy answer diverges from the "
+               "reference like the sets below; its experts are 11 layers of IQ2_XXS, 34 of IQ2_S and 3 of IQ1_M"),
     # Two packs whose gate/up experts are IQ2_XXS (16) return the same wrong answer; the kernels pass
     # expert_parity on their real data, so the engine's type-16 path (x planes/sums binding, plan, arena) is the
     # suspect, not the decoder.

@@ -30,7 +30,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 5 runs, 0.57 tok/s decode (steady state) |
 | `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 5 runs, 0.53 tok/s decode (steady state) |
 | `Q8_0` | Q8_0 (Unsloth) | unsloth | 175.3 GiB | 5 runs, 0.53 tok/s decode (steady state) |
-| `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
+| `IQ2_XS` | refused on this branch | — | 63.4 GiB | runs now that the IQ1_M expert decode exists (1.02 tok/s), but its greedy answer diverges from the reference like the sets below; its experts are 11 layers of IQ2_XXS, 34 of IQ2_S and 3 of IQ1_M |
 | `UD-Q2_0` | refused on this branch | — | 65.7 GiB | its greedy answer is `76 76 1544 7509 ...` where every other pack gives the reference tokens; its gate/up experts are IQ2_XXS (16), the same type as UD-IQ1_M's, and `expert_parity` passes on this pack's real layer-0 data at every GU tile |
 | `UD-IQ2_XS` | refused on this branch | — | 70.6 GiB | its greedy answer is `4960 4654 1544 159578 ...`, not the reference tokens; a v3.1 set like UD-Q2_0 and UD-IQ1_M, whose expert formats are all used by the answering IQ3_XXS and IQ3_S packs |
 | `UD-Q2_K_XL` | refused on this branch | — | 74.1 GiB | its greedy answer is `76 76 1544 7509 76 76 7509 88`, the v3.1 signature, where every working pack gives the reference tokens; its expert formats are all in the answering packs' set |
