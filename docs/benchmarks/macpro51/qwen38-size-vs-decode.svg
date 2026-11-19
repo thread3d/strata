@@ -37,8 +37,11 @@
 <line x1="367.3" y1="135.5" x2="383.3" y2="135.5" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="375.3" cy="135.3" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="384.3" y="128.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q2_0</text>
-<circle cx="415.5" cy="182.1" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="424.5" y="175.1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_XXS</text>
+<line x1="415.5" y1="181.9" x2="415.5" y2="182.2" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="407.5" y1="181.9" x2="423.5" y2="181.9" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="407.5" y1="182.2" x2="423.5" y2="182.2" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="415.5" cy="182.0" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="424.5" y="175.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_XXS</text>
 <line x1="448.7" y1="208.5" x2="448.7" y2="209.3" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="440.7" y1="208.5" x2="456.7" y2="208.5" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="440.7" y1="209.3" x2="456.7" y2="209.3" stroke="#0f766e" stroke-width="1.2"/>
