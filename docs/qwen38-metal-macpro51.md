@@ -161,6 +161,12 @@ clear the obvious suspects:
 - every `STRATA_METAL_MOE_GU` tile, `STRATA_METAL_CTAB=0` and `STRATA_METAL_F16=1` give the same degenerate answer;
 - swapping in Q2_0's **PLE shard** (the same n-gram table bytes) changes nothing, so the table read is not it.
 
+A second pack shares the fault: **UD-Q2_0** (downloaded later) decodes at 0.82 tok/s but returns the same
+`76 76 1544 7509 …`. Both packs' gate/up experts are `IQ2_XXS` (16) — the only type they share that no answering pack
+uses — while `expert_parity` passes on each pack's real layer-0 experts at every GU tile tried (32,1,4 / 32,2,4 /
+32,4,4 / 16,1,4 / 8,1,4). The harness now fails such a run instead of reporting its rate: a pack whose greedy output
+differs from the reference answer is not a slower quantisation.
+
 A second tap (`STRATA_WIN_MIDDUMP`) placed the break more precisely: the residual after layer 1's **attention** is
 0.1734 — normal, Q2_0 0.1735 and UD-Q4 0.1702 — and it is 15.14 after layer 1's **expert dispatch** (UD-Q4 0.348).
 The PLE block's own outputs (`keyn`, `qn`, `gated`, `normW`) match the healthy packs to three significant digits, so
