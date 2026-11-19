@@ -20,6 +20,24 @@ mixes) converging on the same wrong logits means the fault is **shared by the v3
 once it fires — which is why the answer is the same `76 76 1544 7509 …` for all of them.  A weight- or
 offset-specific mistake in one pack could not do that.
 
+## The Q6_K head is not the cause (measured)
+
+The refused sets' output head is a Q6_K tensor, the only one no answering pack uses — so it was tested directly:
+`XA_` (the final normed row the head reads) and the logits were dumped from a UD-Q2_0 run, and the head's rows were
+decoded in Python from the pack's own GGUF and dotted with that row:
+
+| id | engine logit | Python Q6_K dot | difference |
+| ---: | ---: | ---: | ---: |
+| 76 | 13.2727 | 13.2727 | 0.0000 |
+| 271 | 0.4965 | 0.4965 | 0.0000 |
+| 1506 | 10.8821 | 10.8821 | 0.0000 |
+| 1692 | 10.4968 | 10.4968 | 0.0000 |
+| 1605 | 10.3406 | 10.3406 | 0.0000 |
+
+The head decodes and multiplies correctly, so the wrong logits come from a wrong `XA_` — the forward — and not from
+this tensor.  (The engine prints "experimental native Q5_K head" for it; the byte count it reports, 521,472,000, is
+248,320 rows of 2,100 bytes, which is Q6_K's row size, so the label is stale, not the arithmetic.)
+
 ## The one path only these packs use: a Q6_K output head
 
 Every pack that answers has a **Q5_K** (ISTA Q2_0) or **Q8_0** (UD-Q4/Q5/Q6) `output.weight`; every v3.1 set has a
