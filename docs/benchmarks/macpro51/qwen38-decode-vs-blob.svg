@@ -40,6 +40,9 @@
 <text x="507.1" y="204.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
 <circle cx="498.1" cy="235.0" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="507.1" y="228.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-IQ3_XXS</text>
+<line x1="530.2" y1="243.6" x2="530.2" y2="243.8" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="522.2" y1="243.6" x2="538.2" y2="243.6" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="522.2" y1="243.8" x2="538.2" y2="243.8" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="530.2" cy="243.7" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="539.2" y="236.7" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q3_K_XL</text>
 <circle cx="530.2" cy="244.1" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
