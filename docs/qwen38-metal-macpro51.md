@@ -176,7 +176,13 @@ A second tap (`STRATA_WIN_MIDDUMP`) placed the break more precisely: the residua
 The PLE block's own outputs (`keyn`, `qn`, `gated`, `normW`) match the healthy packs to three significant digits, so
 the PLE block is innocent too, and layer 1's expert types are the same 16/42 as layer 0's. The fault is inside
 **layer 1's routed/shared expert path** — the plan, the gu/SwiGLU, the down or the combine — even though the kernels
-pass parity on this pack's real data. The matrix records the pack as refused rather than as a slow number.
+pass parity on this pack's real data. A third tap (`STRATA_WIN_EXPDUMP`, at layer 1's cut) shows the routed and shared expert outputs themselves are
+comparable between a refused pack and a working one — `h` rms 0.089 vs 0.084, `ye` 0.0041 vs 0.0037, `gsh` 0.26 vs
+0.37, `ush` 0.26 vs 0.28, `ysh` 0.089 vs 0.088 — while the **shared-expert gate scalar** differs by 14× (`sg` rms
+0.128 for UD-Q2_0 against 1.77 for Q2_0).  So the expert arithmetic is not what differs; the *state entering* the
+shared expert does, which is why a magnitude-only tap could not separate layer 1's attention from its experts.  The
+next probe must compare the residual **vector** at layer 0's and layer 1's cuts (cosine, not max|.|); the matrix
+records the pack as refused rather than as a slow number.
 
 Gyro is one file with the n-gram table inside (no repack), and its trellis experts are covered in the window after
 all: `moe.metal` instantiates `GU_SET(T_TQK6)`, `GU_SET(T_TQ2T)`, `DN_SET(T_TQK7)` and `DN_SET(T_TQ2T)`, with their
