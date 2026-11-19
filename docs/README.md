@@ -28,6 +28,7 @@ Use the guide for your GPU and operating system. Model and feature support can d
 | Apple Silicon | [Mac / Metal](MAC.md) |
 | Intel Mac, experimental (Qwen3.6 and DeepSeek, every installed pack) | [macpro51 pack matrix](macpro51-quant-benchmarks.md) |
 | Intel Mac, Qwen3.8-Flash-Next on Metal (measured: 1.06 tok/s decode) | [Qwen3.8 on macpro51](qwen38-metal-macpro51.md) |
+| The Unsloth v3.1 packs' wrong forward on macpro51, localised to layer 1 | [v3.1 refusal](qwen38-metal-v3.1-refusal.md) |
 | More than one GPU | [Multiple GPUs](MULTI_GPU.md) |
 | Two cards: one reads the prompt, one makes the answer (opt-in) | [Split serving](SPLIT_SERVE.md) |
 | Older GPUs | [Experimental hardware](OLDER_GPUS.md) |

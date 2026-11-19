@@ -150,7 +150,8 @@ Measured in the six-pack mixed sweep: UD-Q4_K_XL **0.62 tok/s decode, 1.91 tok/s
 reads more bytes).  **All five prepared packs continue with the same eight tokens as Q2_0**
 (`271 248068 198 760 1156 6587 264 61446`): on this prompt the quantisation changes the speed, not the answer.
 
-**One Unsloth pack does not answer**, and it is localised. `UD-IQ1_M` runs at 0.79 tok/s but returns
+**The Unsloth v3.1 packs do not answer**, and the defect is written up on its own page:
+[v3.1 refusal](qwen38-metal-v3.1-refusal.md) has the layer, the exonerations and the two taps that remain. `UD-IQ1_M` runs at 0.79 tok/s but returns
 `76 76 1544 7509 4654 76 88 76` where every other pack returns the same eight tokens; its first-token logits are at
 **cosine 0.163** to Q2_0's. `STRATA_WIN_LAYERCHECK` places the divergence in **layer 1**: the residual is 0.1767
 after layer 0 (Q2_0: 0.1809) and **22.20** after layer 1 (Q2_0: 0.3931), then stays near 22. Three separate checks
