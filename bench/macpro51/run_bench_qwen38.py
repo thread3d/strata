@@ -633,6 +633,10 @@ def render_doc(agg, records, meta):
     L.append(f"- **Mixed order.** Each round contains every downloaded pack once, in a fresh shuffled order (seed in the run's `meta.json`). No pack is always first or last, so thermal drift, page-cache state and SSD behaviour are spread across the matrix.")
     L.append(f"- **Error bars.** Mean ± 1 sample standard deviation over the steady-state runs (rounds 2+); round 1 is each pack's first pass and is priced separately. Individual runs are the dots on the charts.")
     L.append(f"- **Streaming.** `STRATA_METAL_STREAM=1` is set for every run: the pack cannot be resident in 8 GB of VRAM, and forcing the streamed path keeps every pack on the same code path.")
+    L.append(f"- **The answer gate.** Every pack that works continues the prompt with the same first tokens "
+             f"(`{' '.join(str(t) for t in EXPECT)}`). A run whose greedy output starts elsewhere is not a slower "
+             f"quantisation, it is a pack that is not answering: it is excluded from the tables and marked in the "
+             f"log, because a rate for a wrong forward is worse than no rate.")
     L.append("")
     L.append("## Decode throughput")
     L.append("")
@@ -728,6 +732,24 @@ def render_doc(agg, records, meta):
             L.append(f"| {n} | {r.get('round', 0)+1} | `{r['label']}` | {fmt(r.get('prefill_s', 0))} | {fmt(r['decode_s'])} | {fmt(rate(r, 'decode'))} | {note} |")
         else:
             L.append(f"| {n} | {r.get('round', 0)+1} | `{r.get('label','?')}` | — | — | — | failed: {r.get('error', 'unknown')} |")
+    L.append("")
+    L.append("## Reproduce")
+    L.append("")
+    L.append("```sh")
+    L.append("# the whole matrix (this is what wrote the page): 5 shuffled rounds, one commit per run")
+    L.append("python3 bench/macpro51/run_bench_qwen38.py --rounds 5 --seed 20261118")
+    L.append("")
+    L.append("# one pack, one run, the way the harness calls the engine")
+    L.append("STRATA_METAL_STREAM=1 ./build-bench/strata --pack ~/models/qwen38/Q2_0/pack \\")
+    L.append("    --native ~/models/qwen38/Q2_0/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00001-of-00002.gguf \\")
+    L.append("    --ple-gguf ~/models/qwen38/Q2_0/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00002-of-00002.gguf \\")
+    L.append("    --tokens " + ",".join(str(i) for i in IDS[:PREFILL]) + " \\")
+    L.append(f"    --max-new {DECODE} --max-context 512 --spec 1 --suffix-draft 0 --lookup-max-t 0 --prefill {PREFILL}")
+    L.append("```")
+    L.append("")
+    L.append("A multi-shard pack (the Unsloth sets) is joined first by `metal/tools/metal_repack.py` and packed with "
+             "`tools/iq_pack.py --compat-bf16`; `bench/macpro51/prep_unsloth.sh <PACK>` does both and a smoke run. "
+             "The repacked file is passed as `--native` **and** `--native-dense-gguf`.")
     L.append("")
     L.append("## Limits recorded here")
     L.append("")
