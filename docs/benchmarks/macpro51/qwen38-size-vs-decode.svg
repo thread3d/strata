@@ -77,9 +77,9 @@
 <line x1="805.6" y1="299.4" x2="821.6" y2="299.4" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="813.6" cy="299.3" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="822.6" y="292.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q6_K_XL</text>
-<line x1="894.9" y1="299.2" x2="894.9" y2="299.2" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="894.9" y1="299.1" x2="894.9" y2="299.2" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="886.9" y1="299.1" x2="902.9" y2="299.1" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="886.9" y1="299.2" x2="902.9" y2="299.2" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="886.9" y1="299.2" x2="902.9" y2="299.2" stroke="#0f766e" stroke-width="1.2"/>
-<circle cx="894.9" cy="299.2" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="903.9" y="292.2" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q8_0</text>
+<circle cx="894.9" cy="299.1" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="903.9" y="292.1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q8_0</text>
 </svg>
