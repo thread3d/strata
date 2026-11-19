@@ -20,6 +20,18 @@ mixes) converging on the same wrong logits means the fault is **shared by the v3
 once it fires — which is why the answer is the same `76 76 1544 7509 …` for all of them.  A weight- or
 offset-specific mistake in one pack could not do that.
 
+## The one path only these packs use: a Q6_K output head
+
+Every pack that answers has a **Q5_K** (ISTA Q2_0) or **Q8_0** (UD-Q4/Q5/Q6) `output.weight`; every v3.1 set has a
+**Q6_K** head.  That is the only tensor type the refused packs share and no answering pack exercises, and it fits the
+logit evidence above: four Q6_K quantisations of the same head, decoded by the same (possibly wrong) code, give four
+*similar* garbage logit vectors (0.96–0.98 with each other) that are unrelated to the correct logits (0.16–0.31).
+A weight- or offset-specific mistake in one pack cannot do that; a wrong decode of one format can.
+
+Two caveats keep this a hypothesis rather than a conclusion: `gemv_parity --one Q6_K 2560 512` did not finish in the
+time allowed here (a separate thing to look at), and the residual-vector tap described below still shows layer 1
+diverging — if the head is the whole story, that tap is measuring an artefact of its own cut placement.
+
 ## Where it breaks: layer 1, and only layer 1
 
 Same prompt, same window, greedy, `STRATA_WIN_RDUMP` on the residual rows:
