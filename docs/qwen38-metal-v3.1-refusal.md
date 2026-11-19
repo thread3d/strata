@@ -11,6 +11,15 @@ in the forward — either refuse to start or answer `76 76 1544 7509 …` where 
 `271 248068 198 760 1156 6587 264 61446`. The harness's answer gate excludes them from the matrix; this page is
 about the three that run.
 
+## It is systematic to the revision, not to a pack
+
+The first-token logits of the four v3.1 sets agree **with each other** at cosine 0.96–0.98 (UD-Q2_0/UD-Q2_K_XL
+0.975, UD-Q2_0/UD-IQ2_XS 0.984, UD-Q2_0/UD-IQ1_M 0.982, UD-Q2_K_XL/UD-IQ2_XS 0.983), and none of them agrees with the
+working Q2_0 (0.16–0.31).  Four packs with different expert encodings (IQ2_XXS, IQ2_S, IQ3_XXS, IQ2_XS, Q2_0, Q8_0
+mixes) converging on the same wrong logits means the fault is **shared by the v3.1 revision** and pack-independent
+once it fires — which is why the answer is the same `76 76 1544 7509 …` for all of them.  A weight- or
+offset-specific mistake in one pack could not do that.
+
 ## Where it breaks: layer 1, and only layer 1
 
 Same prompt, same window, greedy, `STRATA_WIN_RDUMP` on the residual rows:
