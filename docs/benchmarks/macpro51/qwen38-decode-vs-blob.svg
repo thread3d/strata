@@ -47,8 +47,8 @@
 <line x1="490.1" y1="210.2" x2="506.1" y2="210.2" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="498.1" cy="210.0" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="507.1" y="203.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
-<line x1="701.1" y1="271.5" x2="701.1" y2="271.8" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="693.1" y1="271.5" x2="709.1" y2="271.5" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="701.1" y1="271.6" x2="701.1" y2="271.8" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="693.1" y1="271.6" x2="709.1" y2="271.6" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="693.1" y1="271.8" x2="709.1" y2="271.8" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="701.1" cy="271.7" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="710.1" y="264.7" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
