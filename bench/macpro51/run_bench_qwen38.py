@@ -55,6 +55,9 @@ REFUSED = [
     ("UD-IQ2_XS", "its greedy answer is `4960 4654 1544 159578 ...`, not the reference tokens; a v3.1 set like "
                   "UD-Q2_0 and UD-IQ1_M, whose expert formats are all used by the answering IQ3_XXS and IQ3_S "
                   "packs"),
+    # UD-Q2_K_XL (Unsloth v3.1, 2-bit K-quant dynamic) joins the v3.1 refusals.
+    ("UD-Q2_K_XL", "its greedy answer is `76 76 1544 7509 76 76 7509 88`, the v3.1 signature, where every working "
+                   "pack gives the reference tokens; its expert formats are all in the answering packs' set"),
     # UD-IQ1_M runs but does not answer: the same prompt gives 76 76 1544 7509 ... where every pack that uses
     # Q2_0 / IQ3_XXS / IQ3_S / Q4_K-Q6_K experts gives 271 248068 198 760 1156 6587 264 61446, at every GU tile
     # (32,1,4 / 32,2,4 / 16,2,4 / 8,1,4).  Its gate/up type is T_IQ2_XXS (16), which no other measured pack uses.
