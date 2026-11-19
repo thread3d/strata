@@ -43,6 +43,12 @@ PY = "python3"
 # Packs the Metal kernels of this branch cannot run, with the engine's own message (recorded, never timed).
 REFUSED = [
     ("IQ2_XS", "the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4`"),
+    # UD-IQ1_M runs but does not answer: the same prompt gives 76 76 1544 7509 ... where every pack that uses
+    # Q2_0 / IQ3_XXS / IQ3_S / Q4_K-Q6_K experts gives 271 248068 198 760 1156 6587 264 61446, at every GU tile
+    # (32,1,4 / 32,2,4 / 16,2,4 / 8,1,4).  Its gate/up type is T_IQ2_XXS (16), which no other measured pack uses.
+    ("UD-IQ1_M", "runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`) where every other pack "
+                 "answers identically; its gate/up type, T_IQ2_XXS (16), is the suspect and no other pack here "
+                 "exercises it"),
 ]
 
 PREFILL, DECODE = 32, 32

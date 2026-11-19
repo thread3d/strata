@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 00:57 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 01:27 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -23,12 +23,12 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 5 runs, 1.05 tok/s decode (steady state) |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 5 runs, 0.90 tok/s decode (steady state) |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 5 runs, 0.82 tok/s decode (steady state) |
-| `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 63.3 GiB | queued |
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 5.7 GiB | queued |
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 5 runs, 0.62 tok/s decode (steady state) |
 | `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 5 runs, 0.57 tok/s decode (steady state) |
 | `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 5 runs, 0.54 tok/s decode (steady state) |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
+| `UD-IQ1_M` | refused on this branch | — | 63.3 GiB | runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`) where every other pack answers identically; its gate/up type, T_IQ2_XXS (16), is the suspect and no other pack here exercises it |
 
 Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-Q2_K_XL`, `UD-IQ3_XXS`, `UD-Q3_K_XL`, `UD-IQ4_XS`, `Q8_0`, `Gyro-S`, `Gyro-M`.
 

@@ -150,6 +150,11 @@ Measured in the six-pack mixed sweep: UD-Q4_K_XL **0.62 tok/s decode, 1.91 tok/s
 reads more bytes).  **All five prepared packs continue with the same eight tokens as Q2_0**
 (`271 248068 198 760 1156 6587 264 61446`): on this prompt the quantisation changes the speed, not the answer.
 
+**One Unsloth pack does not answer:** `UD-IQ1_M` (its gate/up experts are type `IQ2_XXS`, 16) runs at 0.79 tok/s but
+returns `76 76 1544 7509 4654 76 88 76` where every pack that uses `Q2_0`, `IQ3_XXS`, `IQ3_S` or the `Q4_K`–`Q6_K`
+families returns the same eight tokens — at every `STRATA_METAL_MOE_GU` tile tried. No other pack here exercises
+`IQ2_XXS`, so its decode is the suspect; the matrix records it as refused rather than a slow number.
+
 Gyro is one file with the n-gram table inside (no repack), and its trellis experts are covered in the window after
 all: `moe.metal` instantiates `GU_SET(T_TQK6)`, `GU_SET(T_TQ2T)`, `DN_SET(T_TQK7)` and `DN_SET(T_TQ2T)`, with their
 `fmt`/`load_tab` in `quant.metal`.  It is untested here only because the pack has not landed yet.
