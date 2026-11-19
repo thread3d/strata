@@ -59,6 +59,9 @@
 <line x1="880.9" y1="299.4" x2="896.9" y2="299.4" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="888.9" cy="299.3" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="897.9" y="292.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q6_K_XL</text>
+<line x1="888.9" y1="299.2" x2="888.9" y2="299.2" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="880.9" y1="299.2" x2="896.9" y2="299.2" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="880.9" y1="299.2" x2="896.9" y2="299.2" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="888.9" cy="299.2" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="897.9" y="292.2" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q8_0</text>
 </svg>
