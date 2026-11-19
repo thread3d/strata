@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 10:52 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 10:53 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -22,7 +22,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | --- | --- | --- | ---: | --- |
 | `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | queued |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | queued |
-| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | queued |
+| `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 1 run, 0.81 tok/s decode (steady state) |
 | `UD-IQ3_XXS` | UD-IQ3_XXS (Unsloth v3.1) | unsloth | 77.9 GiB | queued |
 | `UD-Q3_K_XL` | UD-Q3_K_XL (Unsloth v3.1) | unsloth | 83.3 GiB | queued |
 | `UD-IQ4_XS` | UD-IQ4_XS (Unsloth v3.1) | unsloth | 87.2 GiB | queued |
@@ -53,6 +53,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
+| `IQ3_S` | 1 | 0.814 ± 0.00 | 0.814 | 0.814 – 0.814 | 2.32 ± 0.00 |
 | `UD-Q6_K_XL` | 1 | 0.528 ± 0.00 | 0.528 | 0.528 – 0.528 | 1.35 ± 0.00 |
 
 ## Prompt (prefill) throughput
@@ -73,6 +74,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 
 | Pack | Largest expert blob | Decode, steady |
 | --- | ---: | ---: |
+| `IQ3_S` | 2.66 MB | 0.814 ± 0.00 tok/s |
 | `UD-Q6_K_XL` | 5.22 MB | 0.528 ± 0.00 tok/s |
 
 Every token pulls its ten routed experts per layer from the SSD, so the blob one expert costs is the number a token actually pays for; the pack file is mostly experts a token never asks for.  Two packs whose blobs are the same size land at nearly the same rate, which is why the Unsloth 4.5-bit set is slower than the 2-bit one even though their files differ by less than 2x.
@@ -82,6 +84,7 @@ Every token pulls its ten routed experts per layer from the SSD, so the blob one
 
 | Pack | Gate/up / down experts (layers) | Largest blob | Decode, steady |
 | --- | --- | ---: | ---: |
+| `IQ3_S` | IQ2_S / IQ4_NL (15), IQ3_XXS / IQ4_NL (14), IQ3_S / IQ4_NL (9), IQ2_S / Q2_0 (5), IQ3_XXS / Q2_0 (3), IQ3_S / Q2_0 (1), IQ4_XS / IQ4_NL (1) | 2.66 MB | 0.814 tok/s |
 | `UD-Q6_K_XL` | Q6_K / Q8_0 (47), Q8_0 / Q8_0 (1) | 5.22 MB | 0.528 tok/s |
 
 The formats are the packs' own metadata (`native_experts.txt`), and they are what the blob column is made of: the ISTA sets spend the same 2–3 bits on every expert of every layer, while the Unsloth UD sets mix formats layer by layer to keep the important ones wider.
@@ -89,7 +92,8 @@ The formats are the packs' own metadata (`native_experts.txt`), and they are wha
 
 ## What the numbers say
 
-_Not enough completed packs yet; this section fills in as the rounds finish._
+- **Fastest decode:** `IQ3_S` at 0.81 tok/s; **slowest:** `UD-Q6_K_XL` at 0.53 tok/s (1.54× between them).
+- **Fastest prompt read:** `IQ3_S` at 2.32 tok/s; slowest `UD-Q6_K_XL` at 1.35 tok/s.
 
 ## Run order (mixing)
 
@@ -102,6 +106,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | # | Round | Pack | Prefill s | Decode s | Decode tok/s | Note |
 | ---: | ---: | --- | ---: | ---: | ---: | --- |
 | 1 | 1 | `UD-Q6_K_XL` | 22.97 | 60.62 | 0.528 | first round (cold) |
+| 2 | 1 | `IQ3_S` | 13.37 | 39.31 | 0.814 | first round (cold) |
 
 ## Reproduce
 
