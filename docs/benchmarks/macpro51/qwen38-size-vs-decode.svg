@@ -43,8 +43,11 @@
 <text x="457.7" y="204.0" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">IQ3_S</text>
 <circle cx="566.9" cy="272.8" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="575.9" y="265.8" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
-<circle cx="767.2" cy="285.9" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="776.2" y="278.9" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q5_K_XL</text>
+<line x1="767.2" y1="284.9" x2="767.2" y2="286.1" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="759.2" y1="284.9" x2="775.2" y2="284.9" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="759.2" y1="286.1" x2="775.2" y2="286.1" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="767.2" cy="285.5" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="776.2" y="278.5" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q5_K_XL</text>
 <line x1="813.6" y1="295.5" x2="813.6" y2="295.6" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="805.6" y1="295.5" x2="821.6" y2="295.5" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="805.6" y1="295.6" x2="821.6" y2="295.6" stroke="#0f766e" stroke-width="1.2"/>
