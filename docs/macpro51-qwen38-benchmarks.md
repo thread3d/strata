@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 00:46 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 00:48 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -26,7 +26,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 63.3 GiB | queued |
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 5.7 GiB | queued |
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 4 runs, 0.62 tok/s decode (steady state) |
-| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 3 runs, 0.57 tok/s decode (steady state) |
+| `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 4 runs, 0.57 tok/s decode (steady state) |
 | `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 4 runs, 0.54 tok/s decode (steady state) |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
 
@@ -50,7 +50,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-
 | `IQ3_XXS` | 2 | 0.902 ± 0.001 | 0.899 | 0.901 – 0.903 | 2.66 ± 0.013 |
 | `IQ3_S` | 3 | 0.817 ± 0.001 | 0.816 | 0.817 – 0.818 | 2.41 ± 0.011 |
 | `UD-Q4_K_XL` | 3 | 0.617 ± 0.000 | 0.616 | 0.617 – 0.618 | 1.91 ± 0.008 |
-| `UD-Q5_K_XL` | 2 | 0.574 ± 0.000 | 0.573 | 0.574 – 0.574 | 1.81 ± 0.004 |
+| `UD-Q5_K_XL` | 3 | 0.574 ± 0.000 | 0.573 | 0.574 – 0.574 | 1.81 ± 0.003 |
 | `UD-Q6_K_XL` | 3 | 0.539 ± 0.001 | 0.539 | 0.537 – 0.540 | 1.43 ± 0.029 |
 
 ## Prompt (prefill) throughput
@@ -130,6 +130,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 20 | 4 | `UD-Q4_K_XL` | 16.29 | 51.83 | 0.617 | later round |
 | 21 | 4 | `UD-Q6_K_XL` | 21.53 | 59.58 | 0.537 | later round |
 | 22 | 4 | `Q2_0` | 9.38 | 30.47 | 1.05 | later round |
+| 23 | 4 | `UD-Q5_K_XL` | 17.13 | 55.77 | 0.574 | later round |
 
 ## Limits recorded here
 
