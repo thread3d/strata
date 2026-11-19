@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 03:57 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 03:58 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -81,6 +81,20 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 | `UD-Q6_K_XL` | 5.22 MB | 0.532 ± 0.002 tok/s |
 
 Every token pulls its ten routed experts per layer from the SSD, so the blob one expert costs is the number a token actually pays for; the pack file is mostly experts a token never asks for.  Two packs whose blobs are the same size land at nearly the same rate, which is why the Unsloth 4.5-bit set is slower than the 2-bit one even though their files differ by less than 2x.
+
+
+## What the packs are made of
+
+| Pack | Gate/up / down experts (layers) | Largest blob | Decode, steady |
+| --- | --- | ---: | ---: |
+| `Q2_0` | Q2_0 / Q2_0 (48) | 1.38 MB | 1.06 tok/s |
+| `IQ3_XXS` | IQ2_XXS / Q2_0 (8), IQ3_S / Q2_0 (7), IQ2_XS / Q2_0 (6), IQ2_S / Q2_0 (6), IQ3_S / IQ4_NL (6), IQ2_XS / IQ4_NL (4), IQ2_S / IQ4_NL (4), IQ3_XXS / IQ4_NL (3), IQ3_XXS / Q2_0 (3), IQ2_XXS / IQ4_NL (1) | 2.33 MB | 0.907 tok/s |
+| `IQ3_S` | IQ2_S / IQ4_NL (15), IQ3_XXS / IQ4_NL (14), IQ3_S / IQ4_NL (9), IQ2_S / Q2_0 (5), IQ3_XXS / Q2_0 (3), IQ3_S / Q2_0 (1), IQ4_XS / IQ4_NL (1) | 2.66 MB | 0.821 tok/s |
+| `UD-Q4_K_XL` | Q4_K / Q5_1 (43), Q4_K / Q8_0 (4), Q5_K / Q8_0 (1) | 3.99 MB | 0.619 tok/s |
+| `UD-Q5_K_XL` | Q5_K / Q8_0 (47), Q6_K / Q8_0 (1) | 4.43 MB | 0.577 tok/s |
+| `UD-Q6_K_XL` | Q6_K / Q8_0 (47), Q8_0 / Q8_0 (1) | 5.22 MB | 0.532 tok/s |
+
+The formats are the packs' own metadata (`native_experts.txt`), and they are what the blob column is made of: the ISTA sets spend the same 2–3 bits on every expert of every layer, while the Unsloth UD sets mix formats layer by layer to keep the important ones wider.
 
 
 ## What the numbers say

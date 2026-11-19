@@ -183,6 +183,41 @@ def pack_size(label: str) -> int:
     return sum(p.stat().st_size for p in d.glob("*.gguf") if not p.name.endswith("-metal.gguf"))
 
 
+QTYPE = {2: "Q4_0", 3: "Q4_1", 6: "Q5_0", 7: "Q5_1", 8: "Q8_0", 11: "Q3_K", 12: "Q4_K", 13: "Q5_K", 14: "Q6_K",
+         16: "IQ2_XXS", 17: "IQ2_XS", 18: "IQ3_XXS", 19: "IQ1_S", 20: "IQ4_NL", 21: "IQ3_S", 22: "IQ2_S",
+         23: "IQ4_XS", 29: "IQ1_M", 42: "Q2_0", 144: "TQ2_T", 145: "TQK6", 146: "TQK7"}
+
+
+def pack_types(label):
+    """The pack's routed-expert formats, as counts of layers: [(gate/up, down, layers), ...].
+
+    Read from native_experts.txt (the pack metadata), so it describes the download, not a run."""
+    f = pack_dir(label) / "pack" / "native_experts.txt"
+    if not f.is_file():
+        return []
+    seen = {}
+    try:
+        with open(f) as fh:
+            for line in fh:
+                if not line or line[0] in "#\n":
+                    continue
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                key = (int(parts[1]), int(parts[2]))
+                seen[key] = seen.get(key, 0) + 1
+    except (OSError, ValueError):
+        return []
+    return [(QTYPE.get(g, str(g)), QTYPE.get(d, str(d)), n) for (g, d), n in sorted(seen.items(), key=lambda kv: -kv[1])]
+
+
+def types_text(label):
+    tt = pack_types(label)
+    if not tt:
+        return "—"
+    return ", ".join(f"{g} / {d} ({n})" for g, d, n in tt)
+
+
 def blob_mb(label):
     """The largest expert blob (MB) of a prepared pack: the maximum blob_bytes over its native_experts.txt.
 
@@ -680,6 +715,24 @@ def render_doc(agg, records, meta):
                  "number a token actually pays for; the pack file is mostly experts a token never asks for.  Two packs "
                  "whose blobs are the same size land at nearly the same rate, which is why the Unsloth 4.5-bit set is "
                  "slower than the 2-bit one even though their files differ by less than 2x.")
+        L.append("")
+    L.append("")
+    trows = [(c[1], types_text(c[1])) for c in CONFIGS if agg.get(c[1]) and agg[c[1]]["n_decode"]]
+    trows = [x for x in trows if x[1] != "—"]
+    if trows:
+        L.append("## What the packs are made of")
+        L.append("")
+        L.append("| Pack | Gate/up / down experts (layers) | Largest blob | Decode, steady |")
+        L.append("| --- | --- | ---: | ---: |")
+        for label, txt in trows:
+            b = blob_mb(label)
+            a = agg[label]
+            L.append("| `%s` | %s | %s MB | %s tok/s |" % (label, txt, ("%.2f" % b) if b else "—",
+                                                            fmt(mean(a["decode"]))))
+        L.append("")
+        L.append("The formats are the packs' own metadata (`native_experts.txt`), and they are what the blob column "
+                 "is made of: the ISTA sets spend the same 2–3 bits on every expert of every layer, while the Unsloth "
+                 "UD sets mix formats layer by layer to keep the important ones wider.")
         L.append("")
     L.append("")
     L.append("## What the numbers say")
