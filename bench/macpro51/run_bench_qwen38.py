@@ -47,8 +47,9 @@ REFUSED = [
     # Q2_0 / IQ3_XXS / IQ3_S / Q4_K-Q6_K experts gives 271 248068 198 760 1156 6587 264 61446, at every GU tile
     # (32,1,4 / 32,2,4 / 16,2,4 / 8,1,4).  Its gate/up type is T_IQ2_XXS (16), which no other measured pack uses.
     ("UD-IQ1_M", "runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`) where every other pack "
-                 "answers identically; its gate/up type, T_IQ2_XXS (16), is the suspect and no other pack here "
-                 "exercises it"),
+                 "answers identically; its IQ2_XXS expert kernel passes `expert_parity` on the pack's real layer-0 "
+                 "experts (rel L2 1.3e-7), so the quant decode is not the cause - the divergence is elsewhere in "
+                 "the engine's path for this pack"),
 ]
 
 PREFILL, DECODE = 32, 32
