@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 00:49 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 00:51 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -27,7 +27,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-Q2_0` | UD-Q2_0 (Unsloth v3.1) | unsloth | 5.7 GiB | queued |
 | `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 4 runs, 0.62 tok/s decode (steady state) |
 | `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 4 runs, 0.57 tok/s decode (steady state) |
-| `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 4 runs, 0.54 tok/s decode (steady state) |
+| `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 5 runs, 0.54 tok/s decode (steady state) |
 | `IQ2_XS` | refused on this branch | — | 63.4 GiB | the window has no kernel for its IQ1_M gate/up experts: `mtl: no function moe_gu_29_32_1_4` |
 
 Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-Q2_K_XL`, `UD-IQ3_XXS`, `UD-Q3_K_XL`, `UD-IQ4_XS`, `Q8_0`, `Gyro-S`, `Gyro-M`.
@@ -51,7 +51,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-
 | `IQ3_S` | 3 | 0.817 ± 0.001 | 0.816 | 0.817 – 0.818 | 2.41 ± 0.011 |
 | `UD-Q4_K_XL` | 3 | 0.617 ± 0.000 | 0.616 | 0.617 – 0.618 | 1.91 ± 0.008 |
 | `UD-Q5_K_XL` | 3 | 0.574 ± 0.000 | 0.573 | 0.574 – 0.574 | 1.81 ± 0.003 |
-| `UD-Q6_K_XL` | 3 | 0.539 ± 0.001 | 0.539 | 0.537 – 0.540 | 1.43 ± 0.029 |
+| `UD-Q6_K_XL` | 4 | 0.539 ± 0.002 | 0.539 | 0.537 – 0.541 | 1.43 ± 0.025 |
 
 ## Prompt (prefill) throughput
 
@@ -76,7 +76,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 | `IQ3_S` | 2.66 MB | 0.817 ± 0.001 tok/s |
 | `UD-Q4_K_XL` | 3.99 MB | 0.617 ± 0.000 tok/s |
 | `UD-Q5_K_XL` | 4.43 MB | 0.574 ± 0.000 tok/s |
-| `UD-Q6_K_XL` | 5.22 MB | 0.539 ± 0.001 tok/s |
+| `UD-Q6_K_XL` | 5.22 MB | 0.539 ± 0.002 tok/s |
 
 Every token pulls its ten routed experts per layer from the SSD, so the blob one expert costs is the number a token actually pays for; the pack file is mostly experts a token never asks for.  Two packs whose blobs are the same size land at nearly the same rate, which is why the Unsloth 4.5-bit set is slower than the 2-bit one even though their files differ by less than 2x.
 
@@ -96,7 +96,7 @@ The first round is the first pass over each pack (cold page cache, cold GPU cloc
 | `IQ3_S` | 0.81 | 0.82 | +0.9% |
 | `UD-Q4_K_XL` | 0.61 | 0.62 | +0.6% |
 | `UD-Q5_K_XL` | 0.57 | 0.57 | +0.5% |
-| `UD-Q6_K_XL` | 0.54 | 0.54 | -0.3% |
+| `UD-Q6_K_XL` | 0.54 | 0.54 | -0.2% |
 
 ## Run order (mixing)
 
@@ -132,6 +132,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 22 | 4 | `Q2_0` | 9.38 | 30.47 | 1.05 | later round |
 | 23 | 4 | `UD-Q5_K_XL` | 17.13 | 55.77 | 0.574 | later round |
 | 24 | 4 | `IQ3_XXS` | 11.56 | 35.54 | 0.900 | later round |
+| 25 | 5 | `UD-Q6_K_XL` | 21.48 | 59.20 | 0.541 | later round |
 
 ## Limits recorded here
 
