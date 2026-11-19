@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 11:39 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 11:41 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -26,7 +26,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-IQ3_XXS` | UD-IQ3_XXS (Unsloth v3.1) | unsloth | 77.9 GiB | 3 runs, 0.74 tok/s decode (steady state) |
 | `UD-Q3_K_XL` | UD-Q3_K_XL (Unsloth v3.1) | unsloth | 83.3 GiB | 4 runs, 0.71 tok/s decode (steady state) |
 | `UD-IQ4_XS` | UD-IQ4_XS (Unsloth v3.1) | unsloth | 87.2 GiB | 4 runs, 0.71 tok/s decode (steady state) |
-| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 3 runs, 0.62 tok/s decode (steady state) |
+| `UD-Q4_K_XL` | UD-Q4_K_XL (Unsloth) | unsloth | 103.7 GiB | 4 runs, 0.62 tok/s decode (steady state) |
 | `UD-Q5_K_XL` | UD-Q5_K_XL (Unsloth) | unsloth | 147.4 GiB | 4 runs, 0.57 tok/s decode (steady state) |
 | `UD-Q6_K_XL` | UD-Q6_K_XL (Unsloth) | unsloth | 157.5 GiB | 3 runs, 0.53 tok/s decode (steady state) |
 | `Q8_0` | Q8_0 (Unsloth) | unsloth | 175.3 GiB | 3 runs, 0.53 tok/s decode (steady state) |
@@ -59,7 +59,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 | `UD-IQ3_XXS` | 2 | 0.738 ± 0.000 | 0.737 | 0.737 – 0.738 | 2.24 ± 0.023 |
 | `UD-Q3_K_XL` | 3 | 0.710 ± 0.002 | 0.709 | 0.708 – 0.711 | 1.98 ± 0.022 |
 | `UD-IQ4_XS` | 3 | 0.707 ± 0.002 | 0.707 | 0.706 – 0.710 | 1.97 ± 0.030 |
-| `UD-Q4_K_XL` | 2 | 0.618 ± 0.001 | 0.618 | 0.617 – 0.618 | 1.90 ± 0.009 |
+| `UD-Q4_K_XL` | 3 | 0.618 ± 0.001 | 0.618 | 0.617 – 0.619 | 1.90 ± 0.006 |
 | `UD-Q5_K_XL` | 3 | 0.574 ± 0.001 | 0.574 | 0.573 – 0.575 | 1.80 ± 0.017 |
 | `UD-Q6_K_XL` | 2 | 0.529 ± 0.003 | 0.529 | 0.527 – 0.531 | 1.38 ± 0.016 |
 | `Q8_0` | 2 | 0.528 ± 0.000 | 0.528 | 0.528 – 0.528 | 1.52 ± 0.014 |
@@ -180,6 +180,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 33 | 4 | `UD-Q3_K_XL` | 15.53 | 45.13 | 0.709 | later round |
 | 34 | 4 | `Q2_0` | 9.38 | 30.43 | 1.05 | later round |
 | 35 | 4 | `UD-Q5_K_XL` | 17.15 | 55.79 | 0.574 | later round |
+| 36 | 4 | `UD-Q4_K_XL` | 16.30 | 51.73 | 0.619 | later round |
 
 ## Reproduce
 

@@ -69,13 +69,14 @@
 <circle cx="671.7" cy="247.6" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <text x="671.7" y="238.1" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.71</text>
 <text x="671.7" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 671.7 490.0)">UD-IQ4_XS</text>
-<rect x="746.5" y="275.5" width="61.1" height="194.5" fill="#0f766e" opacity="0.86"/>
-<line x1="777.1" y1="275.3" x2="777.1" y2="275.6" stroke="#1f2933" stroke-width="1.4"/>
-<line x1="766.1" y1="275.3" x2="788.1" y2="275.3" stroke="#1f2933" stroke-width="1.4"/>
+<rect x="746.5" y="275.3" width="61.1" height="194.7" fill="#0f766e" opacity="0.86"/>
+<line x1="777.1" y1="275.1" x2="777.1" y2="275.6" stroke="#1f2933" stroke-width="1.4"/>
+<line x1="766.1" y1="275.1" x2="788.1" y2="275.1" stroke="#1f2933" stroke-width="1.4"/>
 <line x1="766.1" y1="275.6" x2="788.1" y2="275.6" stroke="#1f2933" stroke-width="1.4"/>
 <circle cx="763.7" cy="275.3" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
 <circle cx="770.4" cy="275.6" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
-<text x="777.1" y="266.5" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.62</text>
+<circle cx="777.1" cy="275.1" r="2.6" fill="white" stroke="#0f766e" stroke-width="1.0" opacity="0.95"/>
+<text x="777.1" y="266.3" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="600">0.62</text>
 <text x="777.1" y="490.0" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#1f2933" font-weight="500" transform="rotate(-28.0 777.1 490.0)">UD-Q4_K_XL</text>
 <rect x="851.9" y="289.2" width="61.1" height="180.8" fill="#0f766e" opacity="0.86"/>
 <line x1="882.5" y1="288.9" x2="882.5" y2="289.5" stroke="#1f2933" stroke-width="1.4"/>
