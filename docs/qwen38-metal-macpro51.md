@@ -161,9 +161,12 @@ clear the obvious suspects:
 - every `STRATA_METAL_MOE_GU` tile, `STRATA_METAL_CTAB=0` and `STRATA_METAL_F16=1` give the same degenerate answer;
 - swapping in Q2_0's **PLE shard** (the same n-gram table bytes) changes nothing, so the table read is not it.
 
-Layer 1 is the one place the window runs the PLE block (key/value projections, the conv over the 9-row history,
-the residual add), and it is the only layer whose tensor list adds the `blk.1.ple_*` weights — so that block, not the
-experts, is where the next tap goes. The matrix records the pack as refused rather than as a slow number.
+A second tap (`STRATA_WIN_MIDDUMP`) placed the break more precisely: the residual after layer 1's **attention** is
+0.1734 — normal, Q2_0 0.1735 and UD-Q4 0.1702 — and it is 15.14 after layer 1's **expert dispatch** (UD-Q4 0.348).
+The PLE block's own outputs (`keyn`, `qn`, `gated`, `normW`) match the healthy packs to three significant digits, so
+the PLE block is innocent too, and layer 1's expert types are the same 16/42 as layer 0's. The fault is inside
+**layer 1's routed/shared expert path** — the plan, the gu/SwiGLU, the down or the combine — even though the kernels
+pass parity on this pack's real data. The matrix records the pack as refused rather than as a slow number.
 
 Gyro is one file with the n-gram table inside (no repack), and its trellis experts are covered in the window after
 all: `moe.metal` instantiates `GU_SET(T_TQK6)`, `GU_SET(T_TQ2T)`, `DN_SET(T_TQK7)` and `DN_SET(T_TQ2T)`, with their

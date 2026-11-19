@@ -47,11 +47,12 @@ REFUSED = [
     # Q2_0 / IQ3_XXS / IQ3_S / Q4_K-Q6_K experts gives 271 248068 198 760 1156 6587 264 61446, at every GU tile
     # (32,1,4 / 32,2,4 / 16,2,4 / 8,1,4).  Its gate/up type is T_IQ2_XXS (16), which no other measured pack uses.
     ("UD-IQ1_M", "runs, but its forward is degenerate (`76 76 1544 7509 4654 76 88 76`, first-token logits at "
-                 "cosine 0.16 to Q2_0's); the divergence is localised to layer 1: the residual is 0.177 after layer "
-                 "0 (Q2_0 0.181) and 22.2 after layer 1 (Q2_0 0.393), then stays there.  Its experts pass "
-                 "`expert_parity` on the pack's real layer-0 data (rel L2 1.3e-7) and swapping in Q2_0's PLE table "
-                 "changes nothing, so neither the quant decode nor the n-gram read is the cause - layer 1's PLE "
-                 "block is where to look"),
+                 "cosine 0.16 to Q2_0's); the residual is healthy after layer 0 (0.177; Q2_0 0.181), still healthy "
+                 "after layer 1's attention (0.173; Q2_0 0.174, UD-Q4 0.170), and 15.1 after layer 1's expert "
+                 "dispatch (UD-Q4 0.348), then stays there.  The PLE block's own outputs (keyn/qn/gated/normW) match "
+                 "the healthy packs to three digits, the experts pass `expert_parity` on this pack's real data (rel "
+                 "L2 1.3e-7), and layer 1 uses the same expert types as layer 0 - so the fault is inside layer 1's "
+                 "routed/shared expert path (plan, gu, swiglu, down, combine), not the quantisation"),
 ]
 
 PREFILL, DECODE = 32, 32
