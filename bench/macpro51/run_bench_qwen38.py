@@ -58,6 +58,11 @@ REFUSED = [
     # UD-Q2_K_XL (Unsloth v3.1, 2-bit K-quant dynamic) joins the v3.1 refusals.
     ("UD-Q2_K_XL", "its greedy answer is `76 76 1544 7509 76 76 7509 88`, the v3.1 signature, where every working "
                    "pack gives the reference tokens; its expert formats are all in the answering packs' set"),
+    # Gyro (agentionai, trellis experts) runs but does not answer either: the TQ path executes without a missing
+    # kernel, and its greedy output diverges (`198 18 18 ...` for Gyro-S's own smoke; the sweep runs are similar).
+    ("Gyro-S", "runs through the trellis expert path (no missing kernel) but its greedy answer does not match the "
+                "reference: `198 18 18 18 18 18 18 18` in its own smoke, and the sweep runs diverge as well"),
+    ("Gyro-M", "same: the TQ path runs and its greedy answer diverges from the reference"),
     # UD-IQ1_M runs but does not answer: the same prompt gives 76 76 1544 7509 ... where every pack that uses
     # Q2_0 / IQ3_XXS / IQ3_S / Q4_K-Q6_K experts gives 271 248068 198 760 1156 6587 264 61446, at every GU tile
     # (32,1,4 / 32,2,4 / 16,2,4 / 8,1,4).  Its gate/up type is T_IQ2_XXS (16), which no other measured pack uses.
@@ -346,8 +351,6 @@ def run_one(cfg, round_no, order):
     rec["decode_tokens"] = int(dm.group(1))
     rec["decode_s"] = float(dm.group(2)) / 1000.0
     rec["decode_ok"] = (not PREFILL_ONLY) and int(dm.group(1)) > 1
-    gen = rec.get("generated") or []
-    rec["answer_ok"] = gen[:len(EXPECT)] == EXPECT
     rec["decode_tok_s"] = int(dm.group(1)) / rec["decode_s"] if rec["decode_s"] > 0 else 0.0
     if pm:
         rec["prefill_tokens"] = int(pm.group(1))
@@ -356,6 +359,7 @@ def run_one(cfg, round_no, order):
     if om:
         toks = [int(x) for x in om.group(1).split() if re.fullmatch(r"-?\d+", x)]
         rec["generated"] = toks[:DECODE]
+        rec["answer_ok"] = rec["generated"][:len(EXPECT)] == EXPECT   # (after the tokens: an early field was always False)
     rec["elapsed_s"] = round(time.time() - t0, 2)
     return rec
 
@@ -393,10 +397,14 @@ def aggregate(records):
         by.setdefault(r["label"], []).append(r)
     agg = {}
     def answers(r):
-        """A run counts only if its greedy output is the reference answer (records before the check: computed)."""
-        if "answer_ok" in r:
-            return bool(r["answer_ok"])
-        return (r.get("generated") or [])[:len(EXPECT)] == EXPECT
+        """A run counts only if its greedy output is the reference answer.
+
+        The tokens are the evidence; a stored answer_ok is only a fallback, because an early build wrote it before the
+        tokens were parsed (always False, which silently emptied the matrix)."""
+        gen = r.get("generated") or []
+        if gen:
+            return gen[:len(EXPECT)] == EXPECT
+        return bool(r.get("answer_ok", False))
     for label, rs in by.items():
         ok = [r for r in rs if r.get("rc") == 0 and r.get("prefill_s") and answers(r)]
         dec = [r for r in ok if r.get("decode_ok")]
@@ -788,7 +796,8 @@ def render_doc(agg, records, meta):
     L.append("| ---: | ---: | --- | ---: | ---: | ---: | --- |")
     for n, r in enumerate(sorted(records, key=lambda r: r.get("order", 0)), start=1):
         if r.get("rc") == 0 and "decode_s" in r:
-            ok = r["answer_ok"] if "answer_ok" in r else (r.get("generated") or [])[:len(EXPECT)] == EXPECT
+            gen = r.get("generated") or []
+            ok = (gen[:len(EXPECT)] == EXPECT) if gen else bool(r.get("answer_ok", False))
             note = ("first round (cold)" if r.get("round", 0) == 0 else "later round") if ok else "answer diverges"
 
             L.append(f"| {n} | {r.get('round', 0)+1} | `{r['label']}` | {fmt(r.get('prefill_s', 0))} | {fmt(r['decode_s'])} | {fmt(rate(r, 'decode'))} | {note} |")

@@ -16,8 +16,9 @@ about the three that run.
 `UD-IQ3_XXS`, `UD-Q3_K_XL` and `UD-IQ4_XS` (also v3.1 sets, repacked the same way) pass the answer gate: UD-IQ3_XXS
 starts `271 248068 198 760 1156 6587 …` at 0.76 tok/s, and UD-Q3_K_XL and UD-IQ4_XS both reproduce the reference's
 full eight tokens (`271 248068 198 760 1156 6587 264 61446`) at 0.73 and 0.72 tok/s.  Three of the seven v3.1 sets
-measured answer, four do not.  (The `agentionai` Gyro-S pack, a different converter again, also answers with the
-same eight tokens at 0.72 tok/s.) So the v3.1 revision is not broken as a
+measured answer, four do not.  (The `agentionai` Gyro packs run their trellis expert path without a missing kernel, but their own greedy output
+diverges too — `198 18 18 18 18 18 18 18` in Gyro-S's smoke — so they are refused on the same answer gate; an
+earlier note in this page said otherwise, from reading UD-IQ4_XS's log line as Gyro-S's.) So the v3.1 revision is not broken as a
 whole. Their layer-1 experts are `IQ2_S / IQ4_NL` and `IQ3_XXS / Q5_0`, while the four that fail have `IQ2_XXS`
 gate/up at layer 1 — except that the answering ISTA `IQ3_XXS` also has `IQ2_XXS / Q2_0` at layer 1, so the type
 alone is not it either: it is **`IQ2_XXS` in a v3.1 pack** that fails, while `IQ2_XXS` in an ISTA pack answers. The
