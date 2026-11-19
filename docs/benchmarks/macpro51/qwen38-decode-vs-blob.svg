@@ -62,8 +62,11 @@
 <line x1="522.2" y1="244.1" x2="538.2" y2="244.1" stroke="#0f766e" stroke-width="1.2"/>
 <circle cx="530.2" cy="244.1" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="539.2" y="237.1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-IQ4_XS</text>
-<circle cx="701.1" cy="271.3" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="710.1" y="264.3" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
+<line x1="701.1" y1="271.3" x2="701.1" y2="271.5" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="693.1" y1="271.3" x2="709.1" y2="271.3" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="693.1" y1="271.5" x2="709.1" y2="271.5" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="701.1" cy="271.4" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="710.1" y="264.4" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
 <line x1="768.3" y1="285.2" x2="768.3" y2="285.3" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="760.3" y1="285.2" x2="776.3" y2="285.2" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="760.3" y1="285.3" x2="776.3" y2="285.3" stroke="#0f766e" stroke-width="1.2"/>
