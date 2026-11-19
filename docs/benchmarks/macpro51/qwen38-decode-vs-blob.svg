@@ -32,11 +32,11 @@
 <text x="1008.0" y="482.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#6b7280" font-weight="400">6</text>
 <text x="24.0" y="277.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600" transform="rotate(-90.0 24.0 277.0)">decode tokens/s</text>
 <text x="550.0" y="514.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600">largest expert blob (MB)</text>
-<line x1="302.7" y1="137.0" x2="302.7" y2="137.9" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="294.7" y1="137.0" x2="310.7" y2="137.0" stroke="#0f766e" stroke-width="1.2"/>
-<line x1="294.7" y1="137.9" x2="310.7" y2="137.9" stroke="#0f766e" stroke-width="1.2"/>
-<circle cx="302.7" cy="137.5" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
-<text x="311.7" y="130.5" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q2_0</text>
+<line x1="302.7" y1="136.2" x2="302.7" y2="138.0" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="294.7" y1="136.2" x2="310.7" y2="136.2" stroke="#0f766e" stroke-width="1.2"/>
+<line x1="294.7" y1="138.0" x2="310.7" y2="138.0" stroke="#0f766e" stroke-width="1.2"/>
+<circle cx="302.7" cy="137.1" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="311.7" y="130.1" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">Q2_0</text>
 <line x1="447.7" y1="183.0" x2="447.7" y2="183.9" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="439.7" y1="183.0" x2="455.7" y2="183.0" stroke="#0f766e" stroke-width="1.2"/>
 <line x1="439.7" y1="183.9" x2="455.7" y2="183.9" stroke="#0f766e" stroke-width="1.2"/>
