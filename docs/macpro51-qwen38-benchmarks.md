@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next quantisation benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 00:35 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 00:36 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 ## The machine
 
@@ -20,7 +20,7 @@ Qwen3.8-Flash-Next (`qwen4exp`) is the shape the engine compiles for: 48 trunk l
 
 | Pack | Quantisation | Source | On disk | Result |
 | --- | --- | --- | ---: | --- |
-| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 2 runs, 1.05 tok/s decode (steady state) |
+| `Q2_0` | Q2_0 (GSQ-RCO) | ISTA-DASLab | 61.9 GiB | 3 runs, 1.05 tok/s decode (steady state) |
 | `IQ3_XXS` | IQ3_XXS (GSQ-RCO) | ISTA-DASLab | 70.6 GiB | 2 runs, 0.90 tok/s decode (steady state) |
 | `IQ3_S` | IQ3_S (GSQ-RCO) | ISTA-DASLab | 77.9 GiB | 3 runs, 0.82 tok/s decode (steady state) |
 | `UD-IQ1_M` | UD-IQ1_M (Unsloth v3.1) | unsloth | 63.3 GiB | queued |
@@ -46,7 +46,7 @@ Not on disk yet (not attempted, and not counted as a failure): `UD-IQ2_XS`, `UD-
 
 | Pack | Steady runs | Decode, steady (mean ± sd) | All runs (mean) | Steady range | Prefill, steady (mean ± sd) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Q2_0` | 2 | 1.05 ± 0.004 | 1.05 | 1.05 – 1.05 | 3.25 ± 0.133 |
+| `Q2_0` | 2 | 1.05 ± 0.000 | 1.05 | 1.05 – 1.05 | 3.34 ± 0.006 |
 | `IQ3_XXS` | 2 | 0.898 ± 0.004 | 0.898 | 0.895 – 0.901 | 2.58 ± 0.129 |
 | `IQ3_S` | 2 | 0.817 ± 0.001 | 0.815 | 0.817 – 0.818 | 2.41 ± 0.011 |
 | `UD-Q4_K_XL` | 2 | 0.615 ± 0.002 | 0.615 | 0.614 – 0.617 | 1.89 ± 0.034 |
@@ -71,7 +71,7 @@ A token reads only its 10 routed experts per layer, so a bigger file is not auto
 
 | Pack | Largest expert blob | Decode, steady |
 | --- | ---: | ---: |
-| `Q2_0` | 1.38 MB | 1.05 ± 0.004 tok/s |
+| `Q2_0` | 1.38 MB | 1.05 ± 0.000 tok/s |
 | `IQ3_XXS` | 2.33 MB | 0.898 ± 0.004 tok/s |
 | `IQ3_S` | 2.66 MB | 0.817 ± 0.001 tok/s |
 | `UD-Q4_K_XL` | 3.99 MB | 0.615 ± 0.002 tok/s |
@@ -83,9 +83,9 @@ Every token pulls its ten routed experts per layer from the SSD, so the blob one
 
 ## What the numbers say
 
-- **Fastest decode:** `Q2_0` at 1.05 tok/s; **slowest:** `UD-Q6_K_XL` at 0.54 tok/s (1.94× between them).
-- **Run-to-run spread:** coefficient of variation from 0.0% (`UD-Q5_K_XL`) to 0.5% (`IQ3_XXS`).
-- **Fastest prompt read:** `Q2_0` at 3.25 tok/s; slowest `UD-Q6_K_XL` at 1.40 tok/s.
+- **Fastest decode:** `Q2_0` at 1.05 tok/s; **slowest:** `UD-Q6_K_XL` at 0.54 tok/s (1.95× between them).
+- **Run-to-run spread:** coefficient of variation from 0.0% (`Q2_0`) to 0.5% (`IQ3_XXS`).
+- **Fastest prompt read:** `Q2_0` at 3.34 tok/s; slowest `UD-Q6_K_XL` at 1.40 tok/s.
 
 The first round is the first pass over each pack (cold page cache, cold GPU clocks); the later rounds are the steady state. The difference is the price of a first run, not a property of the pack: it averages +0.5% over these 6 packs.
 
@@ -122,6 +122,7 @@ The sweep is resumable: a `(round, pack)` pair already in `results-qwen38.jsonl`
 | 12 | 2 | `Q2_0` | 9.27 | 30.43 | 1.05 | later round |
 | 13 | 3 | `UD-Q5_K_XL` | 17.07 | 55.75 | 0.574 | later round |
 | 14 | 3 | `IQ3_S` | 12.89 | 39.18 | 0.817 | later round |
+| 15 | 3 | `Q2_0` | 9.30 | 30.43 | 1.05 | later round |
 
 ## Limits recorded here
 
