@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next prompt-throughput benchmarks on macpro51 (RX 580, Metal 2)
 
-_Generated 2026-11-19 08:06 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
+_Generated 2026-11-19 08:07 UTC by `bench/macpro51/run_bench_qwen38.py` after every completed run. Every number below was produced on the machine named here._
 
 > **The engine does not answer yet.** Its forward pass goes non-finite at the first full-attention layer, so
 > there is no decode rate to report and none is claimed here. What this page measures is the prompt path: the
@@ -109,4 +109,5 @@ or rebooted machine costs one run rather than the series.
 | 17 | 2 | `UD-Q3_K_XL` | 31 | 15.63 | 1.98 | later round |
 | 18 | 2 | `IQ3_XXS` | 31 | 11.97 | 2.59 | later round |
 | 19 | 2 | `Q2_0` | 31 | 9.78 | 3.17 | later round |
+| 20 | 2 | `UD-IQ3_XXS` | 31 | 14.09 | 2.20 | later round |
 
