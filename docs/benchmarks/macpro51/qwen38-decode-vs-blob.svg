@@ -32,6 +32,8 @@
 <text x="1008.0" y="482.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#6b7280" font-weight="400">5</text>
 <text x="24.0" y="277.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600" transform="rotate(-90.0 24.0 277.0)">decode tokens/s</text>
 <text x="550.0" y="514.0" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#1f2933" font-weight="600">largest expert blob (MB)</text>
+<circle cx="823.0" cy="178.2" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
+<text x="832.0" y="171.2" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q4_K_XL</text>
 <circle cx="903.6" cy="197.9" r="5.0" fill="#0f766e" stroke="white" stroke-width="1.2" opacity="1.00"/>
 <text x="912.6" y="190.9" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#1f2933" font-weight="500">UD-Q5_K_XL</text>
 </svg>
