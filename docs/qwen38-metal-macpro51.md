@@ -183,7 +183,9 @@ comparable between a refused pack and a working one — `h` rms 0.089 vs 0.084, 
 shared expert does.  A vector tap settles the layer: the residual after layer 0 has **cosine 0.9945** with Q2_0's
 (max 0.084 against 0.091), and after layer 1 **cosine 0.188** with max 19.58 against 0.158 — the break is inside
 layer 1, and since its expert outputs match, the fold that puts them back into the four streams is what remains to
-instrument (`bo_` and the fold's inputs at layer 1's cut).  The matrix records the pack as refused rather than as a
+instrument (`bo_` and the fold's inputs at layer 1's cut).  Per row (the sampling window is one row), the residual
+norm goes from 0.375 (cosine 0.9945) after layer 0 to **38.4** (cosine 0.188) after layer 1, against Q2_0's 1.10 —
+a single row, not one bad position in a batch.  The matrix records the pack as refused rather than as a
 slow number.
 
 Gyro is one file with the n-gram table inside (no repack), and its trellis experts are covered in the window after
