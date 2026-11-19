@@ -145,10 +145,10 @@ conversion rounds only those), then a smoke run. Two details matter:
   shard to the dense list and the shard-split check refuses a repacked file beside it;
 - `iq_pack --compat-bf16` needs llama.cpp's `gguf-py` (`STRATA_GGUF_PY=<llama.cpp>/gguf-py`) and PyYAML.
 
-Measured on UD-Q4_K_XL (111 GB downloaded, 76.9 GiB repacked) in the same mixed sweep as the ISTA packs:
-**0.62 tok/s decode, 1.98 tok/s prompt** - its expert blobs are 4 MB against Q2_0's 1.4 MB, so a token reads more
-bytes.  The first smoke, run while the rest of the set was still downloading, gave 0.61 / 1.57; its first tokens
-are Q2_0's, so the 4.5-bit pack answers the same way the 2-bit one does.
+Measured in the six-pack mixed sweep: UD-Q4_K_XL **0.62 tok/s decode, 1.91 tok/s prompt**, UD-Q5_K_XL
+0.57 / 1.81, UD-Q6_K_XL 0.54 / 1.43 (their expert blobs are 3.99, 4.43 and 5.22 MB against Q2_0's 1.38, so a token
+reads more bytes).  **All five prepared packs continue with the same eight tokens as Q2_0**
+(`271 248068 198 760 1156 6587 264 61446`): on this prompt the quantisation changes the speed, not the answer.
 
 Gyro is one file with the n-gram table inside (no repack), and its trellis experts are covered in the window after
 all: `moe.metal` instantiates `GU_SET(T_TQK6)`, `GU_SET(T_TQ2T)`, `DN_SET(T_TQK7)` and `DN_SET(T_TQ2T)`, with their
