@@ -1,6 +1,6 @@
 """Two Mac fixes found by the Mac test run (11-16):
 M1: `setup.py --family deepseek41` (or a DeepSeek model name) on a Mac printed nothing and stopped with metal/setup_mac.py's own argument error; the
-    retired names are now checked before the Mac hand-over: the same sentence and exit 2 as on Linux and Windows.
+    a DeepSeek family name reaches the Mac hand-over like any other family on this branch.
 M2: a plan on a Mac read the IOKit registry (`ioreg`) six times; the registry's static facts are read once per process and a Mac's card memory
     is the Metal working set, so one read is left.
 Both run anywhere: the Mac is named with sys.platform and the probes are counted, nothing real is started."""

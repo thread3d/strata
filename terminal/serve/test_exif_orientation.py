@@ -99,7 +99,9 @@ class DecoderAllowlist(unittest.TestCase):
         with mock.patch.object(Image, "open", spy):
             Vision.normalize(data)
             Vision._exif_rotated(jpeg((8, 8), 6))
-        self.assertEqual(len(seen), 2)
+            from serve.ds_pictures import DsPictures
+            DsPictures.decode(data)
+        self.assertEqual(len(seen), 3)
         self.assertTrue(all(f and "JPEG2000" not in f and "JPEG" in f for f in seen), seen)
 
 

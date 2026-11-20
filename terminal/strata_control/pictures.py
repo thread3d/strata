@@ -105,8 +105,7 @@ def family_of(cfg: dict, gguf: Path | None, asked: str | None = None) -> str | N
         return asked.lower() if asked.lower() in PROJECTOR_BY_FAMILY else None
     arch = str(cfg.get("arch") or "").lower()
     names = [str(cfg.get("model_name") or "").lower(), (gguf.name.lower() if gguf else "")]
-    from strata_control import retired
-    if retired.config_reason(cfg) or any("deepseek" in n for n in names):      # never a DeepSeek config (retired.py)
+    if arch == "deepseek41" or any("deepseek" in n for n in names) or "strata-dsv41" in str(cfg.get("exe") or "").lower():
         return None
     if any(n.startswith("qwen3.6") or "qwen3.6-35b" in n for n in names):
         return None

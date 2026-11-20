@@ -103,7 +103,6 @@ class N1ModelList(Base):
             await press(pilot, "enter")
             self.assertIn("not enough disk space", text_of(app))
             with mock.patch("strata_control.models.own_path_problem", return_value=None), \
-                    mock.patch("strata_control.retired.folder_reason", return_value=None), \
                     mock.patch("strata_control.models.plan_import", return_value=plan), \
                     mock.patch("strata_control.models.import_target", side_effect=lambda path, _plan: path):
                 await press(pilot, "o")

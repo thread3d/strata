@@ -469,8 +469,7 @@ class ControlMode(unittest.TestCase):
     def test_no_command_line_tools_needed_and_ud_iq1_s_is_not_offered(self):
         rc, _ = self.run_setup(clt_rc=2)
         self.assertEqual(rc, 0)
-        # UD-IQ1_S: never offered.  A name the built-in tables do not know is looked up in the signed feed first (a feed model): no feed here
-        with self.assertRaises(SystemExit), mock.patch.object(setup, "feed_models_setup", lambda *a, **k: None):
+        with self.assertRaises(SystemExit):                # UD-IQ1_S: never offered
             self.run_setup(argv=("--yes", "--no-start", "--model", "UD-IQ1_S"))
 
     def test_gyro_is_offered_on_a_mac_as_one_file_with_a_compat_bf16_pack(self):

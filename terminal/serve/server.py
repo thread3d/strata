@@ -223,7 +223,7 @@ from serve.server_parts.engines import (  # noqa: F401  (moved unchanged, file s
     monitored_gpu,
     network_path,
     own_path_context_warning,
-    parallel_args,
+    parallel_args as batch_parallel_args,           # the Qwen engines' --batch slots; parallel_args() below is the DeepSeek-aware one
     parallel_flag_conflicts,
     parallel_slots,
     parse_batch_window_sample,
@@ -333,6 +333,7 @@ tls.install()       # #3722: image URLs and tool servers over HTTPS are checked 
 from strata_control import hipblaslt_tuning  # noqa: E402
 from strata_control import speed_switches  # noqa: E402
 from strata_control import vision_reader  # noqa: E402
+from serve.ds_pictures import DsPictures  # noqa: E402  (DeepSeek-V4.1: pictures go to the engine's own vision tower)
 from strata_control import draft_layer  # noqa: E402
 from strata_control import drafting  # noqa: E402
 from strata_control import vram_fit  # noqa: E402
@@ -412,6 +413,10 @@ def combined_embeddings_path(vision_dir: Path, nbytes: int) -> Path:
             pass
     return Path(vision_dir) / name
 
+
+# DeepSeek-V4.1 only, and not in server_parts/base.py (upstream's part, which has no DeepSeek in it):
+DS41_DEFAULT_BUDGET = 32768   # the thinking budget when neither the request nor the config names one
+DS41_SMALL_CAP_MIN = 48       # from this max_tokens up to ANSWER_ROOM_MIN_CAP, thinking is capped at half of it
 
 QUEUE_BEAT_S = 10.0         # a request waiting for the single turn sends a keep-alive this often (#1619)
 
@@ -543,6 +548,60 @@ def echo_requests(log_path: str, offset: int) -> None:
 
 
 OPENS_BROWSER = False        # set in main() when the server was started with --open: only then may a message say a browser opens
+
+
+# STRATA_DS4_RESTORE_POINTS (4): the DeepSeek engine keeps restore points where a later prompt is likely to leave this
+# one - its GEN line carries marks=<pos>,..., tail=<pos> and shared=<pos> - besides the end of the last prompt, the
+# position before it and the anchor it keeps anyway.  N (1-16) turns them on, and is also the engine's cap a
+# conversation (it reads the same setting); 0: no keys, every GEN line as before.  STRATA_DS4_RESTORE_TAIL (512): how
+# far before the prompt's end the tail point sits (0: none).  (Project Maya #639, restore points.)
+RESTORE_LEAST = 1024        # no point before this many tokens: such a start is read again in about the time a point costs
+
+
+def restore_point_settings(env=None) -> tuple[bool, int]:
+    """(on, tail) from STRATA_DS4_RESTORE_POINTS and STRATA_DS4_RESTORE_TAIL."""
+    env = os.environ if env is None else env
+
+    def whole(name, default):
+        try:
+            return max(0, int(str(env.get(name, default)).strip()))
+        except ValueError:
+            return default
+    return whole("STRATA_DS4_RESTORE_POINTS", 4) > 0, whole("STRATA_DS4_RESTORE_TAIL", 512)
+
+
+def deepseek_restore_points(ids, user_id, system_id=None, tail=512, least=RESTORE_LEAST) -> dict:
+    """Where the DeepSeek engine keeps restore points for this prompt -> {"marks": [pos, ...], "tail": pos, "shared":
+    pos} (any may be missing; {}: none).  From the prompt's ids as the template wrote them: a turn opens with its role's
+    special token (<｜User｜>, a tool result's turn too; <｜System｜> for a system message after the first user turn), and
+    text inside a message never encodes to one, so the positions are the template's own.
+
+    - the start of the last user turn: its last message edited, or sent again after another answer, goes back there;
+    - "tail": `tail` tokens before the end, when the last turn is longer than that: a new question after the same long
+      document in the same message;
+    - "shared": the end of the system prompt and its tools (the first user turn): another conversation behind the same
+      start goes back there, and the engine gives that point up last.
+    Positions under `least` are left out: a start that short is read again in about the time a point costs."""
+    if user_id is None or len(ids) < 2:
+        return {}
+    first = last = None
+    for i, t in enumerate(ids):
+        if t == user_id:
+            first = i if first is None else first
+            last = i
+        elif t == system_id and first is not None:
+            last = i
+    marks, out = [], {}
+    if first is not None and first >= least:
+        out["shared"] = first
+    if last is not None and last >= least and last != first:
+        marks.append(last)
+    t = len(ids) - tail
+    if tail > 0 and t >= least and (last is None or t > last):
+        out["tail"] = t
+    if marks:
+        out["marks"] = sorted(marks)
+    return out
 
 
 def narrate_start(log_path: str, offset: int, args: list, done: threading.Event, heartbeat=20.0) -> None:
@@ -728,6 +787,7 @@ class StrataEngine:
     CONTROL_WAIT_S = 300.0               # how long vram() / session_file() wait for the control lines of a batch engine
     DRAIN_TIMEOUT_S = 300.0              # how long an interrupted request waits, with no line from its engine, for DONE / BADM
     QUARANTINE_S = 600.0                 # ... and how long a slot or the control lines stay held after that with no line
+    multi = 0                            # DeepSeek --parallel (READY ... multi=N): conversations the engine holds at once (batch = N too)
 
     # `last`: the figures of the engine's last DONE line.  With batch slots several requests run at once, each on its
     # own thread, so each one reads its own request's figures (Service.run records them); one at a time, the one dict.
@@ -853,6 +913,8 @@ class StrataEngine:
                 self.can_stop = "stop" in f[2:]
                 self.can_hold = "hold" in f[2:]
                 self.can_hold_batch = "holdb" in f[2:]
+                # DeepSeek --parallel: how many conversations the engine holds at once (0: one at a time, as before)
+                self.multi = next((int(x[6:]) for x in f[2:] if x.startswith("multi=") and x[6:].isdigit()), 0)
                 break
         loading.set()
         if self.max_context <= 0:
@@ -950,6 +1012,8 @@ class StrataEngine:
         # it runs (INFO batch_slots=N: it may have fewer than asked, or none, when they do not fit)
         asked = next((int(args[args.index(k) + 1]) for k in ("--batch", "--slots", "--parallel") if k in args), 0)
         self.batch = int(self.info.get("batch_slots") or 0)
+        if self.multi:                                  # DeepSeek --parallel: several requests at once, in its own protocol
+            self.batch = self.multi                     # (the server's parallel paths key on it: no FIFO, a request's own figures)
         if asked and self.batch != asked:
             print(f"[strata] parallel requests: {asked} asked, the engine runs {self.batch or 'one at a time'} "
                   "(its log says why)", flush=True)
@@ -995,6 +1059,11 @@ class StrataEngine:
             self.arrivals = collections.deque(maxlen=64)   # monotonic times of the last requests that came for the control lines (STRATA_COALESCE_*)
             self.ctl_epoch = 0                          # how often the control lines were taken
             self.ctl = threading.Lock()                 # one admission or solo request on the control lines at a time
+        if "rid_lock" not in self.__dict__:
+            self.rid_lock = threading.Lock()
+            self.rid_n = 0                              # --parallel requests' ids (rid=): never reused, a restart goes on from here
+        self.rid_q: dict[int, queue.Queue] = {}         # this process's: rid -> that request's lines (T / PP / DONE / ERR, rid taken out)
+        self.multi_stat = ""                            # the engine's last STAT line over everything it wrote
         self._ctl_erred = False                         # #1059: the control lines ended on an ERR
         self._yielded = None                            # (slot, tokens read): the last request on them gave way
         self.wlock = threading.Lock()                   # stdin writes from several request threads
@@ -1006,6 +1075,7 @@ class StrataEngine:
         slot_q = self.slot_q
         slot_busy = self.slot_busy                      # this process's (a restart makes new ones)
         log = getattr(self, "log", None)                # retain this process's log across a restart
+        rid_q, multi = self.rid_q, self.multi           # DeepSeek --parallel: each request's lines on its own queue
         line = None
         for line in proc.stdout:
             # stderr already reaches the log; native ERR diagnostics use the protocol pipe.
@@ -1037,6 +1107,17 @@ class StrataEngine:
                 if sample is not None and self.proc is proc:
                     self.terminal_stage_sample = {**sample, "observed_monotonic": time.monotonic()}
                 continue
+            if multi:                                   # DeepSeek --parallel: `T <rid> <id>`, `PP <rid> ...`, `DONE <rid> ...`, `ERR <rid> ...`
+                head, _, rest = line.partition(" ")
+                if head in ("T", "PP", "DONE", "ERR") and rest[:1].isdigit():
+                    rid_s, _, tail = rest.partition(" ")
+                    rq = rid_q.get(int(rid_s))
+                    if rq is not None:                  # (a request that has ended: its late lines go nowhere)
+                        rq.put(head + (" " + tail if tail else "\n"))
+                    continue
+                if head == "STAT":                      # over everything the engine wrote, not one request's
+                    self.multi_stat = line
+                    continue
             if line.startswith(("BT ", "BDONE ")) and slot_q:   # --batch: a batch slot's own lines
                 try:
                     b = int(line.split()[1])
@@ -1057,6 +1138,8 @@ class StrataEngine:
                 self.last_err = line[4:].strip()        # (a failed batch window: every request reads its slot)
         lines.put(None)
         for q in slot_q:
+            q.put(None)
+        for q in list(rid_q.values()):
             q.put(None)
 
     def death_note(self) -> str:
@@ -1333,6 +1416,8 @@ class StrataEngine:
             pn = prefix.get("tokens")
             if isinstance(pn, int) and not isinstance(pn, bool) and pn > 0:
                 keys += f" pin={pn}"
+        # restore points (Service.prepare puts them in `_restore`; only the DeepSeek engine gets them)
+        keys += StrataEngine.restore_keys(sampling)
         # logprobs: the engine writes an `LP` line after each `T` line (an engine without them ignores
         # the key, so an older engine answers exactly as it did).  Absent = no LP lines at all.
         k = top_logprobs(sampling)
@@ -1343,6 +1428,22 @@ class StrataEngine:
                 # only these ids are printed; the engine's comma-separated list, renormalised below
                 keys += " allowed=" + ",".join(str(i) for i in ids)
         return keys + StrataEngine.projection_key(sampling) + bias_api.engine_key(sampling.get("logit_bias"))
+
+    @staticmethod
+    def restore_keys(sampling: dict) -> str:
+        """`marks=<pos>,...`, `tail=<pos>` and `shared=<pos>`: the DeepSeek engine's restore points for this prompt
+        (Service.prepare puts them in `_restore` with STRATA_DS4_RESTORE_POINTS; no other engine gets them).  "" without:
+        the line as before."""
+        pts = sampling.get("_restore")
+        if not isinstance(pts, dict):
+            return ""
+
+        def pos(v):
+            return isinstance(v, int) and not isinstance(v, bool) and v > 0
+        marks = [p for p in pts.get("marks") or () if pos(p)]
+        tail, shared = pts.get("tail"), pts.get("shared")
+        return ((" marks=" + ",".join(str(p) for p in marks) if marks else "") +
+                (f" tail={tail}" if pos(tail) else "") + (f" shared={shared}" if pos(shared) else ""))
 
     @staticmethod
     def projection_key(sampling: dict) -> str:
@@ -2445,13 +2546,23 @@ class StrataEngine:
             raise EngineDied("the engine is unavailable; this request was not sent")
         bias_api.validate_request(sampling or {}, self, None)
         refuse_for_split(self, sampling or {})
-        if getattr(self, "batch", 0):
+        if getattr(self, "batch", 0) and not self.multi:
             yield from self.generate_batched(ids, max_new, sampling, cancel, embeddings)
             return
         self.progress, self.progress_ms, self.reused = None, 0, 0
         self.prefill_tok_s_mean = None
         lines_q, stop_line = self.lines, "STOP\n"
         proc0 = self.proc                # the engine this request runs on (#5573: its STOP goes to it, never to a successor)
+        # DeepSeek --parallel: the engine holds several conversations; this request is one of them (GEN ... rid=<id>), its
+        # lines come on a queue of their own and its STOP names it.  One at a time (self.multi 0): the one queue, as before.
+        rid = None
+        if self.multi:
+            with self.rid_lock:
+                self.rid_n += 1
+                rid = self.rid_n
+            lines_q = queue.Queue()
+            self.rid_q[rid] = lines_q
+            stop_line = f"STOP {rid}\n"
         # logprobs: the engine writes "LP <logprob> [id:logprob ...]" right after each "T <id>" (the same
         # flush), read here before the token is yielded, so whoever takes the token finds its line in
         # lp_lines.  Not asked for = the deque stays empty and nothing on this path changes.
@@ -2459,17 +2570,23 @@ class StrataEngine:
         self.lp_lines = LPLines(cancel)
         carry = NO_LINE                  # a line read for a token's LP line, held until it is used
         # an image request takes the same sampling keys as text (#75: it used to decode greedily whatever was asked)
-        head = f"GENI {int(max_new)}{self.sampling_keys(sampling or {})} {embeddings}" if embeddings else \
-            f"GEN {int(max_new)}{self.sampling_keys(sampling or {})}"
+        rid_key = f" rid={rid}" if rid is not None else ""
+        head = f"GENI {int(max_new)}{self.sampling_keys(sampling or {})}{rid_key} {embeddings}" if embeddings else \
+            f"GEN {int(max_new)}{self.sampling_keys(sampling or {})}{rid_key}"
         if prefill_only:                                 # split serving (serve/split.py): read the prompt, make no token
             if embeddings or int(max_new) != 0:
                 raise ValueError("prefill_only is a text prompt and max_new 0")
-            head = "GEN 0 prefill=1"
-        line = f"{head} {','.join(str(int(t)) for t in ids)}\n"   # (a bad id stays the request's own ValueError)
+            head = "GEN 0 prefill=1" + rid_key
+        line = f"{head} {','.join(str(int(t)) for t in ids)}"   # (a bad id stays the request's own ValueError)
         try:
-            self.proc.stdin.write(line)
-            self.proc.stdin.flush()
+            if rid is not None:                          # several requests write to the engine at once, each its own line
+                self._send(line)
+            else:
+                self.proc.stdin.write(line + "\n")
+                self.proc.stdin.flush()
         except (OSError, ValueError, AttributeError, EngineDied):   # the pipe is gone: the engine died (not the client)
+            if rid is not None:
+                self.rid_q.pop(rid, None)                # this request's lines are over: a late one goes nowhere
             if getattr(self, "closing", False):         # #6055: or close() closed it (a write then raises ValueError)
                 raise EngineClosing("this instance is draining; retry against the next instance") from None
             raise EngineDied(f"the engine stopped unexpectedly (exit code {self.exit_code()})") from None
@@ -2601,6 +2718,8 @@ class StrataEngine:
                         break
                     if not self.can_stop:
                         heard = time.monotonic()
+            if rid is not None:                           # this request's lines are over (a late one goes nowhere)
+                self.rid_q.pop(rid, None)
 
     @staticmethod
     def _swallow_trailing_done(lines_q, wait: float = 0.3) -> None:
@@ -3367,7 +3486,7 @@ def effort_end_args(cfg: dict, exe: str, tok) -> list[str] | None:
 
 def apply_ready_timeout(cfg: dict) -> None:
     """The config's "engine_ready_s": how long a start may take before READY (default ENGINE_READY_S, 900).  A model of 300+ GB read
-    from a slow disk needs more.  ValueError for anything but a number > 0."""
+    from a slow disk (DeepSeek-V4.1-Flash: setup writes 3600) needs more.  ValueError for anything but a number > 0."""
     global ENGINE_READY_S
     v = cfg.get("engine_ready_s")
     if v is None:
@@ -3483,7 +3602,7 @@ def engine_args(cfg: dict, exe: str | None = None, *, announce: bool = True) -> 
     # A card that is short of VRAM for this start (a single request on a small card, or "parallel" 2 or more, every request slot a session of its own) gets work moved off
     # the GPU, never a smaller context and never fewer requests (owner, 2026-11-02): a smaller KV window on CUDA, a smaller prompt chunk and reserve on Arc, and the
     # engine sizes the rest; one plain note says it is slower (strata_control/vram_fit.py fit_start).  The person's own values are kept.  Nothing changes without one
-    # card's memory, or on a layer split.
+    # card's memory, on a layer split, or for DeepSeek.
     try:
         args, fit_parallel, fit_note = vram_fit.fit_start(cfg, args, drafting_vram_mib(cfg, backend, archs), backend)
     except Exception:                                        # noqa: BLE001 - an estimate that fails decides nothing; the engine still refuses what does not fit
@@ -3533,6 +3652,31 @@ def engine_args(cfg: dict, exe: str | None = None, *, announce: bool = True) -> 
 
 
 DRAFT_COSTS_DEFAULT = draft_costs_default()    # "draft_costs": true / false in a config overrides it
+
+
+def parallel_args(cfg: dict, args: list[str]) -> list[str]:
+    """#465 (opt-in): "parallel": N in the config.  DeepSeek-V4.1: the engine's own --parallel N, N conversations in one
+    engine (strata_control/dsv41_parallel.py) - --batch is the Qwen engines' flag and is not given to it.  Every other
+    model keeps the batch slots, and for DeepSeek too the checks and the words about a bad value are that function's
+    (server_parts/engines.py, used here before the flag is translated): one place keeps them right."""
+    if (cfg.get("arch") or "") != "deepseek41":
+        return batch_parallel_args(cfg, args)
+    if "--parallel" in args:                        # the saved args carry their own value: it wins
+        return []
+    chosen = batch_parallel_args(cfg, args)         # absent, a bad value or 1: [] (with its message where it says one)
+    if not chosen:
+        return []
+    n = min(int(chosen[1]), PARALLEL_MAX)           # this engine answers at most PARALLEL_MAX conversations at once
+    try:
+        from strata_control import dsv41_flags      # a package from before --parallel would stop at the start on the flag:
+        old_engine = dsv41_flags.takes_parallel(cfg.get("exe")) is False   # asked of the engine itself, and said
+    except Exception:                               # noqa: BLE001 - a probe that fails decides nothing
+        old_engine = False
+    if old_engine:
+        print(f'[strata] "parallel": {n} - this DeepSeek engine ({cfg.get("exe")}) is from before --parallel, so it answers one request '
+              "at a time. Update the engine (strata update) to answer several at once.", flush=True)
+        return []
+    return ["--parallel", str(n)]
 
 
 def draft_costs_args(cfg: dict, args: list[str], exe: str | None = None) -> list[str]:
@@ -3715,6 +3859,23 @@ def hip_auto_devices(cfg: dict, env: dict) -> list[int] | None:
     return visible
 
 
+DS41_SLOT_KEEP_DEFAULT = "1"      # the engine keeps a displaced conversation in RAM and in the slot folder (see below)
+DS41_SLOT_GB_DEFAULT = "2"        # the folder's cap in GB (a 6.5K-token conversation is about 17 MB)
+
+
+def deepseek_slot_env(env: dict, cfg: dict) -> None:
+    """DeepSeek-V4.1 only.  The engine sets a conversation aside when another request takes the model and takes it back
+    at its checkpoints (agents and sub-agents that take turns do not read their prompts again).  STRATA_DS4_SLOT_KEEP
+    switches it (the default above; a config's env or the shell wins); the folder is `ds4-slots` next to the run log, in
+    Strata's data folder (STRATA_DS4_SLOT_DIR names another), and the engine caps it (STRATA_DS4_SLOT_GB, 2 here, 16 in the engine) and
+    removes what is older than a week or not this model's.  On by default; STRATA_DS4_SLOT_KEEP=0 turns it off."""
+    env.setdefault("STRATA_DS4_SLOT_KEEP", DS41_SLOT_KEEP_DEFAULT)
+    env.setdefault("STRATA_DS4_SLOT_GB", DS41_SLOT_GB_DEFAULT)
+    log = cfg.get("log")
+    if "STRATA_DS4_SLOT_DIR" not in env and log:
+        env["STRATA_DS4_SLOT_DIR"] = str(Path(log).parent / "ds4-slots")
+
+
 # 0.2.10: the two parts that need the card's free VRAM are the ENGINE's own, never an environment variable of ours: the FP16 weight
 # cache (bit-exact; takes only VRAM beyond 3 GiB kept free) and no loan of cache slots (only when every expert is resident and the
 # prompt path's own buffers fit beside 3 GiB; KL 0.006, QUAL-PAR2).  STRATA_PF_W16_CACHE_MIB=0 and STRATA_AUTO_NOBORROW=0 turn them off.
@@ -3739,6 +3900,8 @@ def child_env(cfg: dict, *, offline: bool = False) -> dict:
     # 0.2.17 (owner 11-19): the route tail skip is Off unless the person turned it on (STRATA_ROUTE_TAIL_SKIP=7 in the config or in their own environment).
     # The engine's own rule for an unset value is rank 7, so an unset one is set to 0 here, for a config made before 0.2.17 too.
     speed_switches.engine_env_defaults(env)
+    if (cfg.get("arch") or "") == "deepseek41":      # (only this engine reads these; Qwen's environment is untouched)
+        deepseek_slot_env(env, cfg)
     # Strict offline reaches children through the environment, because a tool subprocess or a model
     # loader is code this server does not own. Applied last so a profile's own `env` cannot remove
     # the policy by naming the same variable.
@@ -3977,7 +4140,7 @@ class Service:
         self.images = None                                # serve/images.py's ImageGen when the config has "images"
         self.restore_after_load = None                    # a session file an image job saved before it unloaded
         self.stop_ids = end_token_ids(tokenizer)
-        self.family = None                              # the model family: set_family() below (None: the Qwen form)
+        self.family = None                              # the model family ("deepseek41"): set_family() below
         self.parser_cls = parser_for_template(getattr(template, "source", None))   # reads the model's output (reasoning, content, tool calls): by the template's tool-call form
         # #567: a prompt re-encodes only what follows the last special token it shares with a recent prompt (the
         # same ids as a full encode: tools/strata_tokenizer.py PromptEncoder).  Tokenizers without resume points
@@ -3992,8 +4155,15 @@ class Service:
                 else PromptEncoder(tokenizer)
 
     def set_family(self, family: str | None) -> None:
-        """The model family (None: the Qwen form this server was written for)."""
+        """A family whose text differs from the Qwen form this server was written for (DeepSeek-V4.1: its own end
+        token, DSML tool calls, reasoning-effort words).  The others keep the defaults."""
         self.family = family
+        if family == "deepseek41":
+            from serve import dsml
+            eos = (getattr(self.tok, "special_ids", None) or {}).get("eos", 1)
+            self.stop_ids = {int(eos)}
+            self.parser_cls = dsml.DsmlOutputParser
+            self._force_text = dsml.to_dsml_force
         import serve.frontend as _frontend
         _frontend.use_family(family)
 
@@ -4212,6 +4382,8 @@ class Service:
                 value = req.get(alias)
         if value is None:
             value = self.reasoning_budget_tokens
+            if not value and self.family == "deepseek41" and not self.reasoning_budget_configured:
+                value = DS41_DEFAULT_BUDGET          # DeepSeek-V4.1 only, as Maya ships it: no budget anywhere = this one
         if isinstance(value, float) and value.is_integer():
             value = int(value)
         if isinstance(value, bool) or not isinstance(value, int):
@@ -5041,10 +5213,14 @@ class Service:
         self.embeddings.path = None
         self.embeddings.keys = None
         images = images_of(messages)
+        ds_pics = False                                  # DeepSeek pictures (the engine's own tower): the file is already written
         if images:
             if self.offline and any(src.startswith(("http://", "https://")) for src in images):
                 raise ValueError("offline mode cannot download an image URL; send a data: image instead")
             if self.vision is None:
+                if self.family == "deepseek41":
+                    raise ValueError("this server was started without pictures for DeepSeek (--vision off, or a pack made without the "
+                                     "picture reader): run strata launch again without --vision off to read images")
                 raise ValueError("this server was started without the vision encoder (run setup again and choose "
                                  "'vision'), so it cannot read images")
             # An image URL is downloaded first, outside the FIFO: under it, a slow server held every other request
@@ -5055,6 +5231,13 @@ class Service:
                 return fetched[src] if src in fetched else Vision.download(src) \
                     if src.startswith(("http://", "https://")) else src
             images = [fetch(src) for src in images]
+            if isinstance(self.vision, DsPictures):
+                # DeepSeek-V4.1: the engine has its own vision tower.  The pictures go to it as raw RGB in the file of a GENI line
+                # (serve/ds_pictures.py); each template placeholder becomes the run of image tokens its picture takes.
+                ids, ds_file = self.vision.build(ids, [Vision.load(src) if isinstance(src, str) else src for src in images])
+                self.embeddings.path = ds_file
+                self.embeddings.keys = None
+                images, ds_pics = [], True
         if images:
             pad = self.tok.encode(IMAGE_PAD, parse_special=True)[0]
             start = self.tok.encode(VISION_START, parse_special=True)[0]
@@ -5142,9 +5325,62 @@ class Service:
             # (an encoder restart, the cache's eviction) with other bits still matches its checkpoints
             self.embeddings.keys = [Path(p).stem[:16] for p, _ in encoded]
             write_temporary(combined, [p for p, _ in encoded])
+        if self.family == "deepseek41" and req is not None and req.get("strata_prefix") is None and not images and not ds_pics:
+            lead = self.deepseek_shared_start(messages)
+            if lead:
+                req["strata_prefix"] = {"messages": lead}
         if req is not None and req.get("strata_prefix") is not None:
-            req["strata_prefix"] = self.resolve_prefix(req["strata_prefix"], messages, tools, kwargs, ids, bool(images))
+            req["strata_prefix"] = self.resolve_prefix(req["strata_prefix"], messages, tools, kwargs, ids, bool(images) or ds_pics)
+        if req is not None:
+            self.set_restore_points(req, ids, bool(images) or ds_pics)
         return ids, kwargs.get("enable_thinking", True) is not False, max_new
+
+    def deepseek_turn_ids(self):
+        """(<｜User｜>'s id, <｜System｜>'s id) of the DeepSeek template, each None where the vocabulary has no such single token."""
+        got = getattr(self, "_ds_turn_ids", None)
+        if got is None:
+            def one(text):
+                try:
+                    t = self.tok.encode(text, parse_special=True)
+                except Exception:
+                    return None
+                return int(t[0]) if len(t) == 1 else None
+            got = self._ds_turn_ids = (one("<｜User｜>"), one("<｜System｜>"))
+        return got
+
+    def set_restore_points(self, req: dict, ids, has_images: bool) -> None:
+        """STRATA_DS4_RESTORE_POINTS: where the DeepSeek engine keeps restore points for this prompt, in req["_restore"]
+        (never a client's own; not with pictures, whose spans the engine reads whole).  The shared start is left to
+        strata_prefix (pin=N) where the request has one."""
+        req.pop("_restore", None)
+        if self.family != "deepseek41" or has_images:
+            return
+        on, tail = restore_point_settings()
+        if not on:
+            return
+        user_id, system_id = self.deepseek_turn_ids()
+        pts = deepseek_restore_points(ids, user_id, system_id, tail)
+        pref = req.get("strata_prefix")
+        if (isinstance(pref, dict) and pref.get("tokens")) or os.environ.get("STRATA_DS4_RESTORE_SHARED") == "0":
+            pts.pop("shared", None)   # (the system prompt is already the pin's, or STRATA_DS4_RESTORE_SHARED=0: no shared mark)
+        if pts:
+            req["_restore"] = pts
+
+    @staticmethod
+    def deepseek_shared_start(messages) -> int:
+        """DeepSeek-V4.1 only: how many leading messages are the system prompt (its tools are rendered with them).  An
+        agent and its sub-agents that work behind the same system prompt and tools share exactly this start, so the
+        engine keeps a checkpoint of its state there (pin=N): the next agent behind the same start goes back to it
+        instead of reading it again.  0: none (STRATA_DS4_AUTO_PIN=0, no system message, or nothing after it)."""
+        if os.environ.get("STRATA_DS4_AUTO_PIN", "1") == "0":
+            return 0
+        n = 0
+        for m in messages:
+            if isinstance(m, dict) and m.get("role") in ("system", "developer"):
+                n += 1
+            else:
+                break
+        return n if 0 < n < len(messages) else 0
 
     PREFIX_END = "\u0001strata-prefix-end\u0001"          # marks where a message's shared part ends in the rendered prompt
 
@@ -5301,6 +5537,14 @@ class Service:
             # A request with a budget of its own, or max_tokens below ANSWER_ROOM_MIN_CAP, is left as it was.
             budget = max_new - min(max(ANSWER_RESERVE_MIN, max_new // 4), max_new // 2)
             if max_new <= 32768: print(f"[strata] thinking limited to {budget} of max_tokens {max_new} so the answer has room "
+                  "(\"answer_room\": false in the config turns this off)", flush=True)
+        if (thinking and not budget and self.answer_room and self.family == "deepseek41"
+                and max_new and DS41_SMALL_CAP_MIN <= max_new < ANSWER_ROOM_MIN_CAP):
+            # DeepSeek-V4.1 only: a short max_tokens (/v1/messages and /v1/chat/completions with 200-600) was spent
+            # entirely on the thinking, so no text block ever arrived.  With no budget of the client's own, the thinking
+            # is capped at half of max_tokens; then the wrap-up, </think> and the answer follow in the other half.
+            budget = max_new // 2
+            print(f"[strata] thinking limited to {budget} of max_tokens {max_new} so the answer has room "
                   "(\"answer_room\": false in the config turns this off)", flush=True)
         if budget and max_new and max_new > 0:
             # #984: a budget at or near max_tokens never fires before the reply is cut off while still thinking, so
@@ -8070,6 +8314,25 @@ def start_split(cfg: dict, spec: dict, exe: str, effort_end: list[str], lazy: bo
                           arena_file=arena)
 
 
+# DeepSeek-V4.1-Flash: the API's model name and the model card's sampling go into the tables in place - not into copies
+# here - because default_model_name() and model_card_sampling() live in server_parts/http_api.py and look those dicts
+# up in that module: an entry this file only copied would never be seen.
+FAMILY_MODEL_NAMES["deepseek41"] = "deepseek-v4.1-flash"
+# temperature 1.0, top_p 1.0 for local use (thinking or not), no penalties (the V4.1 model card's recommendation)
+MODEL_CARD_SAMPLING["deepseek41"] = {"thinking": {"temperature": 1.0, "top_p": 1.0},
+                                     "instruct": {"temperature": 1.0, "top_p": 1.0}}
+
+
+def arch_from_tokenizer(arch, pre) -> str | None:
+    """#4137: the model family a config that names none is served as.  A hand-written config (serve/server.py run on its own, a gateway) often leaves
+    "arch" out; for DeepSeek-V4.1 that meant the Qwen defaults: the stop ids of <|im_end|> (the DeepSeek tokenizer splits that into pieces, so a "|" or a
+    ">" in the reply ended it: `finish_reason: stop` at token 19 in front of a table), no end token (the raw <｜end▁of▁sentence｜> came out as text)
+    and no DSML tool calls.  The pack's tokenizer says what it is (its pre-tokenizer is "deepseek3"); an arch the config names is never changed."""
+    if arch:
+        return arch
+    return "deepseek41" if str(pre or "").startswith("deepseek") else None
+
+
 #: AMD (HIP): the rule works there (the HIP reader starts on the first picture, +5.4 s on an R9700, and stops when idle) but is OFF by default: with no shrinking
 #: expert cache on HIP the room has to stay in the reserve, so the engine gets no more slots (R9700, Qwen UD-Q4_K_XL: 7,959 against 7,943 with the reader on the card).
 #: "elastic": true in the vision section asks for it.  Set True if the expert cache can give its room on HIP.
@@ -8082,14 +8345,15 @@ VISION_NO_RESERVE_BY_DEFAULT = True
 
 def vision_on_demand_by_default(cfg: dict) -> bool:
     """True when this config's GPU reader should start on demand without the config saying so: a GPU reader (vision.gpu) of the NVIDIA
-    kind (or AMD's, with its CPU reader) on one GPU, no batch slots, no --kv-grow, no helper caches, and nothing in the vision section that says otherwise.  Not Intel or a Mac (not measured there), not a reader pinned to another card (vision.cuda_device)."""
+    kind (or AMD's, with its CPU reader) on one GPU, no batch slots, no --kv-grow, no helper caches, and nothing in the vision section that says otherwise.  Not DeepSeek
+    (its own tower), not Intel or a Mac (not measured there), not a reader pinned to another card (vision.cuda_device)."""
     vis = cfg.get("vision")
     if not VISION_ON_DEMAND_BY_DEFAULT or not isinstance(vis, dict) or vis.get("gpu") is not True or "elastic" in vis:
         return False
     if vis.get("cuda_device") is not None or sys.platform == "darwin":
         return False
     backend = cfg.get("backend")
-    if backend not in (None, "cuda", "hip"):
+    if (cfg.get("arch") or "") == "deepseek41" or backend not in (None, "cuda", "hip"):
         return False
     args = [str(a) for a in (cfg.get("args") or [])]
     if len(gpu_list(cfg)) > 1 or parallel_slots(cfg) or any(a in args for a in _ON_DEMAND_NOT_WITH):
@@ -8286,11 +8550,6 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
     config_bytes = Path(a.config).read_bytes() if a.config else b""
     cfg = parse_config_text(config_bytes.decode("utf-8-sig"), a.config) if a.config else {}   # Notepad adds a BOM
     split_joined_args(cfg)
-    from strata_control import retired
-    _ds = retired.config_reason(cfg) if a.config else None
-    if _ds:                                             # DeepSeek: this Strata no longer runs it; stop before the engine starts (retired.py)
-        print(retired.server_line(_ds), flush=True)
-        return 2
     if a.config and a.engine == "strata":
         cfg = apply_saved_tuning(cfg)
     attestation_key = os.environ.pop("STRATA_OWNER_ATTEST_KEY", None)
@@ -8377,7 +8636,7 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
             tokens[i] = t
         merges = (tpath / "merges.txt").read_text(encoding="utf-8").split("\n")
         types = json.loads((tpath / "token_type.json").read_text())
-        try:                                            # the pack's pre-tokenizer name and special ids
+        try:                                            # the pack's pre-tokenizer name and special ids (DeepSeek's differ)
             tcfg = json.loads((tpath / "tokenizer.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             pass
@@ -8385,6 +8644,10 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
             tok = ST.Tokenizer(tokens, merges, types, tcfg.get("pre") or "qwen35", tcfg.get("special_ids") or None)
         except ST.UnknownPreTokenizer as e:             # a model with its own splitting rule: stop here, never split with another's
             ap.error(f"the model's tokenizer ({tpath}): {e}")
+    if a.engine == "strata" and not cfg.get("arch") and arch_from_tokenizer(None, tcfg.get("pre")):
+        cfg["arch"] = arch_from_tokenizer(None, tcfg.get("pre"))
+        print(f"[strata] the config names no \"arch\" and this tokenizer is DeepSeek's: serving it as {cfg['arch']} (its end token, DSML tool "
+              f"calls and effort words); add \"arch\": \"{cfg['arch']}\" to the config to say it outright", flush=True)
     hub = hub_from_config(cfg, a.mcp_config)            # before the minutes of loading: a bad entry stops here
     if a.offline and (hub is not None or cfg.get("before_load") or a.before_load):
         ap.error("--offline requires MCP servers and before_load commands to be disabled in this profile")
@@ -8502,17 +8765,30 @@ def _main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> i
             delay_s=getattr(a, "script_delay", 0.0) or 0.0), None, {}
     # the model's own chat template (exported with its tokenizer), else the original model's
     tpl = tpath / "chat_template.jinja"
+    if (cfg.get("arch") or "") == "deepseek41":
+        from serve import dsml
+        tpl, swapped = dsml.pick_template(tpl)
+        if swapped:
+            print("[strata] this pack's chat template spells the tool-call block differently from the V4.1 model's; "
+                  "using the V4.1 template so tool calls come back as real calls", flush=True)
     svc = Service(engine, tok, ChatTemplate(tpl if tpl.exists() else ROOT / "serve/chat_template.jinja"),
                   model_name=default_model_name(cfg), vision=vision,
                   sampling_defaults=sampling_defaults,
                   fit_max_tokens=a.fit_max_tokens or (not a.no_fit_max_tokens and cfg.get("fit_max_tokens") is not False))
     svc.launch_attestation = launch_attestation
+    if (cfg.get("arch") or "") == "deepseek41" and vision is None and a.engine == "strata":
+        # DeepSeek-V4.1 reads pictures with the engine's own tower (--vision on, the default): no separate reader process.
+        # `--vision off` in the config's args, or a pack without a tower, leaves svc.vision None: pictures are refused with the 400 as before.
+        _dsp = DsPictures.from_config(cfg, tmp_dir=Path(cfg["log"]).parent / "ds-pictures" if cfg.get("log") else None)
+        if _dsp is not None:
+            svc.vision = _dsp
+            print("[strata] pictures: on (DeepSeek-V4.1 reads them with the engine's own vision tower; --vision off turns them off)", flush=True)
     svc.offline = a.offline
     svc.max_queue = max_queue
     svc.queue_timeout_s = float(queue_timeout) if queue_timeout is not None else None
     if a.engine == "strata":                            # the model card's sampling when nothing else is said (see MODEL_CARD_SAMPLING)
         svc.model_arch = cfg.get("arch") or "qwen4exp"
-        svc.set_family(None)
+        svc.set_family(svc.model_arch if svc.model_arch == "deepseek41" else None)
         requested = cfg.get("parallel")
         if requested is None:
             args = cfg.get("args", [])

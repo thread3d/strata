@@ -108,9 +108,6 @@ def applies(switch: Switch | str, cfg: Mapping[str, Any] | None, gpus: Iterable[
     """Does the switch make sense for this model on this PC? ``backend`` is the engine's (cuda, hip, sycl, metal, cpu); the run config's own wins.
     "Faster long prompts" is for Qwen3.8-Flash-Next models only (a config without an "arch")."""
     sw = BY_ID[switch] if isinstance(switch, str) else switch
-    from strata_control import retired
-    if retired.config_reason(cfg):                   # a DeepSeek config (strata_control/retired.py): this Strata does not run it
-        return False
     if sw.only == "qwen-any":
         return True
     backend = (cfg or {}).get("backend") or backend

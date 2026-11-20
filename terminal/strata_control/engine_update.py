@@ -38,20 +38,25 @@ NEXT_STEP = "`strata update`"
 # ---------------------------------------------------------------------------------------------------- the notice
 
 def _installed_words(root) -> dict:
-    return {"engine": ec.newest_installed_version(root)}
+    return {"engine": ec.newest_installed_version(root), "dsv41": ec._installed_dsv41_version()}
 
 
 def notice(root=None) -> dict | None:
-    """What the last check found newer, as {"engine": v, "have": {...}, "line": plain sentence}, or None.  Local files only."""
+    """What the last check found newer, as {"engine": v|None, "dsv41": v|None, "have": {...}, "line": plain sentence}, or None.  Local files only."""
     offers = ec.cached_offers(root)
-    engine = offers.get("engine")
-    if not engine:
+    engine, dsv = offers.get("engine"), offers.get("dsv41")
+    if not engine and not dsv:
         return None
     have = _installed_words(root)
-    if not have["engine"]:                  # no engine yet: the launch installs the newest one itself, so there is nothing to update first
+    if not have["engine"] and not have.get("dsv41"):   # nothing installed yet: the launch installs the newest one itself, so there is nothing to update first
         return None
-    head ="A new " + f"engine {engine}" + (f" (you have {have['engine']})" if have["engine"] else "") + " is available"
-    return {"engine": engine, "have": have, "line": head}
+    parts = []
+    if engine:
+        parts.append(f"engine {engine}" + (f" (you have {have['engine']})" if have["engine"] else ""))
+    if dsv:
+        parts.append(f"DeepSeek engine {dsv}" + (f" (you have {have['dsv41']})" if have["dsv41"] else ""))
+    head = "A new " + parts[0] + " is available" if len(parts) == 1 else "New engines are available: " + ", ".join(parts)
+    return {"engine": engine, "dsv41": dsv, "have": have, "line": head}
 
 
 def notice_line(root=None, how: str = f"Update with {NEXT_STEP}.") -> str | None:
@@ -138,7 +143,10 @@ def monitor_note(root=None) -> str | None:
     found = notice(root)
     if found is None:
         return None
-    return f"New engine {found['engine']} is available. Press u to update."
+    if found["engine"] and found["dsv41"]:
+        return "New engines are available. Press u to update."
+    return (f"New engine {found['engine']} is available. Press u to update." if found["engine"]
+            else f"New DeepSeek engine {found['dsv41']} is available. Press u to update.")
 
 
 # ---------------------------------------------------------------------------------------------------- models that are loaded
@@ -439,7 +447,7 @@ def summary(out: dict) -> str:
     """One plain sentence for what an update did, for a screen that has one line (the monitor)."""
     parts = []
     for r in out.get("results", []):
-        name = {"engine": "Engine", "control": "Control"}.get(r.get("component"), str(r.get("component")))
+        name = {"engine": "Engine", "dsv41": "DeepSeek engine", "control": "Control"}.get(r.get("component"), str(r.get("component")))
         status = r.get("status")
         if status == "updated":
             parts.append(f"{name} is now {r.get('installed_after') if isinstance(r.get('installed_after'), str) else (r.get('installed_after') or {}).get('version', 'new')}")
