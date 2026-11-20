@@ -11,9 +11,9 @@ if [ -x python/bin/python3 ]; then
   unset PYTHONHOME PYTHONPATH
   exec python/bin/python3 setup.py "$@"
 fi
-# Python 3.10+ that can make a venv WITH pip: Debian/Ubuntu ship `venv` without `ensurepip` (that is the separate
+# Python 3.11+ that can make a venv WITH pip: Debian/Ubuntu ship `venv` without `ensurepip` (that is the separate
 # python3-venv package), and a venv made without it has no pip
-ok_py() { "$1" -c 'import sys, venv, ensurepip; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; }
+ok_py() { "$1" -c 'import sys, venv, ensurepip; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; }
 # a .venv from an earlier run that failed half-way has a python but no pip: start it again
 if [ -x .venv/bin/python ] && ! .venv/bin/python -m pip --version >/dev/null 2>&1; then
   rm -rf .venv
@@ -40,7 +40,7 @@ if [ ! -x .venv/bin/python ]; then
   if [ -z "$PY" ] && [ "$(uname -s)" = Darwin ]; then
     if [ ! -x .python/python/bin/python3 ]; then
       PBS="https://github.com/astral-sh/python-build-standalone/releases/download/20261009/cpython-3.12.15%2B20261009-aarch64-apple-darwin-install_only.tar.gz"
-      echo "Python 3.10+ is needed; downloading a standalone Python 3.12 into .python (25 MB) ..."
+      echo "Python 3.11+ is needed; downloading a standalone Python 3.12 into .python (25 MB) ..."
       mkdir -p .python && curl -fL --retry 3 -o .python/python.tar.gz "$PBS" || { echo "could not download Python"; exit 1; }
       if [ "$(shasum -a 256 .python/python.tar.gz | cut -d" " -f1)" != "83dcb04777c798bd95f3687acf9ae84b09860272ee6bdfb05be8bcf9447f75b8" ]; then
         rm -f .python/python.tar.gz; echo "the Python download does not match its pinned SHA-256"; exit 1
@@ -50,7 +50,7 @@ if [ ! -x .venv/bin/python ]; then
     PY=.python/python/bin/python3
   fi
   if [ -z "$PY" ]; then
-    echo "Python 3.10+ with venv is needed; installing it (sudo will ask for your password) ..."
+    echo "Python 3.11+ with venv is needed; installing it (sudo will ask for your password) ..."
     if command -v apt-get >/dev/null 2>&1; then
       sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip
     elif command -v dnf >/dev/null 2>&1; then
@@ -60,7 +60,7 @@ if [ ! -x .venv/bin/python ]; then
     fi
     PY=python3
     if ! ok_py $PY; then
-      echo "Please install Python 3.10 or newer with venv (Ubuntu/Debian: sudo apt install python3-venv), then run"
+      echo "Please install Python 3.11 or newer with venv (Ubuntu/Debian: sudo apt install python3-venv), then run"
       echo "./setup.sh again. On NixOS, add uv to environment.systemPackages."
       exit 1
     fi

@@ -42,7 +42,7 @@ between baseline and candidate measurements.
 ROOT=/path/to/strata-work
 cd "$ROOT/strata-rebuild"
 
-# Python 3.10+ is required. macOS ships 3.9, so use setup.sh's bundled interpreter or a 3.11+
+# Python 3.11+ is required. macOS ships 3.9, so use setup.sh's bundled interpreter or a 3.11+ venv
 # (this checkout was developed against a Homebrew python3.11 venv).
 python3 --version
 

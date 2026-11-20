@@ -14,7 +14,7 @@ Cursor, VS Code, Codex ...). Add it once ([Quick start](#add-it)), then ask in p
 
 The assistant calls the server's tools. The tools run Strata's own setup and start the model the way the start
 scripts do. It is one Python file that uses only the standard library, so it works before setup has created
-`.venv`. It needs Python 3.10 or newer, 64-bit on Windows.
+`.venv`. It needs Python 3.11 or newer, 64-bit on Windows.
 
 It is not the same thing as [Tools from MCP servers](DETAILS.md#tools-from-mcp-servers). That feature
 (`serve/mcp.py`) lets the *Strata model* call tools from your MCP servers in its chat page. This page is the other
@@ -201,7 +201,7 @@ If a config of the folder sets an `api_key`, the tool sends that key with its ow
 - **The assistant does not see the tools.** Run the command by hand:
   `python C:\Users\you\Strata\tools\strata_mcp.py`. It should print `[strata-mcp] ready (Strata folder ...)` to
   stderr and wait for input (Ctrl+C ends it). If it reports `not a Strata folder`, the path is wrong or `--root` is
-  needed. Python older than 3.10 is refused.
+  needed. Python older than 3.11 is refused.
 - **The install failed.** Ask the assistant for the setup log (`strata_logs` with `source: setup`), or open
   `.strata-mcp/setup.log`. Setup's `[X]` line says what to fix. Then install again: every finished step is skipped.
 - **The model does not start.** Get the server log with `strata_logs`, and the engine log with `source: engine`.

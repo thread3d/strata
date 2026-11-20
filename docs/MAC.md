@@ -89,7 +89,7 @@ git clone https://github.com/Niko1221/Strata && cd Strata
 
 What the first run does (each step is skipped when it is already done):
 
-1. **Python.** It needs Python 3.10 or newer, but macOS ships 3.9. If that is all your Mac has, `setup.sh` downloads a standalone
+1. **Python.** It needs Python 3.11 or newer, but macOS ships 3.9. If that is all your Mac has, `setup.sh` downloads a standalone
    Python 3.12 (25 MB, pinned by SHA-256) into `.python`. No sudo, no Homebrew.
 2. **Checks your Mac:** the chip, the memory, the macOS version, the Command Line Tools and the free disk.
 3. **Python packages** into `.venv`. CMake and Ninja come from pip too, installed just before the build.

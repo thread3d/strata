@@ -51,7 +51,7 @@ Start a model with its run script (`./run-iq3_s.sh`) or `./setup.sh`.
 
 ## Build the engine yourself
 
-You need the CUDA 13.0 toolkit (`/usr/local/cuda`; DGX OS has it), cmake, ninja and Python 3.10 or newer.
+You need the CUDA 13.0 toolkit (`/usr/local/cuda`; DGX OS has it), cmake, ninja and Python 3.11 or newer.
 
 ```sh
 python3 -m venv .venv-build
