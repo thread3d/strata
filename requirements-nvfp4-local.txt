@@ -1,15 +1,18 @@
 # Packages only the NVIDIA FP4-Local (QAD) conversion needs (#3227): setup installs them right before tools/nvfp4_local_pack.py prepare runs,
 # and only then. llama.cpp's converter imports torch and transformers; safetensors reads NVIDIA's shards.
 # Licenses: torch BSD-3-Clause, transformers Apache-2.0, safetensors Apache-2.0 (all permissive; nothing of them is shipped with Strata).
-# Pinned to the versions of the PC the conversion is developed on (torch 2.9.1 is the CPU build on Windows; on Linux setup asks for the CPU wheel).
-# torch 2.9.1 has no CPU wheel for Python 3.15 on the PyTorch index, so setup stopped with "No matching distribution found for
-# torch==2.9.1" there (#3474); from Python 3.14 on, 2.14.1 (+cpu wheels cp310-cp315 on Linux and Windows). Older Pythons keep 2.9.1.
-torch==2.9.1; python_version < "3.14"
-torch==2.14.1; python_version >= "3.14"
+# Pinned to the versions of the PC the conversion is developed on (on Linux setup asks for the CPU wheel).
+# torch 2.14.1 is one pin for Python 3.10-3.15, so the per-version split is gone: PyPI carries cp310-cp314 wheels for
+# Linux and Windows, and the PyTorch CPU index that setup adds on Linux carries +cpu wheels up to cp315.  (The split was
+# there for #3474: 2.9.1 had no cp315 CPU wheel.)  Three Dependabot advisories were open against 2.9.1, and 2.14.1 is
+# past all of them: GHSA-63cw-57p8-fm3p and GHSA-qfhq-4f3w-5fph (RCE via untrusted checkpoints, and torch.jit.script
+# memory corruption), fixed in 2.10.0, and GHSA-rrmf-rvhw-rf47 (torch.lstm_cell memory corruption), fixed in 2.13.0.
+torch==2.14.1
 # 5.10.1 is the smallest release that clears every transformers advisory Dependabot reports against 4.57.6 (all four
 # high: GHSA-29pf-2h5f-8g72 fixed in 5.3.0, GHSA-fgcw-684q-jj6r in 5.5.0, GHSA-xrqw-3rrv-vx5w in 5.10.0, and
 # GHSA-69w3-r845-3855 in 5.0.0rc3).  5.10.0 itself is yanked on PyPI ("pushed from a week old main branch"), so the pin
-# is 5.10.1.  One advisory (GHSA-x9r9-c232-4q39) has no fixed version yet and stays open.  The converter only needs
+# is 5.10.1.  The fifth advisory (GHSA-x9r9-c232-4q39) names no fixed release, but OSV gives its affected range as
+# 4.49.0 to 5.8.1 (last_affected), so 5.10.1 is outside it as well.  The converter only needs
 # `from transformers import AutoConfig` (tools/nvfp4_local_pack.py), so the API surface is small - but this crosses a
 # major version and the conversion was NOT run against it; revert this line if `prepare` regresses.
 transformers==5.10.1
