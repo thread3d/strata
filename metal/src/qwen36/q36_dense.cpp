@@ -141,7 +141,22 @@ bool dense_gemv(mtl::Context& cx, DenseKernels& k, const DenseMatrix& W, const m
     d.grid[1] = d.grid[2] = 1;
     d.tg[0] = (uint32_t) (c.S * 32);
     d.tg[1] = d.tg[2] = 1;
+    if (std::getenv("Q36_TRACE") && W.type == 0 && W.n_in == 2048) {
+        std::fprintf(stderr, "DEBUG: about to dispatch gemv_0_16_1_4_1 n_out=%d grid=%d tg=%d\\n", W.n_out, (int)d.grid[0], (int)d.tg[0]);
+        std::fprintf(stderr, "DEBUG: W.buf first 4: %g %g %g %g\\n", ((const float*)W.buf->ptr)[0], ((const float*)W.buf->ptr)[1], ((const float*)W.buf->ptr)[2], ((const float*)W.buf->ptr)[3]);
+        const float* xd = (const float*)s.xp.ptr;
+        std::fprintf(stderr, "DEBUG: xp plane0 first 4: %g %g %g %g\\n", xd[0], xd[1], xd[2], xd[3]);
+        std::fflush(stderr);
+    }
     cx.run({d});
+    if (std::getenv("Q36_TRACE") && W.type == 0 && W.n_in == 2048) {
+        std::fprintf(stderr, "DEBUG: gemv_0_16_1_4_1 dispatch DONE n_out=%d\\n", W.n_out);
+        const float* yd = (const float*)y.ptr;
+        for (int i = 0; i < 8 && i < W.n_out; ++i)
+            std::fprintf(stderr, "DEBUG: y[%d]=%g ", i, (double)yd[i]);
+        std::fprintf(stderr, "\\n");
+        std::fflush(stderr);
+    }
     return true;
 }
 

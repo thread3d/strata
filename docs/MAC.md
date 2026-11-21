@@ -1,9 +1,8 @@
 # Strata on a Mac (Apple Silicon, Metal)
 
 This page is for people with an Apple Silicon Mac (M1 or newer). Strata runs there on its own Metal engine: the NVIDIA kernels
-are replaced by Metal ones (`metal/`), and the host code and the server are the PC's. On an Intel Mac the app and the setup path
-still stop (the engine builds there - [An Intel Mac](#an-intel-mac)) - but one model family now **runs** there too:
-Qwen3.6-35B-A3B on Metal, measured on the same RX 580 Mac, is [its own page](qwen36-metal.md).
+are replaced by Metal ones (`metal/`), and the host code and the server are the PC's. Intel Macs cannot run it; the engine does
+build there ([An Intel Mac](#an-intel-mac)).
 
 DeepSeek V4.1-Flash runs on a Mac with 64 GB of memory or more, and reads pictures too: [DEEPSEEK_MAC.md](DEEPSEEK_MAC.md). It has its
 own engine, separate from the Qwen one described on this page.
@@ -284,12 +283,8 @@ The code is in `metal/` (the engine's side in `metal/src/engine`, the kernels in
 
 ## An Intel Mac
 
-The engine **builds** on an Intel Mac, and Strata's app and setup path still do not **run** there: running needs three things the
-Intel Mac does not have (below), and the build no longer stands in the way of finding that out.  One model family is the exception -
-Qwen3.6-35B-A3B on Metal runs, measured, and [is below](#qwen36-35b-a3b-runs-here-measured-2026-11-14) - because it needs none of the three.
-Qwen3.8-Flash-Next also runs on the same card now: 1.06 tok/s decode and 3.3 tok/s prompt on the Q2_0 pack, with coherent
-answers (the quantisation matrix is [here](macpro51-qwen38-benchmarks.md)); [the bring-up record](qwen38-metal-macpro51.md)
-has the two defects that had to be fixed first.
+The engine **builds** on an Intel Mac; it does not **run** there. Running needs three things the Intel Mac does not have (below), and
+the build no longer stands in the way of finding that out.
 
 Measured on: an Intel Mac Pro (2 × 6-core Xeon X5675, 24 threads), 96 GB, Radeon RX 580 8 GB (Metal 2), macOS 11.7.11, Command
 Line Tools 13 (Apple clang 13.0.0, macOS 12.1 SDK). Built there from a git checkout: the engine (`build-metal/strata`), the
@@ -430,55 +425,6 @@ designed.
 
 `./setup.sh --unsupported-mac` still refuses to install DeepSeek's engine package here for the same reason, so the pack has to be
 fetched and built by hand as above.
-
-### Qwen3.6-35B-A3B runs here (measured 2026-11-14)
-
-The three limits above still stop Strata's app and setup path on this Mac, and the Qwen3.8-Flash-Next family still does not run here. One
-family does: **Qwen3.6-35B-A3B (GGUF architecture `qwen35moe`)**, through its own command-line engine. It is a separate program
-(`build-metal/strata-q36-metal`), not `strata launch`, and its page is [QWEN36-METAL.md](qwen36-metal.md).
-
-Since 2026-11-18 every installed pack runs and has been measured: Q4_K_M, Q6_K, Q8_0, UD-Q2_K_XL, UD-Q4_K_XL,
-UD-Q6_K_XL and UD-Q8_K_XL. Five shuffled runs each, a 32-token prompt and 32 greedy tokens, steady state
-(rounds 2-5, mean ± 1 sample standard deviation), on the Mac Pro above:
-
-| pack | decode (tok/s) | prompt (tok/s) |
-| --- | ---: | ---: |
-| UD-Q2_K_XL | 1.02 ± 0.07 | 1.14 ± 0.01 |
-| UD-Q4_K_XL | 1.00 ± 0.01 | 1.07 ± 0.01 |
-| Q6_K | 0.87 ± 0.08 | 0.97 ± 0.01 |
-| Q4_K_M | 0.80 ± 0.08 | 0.94 ± 0.00 |
-| UD-Q6_K_XL | 0.79 ± 0.09 | 0.92 ± 0.01 |
-| UD-Q8_K_XL | 0.78 ± 0.00 | 0.83 ± 0.00 |
-| Q8_0 | 0.72 ± 0.09 | 0.86 ± 0.01 |
-
-The first pass of each pack is cold and costs about 10% more than its steady state; the whole matrix,
-with the per-run log, the cold pass priced separately and SVG charts, is
-[macpro51-quant-benchmarks.md](macpro51-quant-benchmarks.md). The block below describes Q8_0: its
-0.72 tok/s is the same card, five runs instead of the single early run that gave "~1.0 s a token".
-
-Measured on the Mac Pro above (RX 580 8 GB, Metal 2, macOS 11.7.11):
-
-```
-pack            37.8 GB (Qwen3.6-35B-A3B-Q8_0.gguf)
-dense resident  2.52 GiB, uploaded in 3.8 s          <- fits the 3.8 GB maxBufferLength
-experts         32.67 GiB, streamed from the file: 8 slots refilled per layer, 8 x 3.19 MiB a layer, ~1 GiB read a token
-engine state    64.6 MiB
-speed           0.72 tok/s decode, 0.86 tok/s prompt (steady state, five runs; the matrix above)
-correctness     the trunk's hidden states are cos 0.9999 against llama.cpp's, at every layer
-```
-
-and it answers:
-
-```
-$ build-metal/strata-q36-metal --model Qwen3.6-35B-A3B-Q8_0.gguf --tokens 760,6511,314,9338,369 --n 12 --kv-cap 256 --text
-  Paris, a city renowned for its rich history, culture,
-$ ... --chat --n 90 --text
-  ... The capital of Germany is **Berlin**.
-```
-
-Why it works where the app does not: the experts are never resident (they are read from the file into an 8-slot pool a layer at a time),
-the KV ring is small and token-major, and nothing needs `gpuAddress`, a residency set, bf16 or MetalPerformancePrimitives - which is
-exactly the list of things this card lacks above.
 
 ## History / older measurements
 

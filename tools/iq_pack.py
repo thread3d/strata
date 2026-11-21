@@ -712,8 +712,7 @@ def main() -> int:
     # run took as a finished pack (#172).  It is the pack's completion marker, so it is published last.
     htmp = out / "hadamard.txt.tmp"
     if had is not None:
-        with open(htmp, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(had)
+        htmp.write_text(had, encoding="utf-8", newline="\n")
         htmp.replace(out / "hadamard.txt")
     else:
         (out / "hadamard.txt").unlink(missing_ok=True)      # a previous Hadamard model's, packed into this folder

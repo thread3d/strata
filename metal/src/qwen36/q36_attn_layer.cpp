@@ -88,7 +88,17 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
     const size_t row = (size_t) (n_kv - 1) * hkv;   // this token's row, token-major
 
     // 1. the three input projections, all against the same prepared activation
+    if (std::getenv("Q36_TRACE_H")) {   // THE ROW THIS LAYER ACTUALLY PROJECTS: the one number that settles the wiring question
+        const float* hh = (const float*) h.ptr;
+        std::printf("attn_forward h[0..2] = %g %g %g   (dumped s.h was -0.3494 -0.1587 1.5184)\n", (double) hh[0], (double) hh[1],
+                    (double) hh[2]);
+        std::fflush(stdout);
+    }
     if (!dense_gemv(cx, dk, w.q, h, s.qg, ds, err)) return false;
+    if (std::getenv("Q36_TRACE_QG")) {   // qg[0] the moment it is produced: 0.331396 means someone overwrites s.qg later, 5.04 means two
+        std::printf("attn_forward qg[0] = %.6g after the gemv\n", (double) ((const float*) s.qg.ptr)[0]);   // identical gemvs disagree
+        std::fflush(stdout);
+    }
     if (!dense_gemv(cx, dk, w.k, h, s.k_raw, ds, err)) return false;
     if (!dense_gemv(cx, dk, w.v, h, s.v_raw, ds, err)) return false;
 
@@ -134,6 +144,7 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
     da.tg[1] = da.tg[2] = 1;
 
     cx.run({dq, dk_, dv, da});
+    if (std::getenv("Q36_TRACE_QG")) { std::printf("  qg[0] after the group = %.6g\n", (double) ((const float*) s.qg.ptr)[0]); std::fflush(stdout); }
     static size_t attn_call = 0;
     const size_t this_call = attn_call++;
     const char* want_n = std::getenv("Q36_DUMP_ATTN_N");
@@ -150,6 +161,7 @@ bool attn_forward(mtl::Context& cx, AttnKernels& k, DenseKernels& dk, DenseScrat
             std::fclose(fv);
         }
     }
+    if (std::getenv("Q36_TRACE_QG")) { std::printf("  qg[0] after attention = %.6g\n", (double) ((const float*) s.qg.ptr)[0]); std::fflush(stdout); }
     if (const char* ap = std::getenv("Q36_DUMP_A"); ap != nullptr && dump_this) {   // the attention's own output, before the o projection: the discriminator
         if (FILE* fa = std::fopen(ap, "wb")) {
             std::fwrite(s.a.ptr, 4, hq, fa);

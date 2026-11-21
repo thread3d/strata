@@ -46,7 +46,7 @@ bool dense_ok(int t) {
 // which expert_parity was run at on this card (h rel L2 1.52e-07 at one token, 1.47e-07 at eight).
 bool expert_gu_ok(int t) {
     switch (t) {
-    case ref::Q2_0: case ref::Q4_K: case ref::Q5_K: case ref::Q6_K: case ref::Q8_0: case ref::BF16:
+    case ref::Q2_0: case ref::Q4_K: case ref::Q5_K: case ref::Q6_K: case ref::Q8_0:
     case ref::IQ2_XXS: case ref::IQ2_XS: case ref::IQ2_S: case ref::IQ3_XXS: case ref::IQ3_S: case ref::IQ4_XS:
         return true;
     default:
@@ -56,7 +56,7 @@ bool expert_gu_ok(int t) {
 bool expert_dn_ok(int t) {
     switch (t) {
     case ref::Q2_0: case ref::Q5_0: case ref::Q5_1: case ref::Q5_K: case ref::Q8_0: case ref::IQ4_NL: case ref::IQ4_XS: case ref::IQ3_S: case ref::IQ3_XXS:
-    case ref::Q4_K: case ref::Q6_K: case ref::Q3_K: case ref::BF16:
+    case ref::Q4_K: case ref::Q6_K: case ref::Q3_K:
         return true;
     default:
         return false;
@@ -165,14 +165,10 @@ bool open(const std::string& path, Model& m, std::string& err) {
         err = r.err;
         return false;
     }
-    // The embedding row: q36_embed has a device kernel for Q8_0, Q6_K and Q4_K; embed_token falls back to the CPU
-    // reference for any other type the dense path accepts (the UD-Q2_K_XL pack's token_embd is Q5_K).  A type the dense
-    // path does not accept is still refused, by the check_type call below.
-    if (m.embed.ok() && !dense_ok(m.embed.type())) {
-        // The tensor's own name for its format, not ref::type_name (which knows only the types the reference decodes):
-        // a file whose embedding is Q4_1 should say Q4_1.
-        const char* tn = m.embed.t != nullptr ? m.embed.t->type_name() : ref::type_name(m.embed.type());
-        err = "token_embd.weight is " + std::string(tn ? tn : "?") + ", which this port cannot decode";
+    // q36_embed dequantizes Q8_0, Q6_K and Q4_K; a table in another format is refused here rather than silently mis-read.
+    if (m.embed.ok() && m.embed.type() != ref::Q8_0 && m.embed.type() != ref::Q6_K && m.embed.type() != ref::Q4_K) {
+        err = "token_embd.weight is " + std::string(ref::type_name(m.embed.type())) +
+              ", q36_embed only supports Q8_0, Q6_K and Q4_K";
         return false;
     }
 
@@ -235,15 +231,9 @@ bool open(const std::string& path, Model& m, std::string& err) {
     for (size_t i = 0; i < m.layers.size(); ++i) {
         const Layer& L = m.layers[i];
         const std::string p = "blk." + std::to_string(i) + ".";
-        // The MTP block is a draft head the engine does not run (q36_forward.cpp skips LayerKind::Mtp), so its routed
-        // experts are never dispatched and never need a grouped-expert kernel.  Its dense tensors are still checked:
-        // upload_dense binds them.  This is what lets the UD-Q2_K_XL pack - whose one MTP block carries Q2_K gate/up and
-        // Q3_K down - open without a Q2_K kernel for a block no token reaches.
-        if (L.kind != strata::core::LayerKind::Mtp) {
-            if (!check_type(err, L.gate_exps, Role::ExpertGateUp, "grouped expert gate/up")) return false;
-            if (!check_type(err, L.up_exps, Role::ExpertGateUp, "grouped expert gate/up")) return false;
-            if (!check_type(err, L.down_exps, Role::ExpertDown, "grouped expert down")) return false;
-        }
+        if (!check_type(err, L.gate_exps, Role::ExpertGateUp, "grouped expert gate/up")) return false;
+        if (!check_type(err, L.up_exps, Role::ExpertGateUp, "grouped expert gate/up")) return false;
+        if (!check_type(err, L.down_exps, Role::ExpertDown, "grouped expert down")) return false;
         for (const TensorRef* dense : {&L.qkv, &L.sgate, &L.ssm_out, &L.q, &L.k, &L.v, &L.o, &L.gate_shexp, &L.up_shexp,
                                        &L.down_shexp, &L.eh_proj})
             if (!check_type(err, *dense, Role::Dense, "dense matvec")) return false;

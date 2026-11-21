@@ -1,0 +1,846 @@
+[macpro51 da2b6869] Update to upstream: Qwen3.6 support and IQ3_S backend configuration
+ 1360 files changed, 252859 insertions(+), 8948 deletions(-)
+ create mode 100644 .github/ISSUE_TEMPLATE/amd_split_report.yml
+ create mode 100644 .github/workflows/backends.yml
+ create mode 100644 .github/workflows/check.yml
+ create mode 100644 .github/workflows/docs.yml
+ create mode 100644 .github/workflows/snapshot.yml
+ rewrite CMakeLists.txt (84%)
+ create mode 100644 CMakePresets.json
+ create mode 100644 apps/desktop/scripts/appimage_elf.py
+ create mode 100644 apps/desktop/src-tauri/src/fontguard.rs
+ create mode 100644 apps/desktop/src-tauri/src/recovery.rs
+ rewrite apps/host/audit-fixes/README.md (99%)
+ create mode 100644 apps/host/docs/BACKLOG.md
+ create mode 100644 apps/host/docs/README.md
+ create mode 100644 apps/host/docs/persona-review-2026-10-05/README.md
+ rewrite apps/host/docs/plans/README.md (99%)
+ create mode 100644 apps/host/scripts/agent-lost-e2e.mjs
+ create mode 100644 apps/host/scripts/browser.mjs
+ create mode 100644 apps/host/scripts/load-pictures-e2e.mjs
+ create mode 100644 apps/host/scripts/make-chatsave-locales.py
+ create mode 100644 apps/host/scripts/make-df2-locales.py
+ create mode 100644 apps/host/scripts/make-engine-locales.py
+ create mode 100644 apps/host/scripts/make-gui-locales.py
+ create mode 100644 apps/host/scripts/make-net-locales.py
+ create mode 100644 apps/host/scripts/make-pick-locales.py
+ create mode 100644 apps/host/scripts/make-r3-locales.py
+ create mode 100644 apps/host/scripts/make-ui-locales.py
+ create mode 100644 apps/host/scripts/make-update-locales.py
+ delete mode 100644 apps/host/scripts/sync-design-kit.mjs
+ create mode 100644 apps/host/scripts/ui-do-drive.mjs
+ create mode 100644 apps/host/server/agent/reply-cut.mjs
+ create mode 100644 apps/host/server/agent/user-questions.mjs
+ create mode 100644 apps/host/server/chat-store.mjs
+ create mode 100644 apps/host/server/engine-library.mjs
+ create mode 100644 apps/host/server/policy-generated.mjs
+ create mode 100644 apps/host/server/process-tree.mjs
+ create mode 100644 apps/host/server/stream-beat.mjs
+ create mode 100644 apps/host/src/components/ApprovalCard.tsx
+ create mode 100644 apps/host/src/components/CodePreviewBtn.tsx
+ create mode 100644 apps/host/src/components/CopyBtn.tsx
+ create mode 100644 apps/host/src/components/EngineUpdateCard.tsx
+ create mode 100644 apps/host/src/components/EngineUpdateDialog.tsx
+ create mode 100644 apps/host/src/components/FirstRunLanguage.tsx
+ create mode 100644 apps/host/src/components/PcComputer.tsx
+ rewrite apps/host/src/components/PcFitCard.tsx (65%)
+ create mode 100644 apps/host/src/components/PreviewMarkdown.tsx
+ rewrite apps/host/src/components/PrivacyNotes.tsx (77%)
+ create mode 100644 apps/host/src/components/QuestionCard.tsx
+ create mode 100644 apps/host/src/components/SettingsEngine.tsx
+ rewrite apps/host/src/components/VersionPicker.tsx (71%)
+ create mode 100644 apps/host/src/lib/agent-ask.ts
+ create mode 100644 apps/host/src/lib/approvals.ts
+ create mode 100644 apps/host/src/lib/catalog-de.ts
+ create mode 100644 apps/host/src/lib/catalog-es.ts
+ create mode 100644 apps/host/src/lib/catalog-fr.ts
+ create mode 100644 apps/host/src/lib/catalog-ja.ts
+ create mode 100644 apps/host/src/lib/catalog-ko.ts
+ create mode 100644 apps/host/src/lib/catalog-pt.ts
+ create mode 100644 apps/host/src/lib/catalog-ru.ts
+ create mode 100644 apps/host/src/lib/catalog-zh.ts
+ create mode 100644 apps/host/src/lib/chat-sync.ts
+ create mode 100644 apps/host/src/lib/code-language.ts
+ create mode 100644 apps/host/src/lib/code-preview.ts
+ create mode 100644 apps/host/src/lib/default-context.ts
+ create mode 100644 apps/host/src/lib/default-sizes.ts
+ create mode 100644 apps/host/src/lib/draft-view.ts
+ rewrite apps/host/src/lib/drafting.ts (81%)
+ create mode 100644 apps/host/src/lib/engine-list.ts
+ create mode 100644 apps/host/src/lib/engines.ts
+ create mode 100644 apps/host/src/lib/ime-enter.ts
+ create mode 100644 apps/host/src/lib/language-detect.ts
+ create mode 100644 apps/host/src/lib/lazy-screen.ts
+ create mode 100644 apps/host/src/lib/open-external.ts
+ create mode 100644 apps/host/src/lib/overlay-place.ts
+ create mode 100644 apps/host/src/lib/pictures-choice.ts
+ create mode 100644 apps/host/src/lib/preview-merge.ts
+ create mode 100644 apps/host/src/lib/preview-render.ts
+ create mode 100644 apps/host/src/lib/quotes.ts
+ create mode 100644 apps/host/src/lib/recovery.ts
+ rewrite apps/host/src/lib/session-persist.ts (76%)
+ create mode 100644 apps/host/src/lib/title-text.ts
+ create mode 100644 apps/host/src/lib/use-copy.ts
+ create mode 100644 apps/host/src/lib/use-elapsed.ts
+ create mode 100644 apps/host/src/lib/while-busy.ts
+ create mode 100644 apps/host/src/locales/df2-de.json
+ create mode 100644 apps/host/src/locales/df2-en.json
+ create mode 100644 apps/host/src/locales/df2-es.json
+ create mode 100644 apps/host/src/locales/df2-fr.json
+ create mode 100644 apps/host/src/locales/df2-ja.json
+ create mode 100644 apps/host/src/locales/df2-ko.json
+ create mode 100644 apps/host/src/locales/df2-pt.json
+ create mode 100644 apps/host/src/locales/df2-ru.json
+ create mode 100644 apps/host/src/locales/df2-zh.json
+ create mode 100644 apps/host/src/locales/engine-de.json
+ create mode 100644 apps/host/src/locales/engine-en.json
+ create mode 100644 apps/host/src/locales/engine-es.json
+ create mode 100644 apps/host/src/locales/engine-fr.json
+ create mode 100644 apps/host/src/locales/engine-ja.json
+ create mode 100644 apps/host/src/locales/engine-ko.json
+ create mode 100644 apps/host/src/locales/engine-pt.json
+ create mode 100644 apps/host/src/locales/engine-ru.json
+ create mode 100644 apps/host/src/locales/engine-zh.json
+ create mode 100644 apps/host/src/locales/gui-de.json
+ create mode 100644 apps/host/src/locales/gui-en.json
+ create mode 100644 apps/host/src/locales/gui-es.json
+ create mode 100644 apps/host/src/locales/gui-fr.json
+ create mode 100644 apps/host/src/locales/gui-ja.json
+ create mode 100644 apps/host/src/locales/gui-ko.json
+ create mode 100644 apps/host/src/locales/gui-pt.json
+ create mode 100644 apps/host/src/locales/gui-ru.json
+ create mode 100644 apps/host/src/locales/gui-zh.json
+ create mode 100644 apps/host/src/locales/net-de.json
+ create mode 100644 apps/host/src/locales/net-en.json
+ create mode 100644 apps/host/src/locales/net-es.json
+ create mode 100644 apps/host/src/locales/net-fr.json
+ create mode 100644 apps/host/src/locales/net-ja.json
+ create mode 100644 apps/host/src/locales/net-ko.json
+ create mode 100644 apps/host/src/locales/net-pt.json
+ create mode 100644 apps/host/src/locales/net-ru.json
+ create mode 100644 apps/host/src/locales/net-zh.json
+ create mode 100644 apps/host/src/locales/pic-de.json
+ create mode 100644 apps/host/src/locales/pic-en.json
+ create mode 100644 apps/host/src/locales/pic-es.json
+ create mode 100644 apps/host/src/locales/pic-fr.json
+ create mode 100644 apps/host/src/locales/pic-ja.json
+ create mode 100644 apps/host/src/locales/pic-ko.json
+ create mode 100644 apps/host/src/locales/pic-pt.json
+ create mode 100644 apps/host/src/locales/pic-ru.json
+ create mode 100644 apps/host/src/locales/pic-zh.json
+ create mode 100644 apps/host/src/locales/pick-de.json
+ create mode 100644 apps/host/src/locales/pick-en.json
+ create mode 100644 apps/host/src/locales/pick-es.json
+ create mode 100644 apps/host/src/locales/pick-fr.json
+ create mode 100644 apps/host/src/locales/pick-ja.json
+ create mode 100644 apps/host/src/locales/pick-ko.json
+ create mode 100644 apps/host/src/locales/pick-pt.json
+ create mode 100644 apps/host/src/locales/pick-ru.json
+ create mode 100644 apps/host/src/locales/pick-zh.json
+ create mode 100644 apps/host/src/locales/r3-de.json
+ create mode 100644 apps/host/src/locales/r3-en.json
+ create mode 100644 apps/host/src/locales/r3-es.json
+ create mode 100644 apps/host/src/locales/r3-fr.json
+ create mode 100644 apps/host/src/locales/r3-ja.json
+ create mode 100644 apps/host/src/locales/r3-ko.json
+ create mode 100644 apps/host/src/locales/r3-pt.json
+ create mode 100644 apps/host/src/locales/r3-ru.json
+ create mode 100644 apps/host/src/locales/r3-zh.json
+ create mode 100644 apps/host/src/locales/sav-de.json
+ create mode 100644 apps/host/src/locales/sav-en.json
+ create mode 100644 apps/host/src/locales/sav-es.json
+ create mode 100644 apps/host/src/locales/sav-fr.json
+ create mode 100644 apps/host/src/locales/sav-ja.json
+ create mode 100644 apps/host/src/locales/sav-ko.json
+ create mode 100644 apps/host/src/locales/sav-pt.json
+ create mode 100644 apps/host/src/locales/sav-ru.json
+ create mode 100644 apps/host/src/locales/sav-zh.json
+ create mode 100644 apps/host/src/locales/ui-de.json
+ create mode 100644 apps/host/src/locales/ui-en.json
+ create mode 100644 apps/host/src/locales/ui-es.json
+ create mode 100644 apps/host/src/locales/ui-fr.json
+ create mode 100644 apps/host/src/locales/ui-ja.json
+ create mode 100644 apps/host/src/locales/ui-ko.json
+ create mode 100644 apps/host/src/locales/ui-pt.json
+ create mode 100644 apps/host/src/locales/ui-ru.json
+ create mode 100644 apps/host/src/locales/ui-zh.json
+ create mode 100644 apps/host/src/locales/upd-de.json
+ create mode 100644 apps/host/src/locales/upd-en.json
+ create mode 100644 apps/host/src/locales/upd-es.json
+ create mode 100644 apps/host/src/locales/upd-fr.json
+ create mode 100644 apps/host/src/locales/upd-ja.json
+ create mode 100644 apps/host/src/locales/upd-ko.json
+ create mode 100644 apps/host/src/locales/upd-pt.json
+ create mode 100644 apps/host/src/locales/upd-ru.json
+ create mode 100644 apps/host/src/locales/upd-zh.json
+ create mode 100644 apps/host/src/styles/engine-tab.css
+ create mode 100644 apps/host/src/styles/liquid.css
+ create mode 100644 apps/host/tests/agent-lost.test.mjs
+ create mode 100644 apps/host/tests/agent-os-line.test.mjs
+ create mode 100644 apps/host/tests/applin-0214-drafter.test.mjs
+ create mode 100644 apps/host/tests/applin-0214.test.mjs
+ create mode 100644 apps/host/tests/arcfix-updated-control.test.mjs
+ create mode 100644 apps/host/tests/bad-host-header.test.mjs
+ create mode 100644 apps/host/tests/bootstrap-hang-0213.test.mjs
+ create mode 100644 apps/host/tests/chat-details.test.mjs
+ create mode 100644 apps/host/tests/chat-heartbeat.test.mjs
+ create mode 100644 apps/host/tests/chat-save-notice.test.mjs
+ create mode 100644 apps/host/tests/chat-store-api.test.mjs
+ create mode 100644 apps/host/tests/chat-store.test.mjs
+ create mode 100644 apps/host/tests/data/policy-vectors.json
+ create mode 100644 apps/host/tests/default-sizes.test.mjs
+ create mode 100644 apps/host/tests/df2ux-0213.test.mjs
+ create mode 100644 apps/host/tests/engine-tab-shapes.test.mjs
+ create mode 100644 apps/host/tests/engine-tab.test.mjs
+ create mode 100644 apps/host/tests/engine-update-card.test.mjs
+ create mode 100644 apps/host/tests/engine-update-model.test.mjs
+ create mode 100644 apps/host/tests/family-menu-feed.test.mjs
+ create mode 100644 apps/host/tests/fit-label-rule.test.mjs
+ create mode 100644 apps/host/tests/fixtures/engine-preview.mjs
+ create mode 100644 apps/host/tests/gui-fb2.test.mjs
+ create mode 100644 apps/host/tests/helpers/fake-host-chats.mjs
+ create mode 100644 apps/host/tests/ime-enter.test.mjs
+ create mode 100644 apps/host/tests/kit-copy.test.mjs
+ create mode 100644 apps/host/tests/load-pictures.test.mjs
+ create mode 100644 apps/host/tests/markdown-crlf.test.mjs
+ create mode 100644 apps/host/tests/models-installed-pending-0213.test.mjs
+ create mode 100644 apps/host/tests/native-checking-0213.test.mjs
+ create mode 100644 apps/host/tests/native-ds-parallel.test.mjs
+ create mode 100644 apps/host/tests/net-waiting.test.mjs
+ create mode 100644 apps/host/tests/new-chat-button.test.mjs
+ create mode 100644 apps/host/tests/overlay-place.test.mjs
+ create mode 100644 apps/host/tests/own-path-fit.test.mjs
+ create mode 100644 apps/host/tests/parallel-chats.test.mjs
+ create mode 100644 apps/host/tests/pc-card.test.mjs
+ create mode 100644 apps/host/tests/pictures-hold.test.mjs
+ create mode 100644 apps/host/tests/policy-generated.test.mjs
+ create mode 100644 apps/host/tests/preview-render.test.mjs
+ create mode 100644 apps/host/tests/preview-stale.test.mjs
+ create mode 100644 apps/host/tests/privacy-paragraph.test.mjs
+ create mode 100644 apps/host/tests/process-tree.test.mjs
+ create mode 100644 apps/host/tests/recovery.test.mjs
+ create mode 100644 apps/host/tests/reserve-3750.test.mjs
+ create mode 100644 apps/host/tests/screen-titles.test.mjs
+ create mode 100644 apps/host/tests/serving-key-compare.test.mjs
+ rewrite apps/host/tests/session-persist.test.mjs (86%)
+ create mode 100644 apps/host/tests/settings-about-updates.test.mjs
+ create mode 100644 apps/host/tests/split-app.test.mjs
+ create mode 100644 apps/host/tests/startup-listens-loopback.test.mjs
+ create mode 100644 apps/host/tests/strix-reserve-app.test.mjs
+ create mode 100644 apps/host/tests/title-text.test.mjs
+ create mode 100644 apps/host/tests/turn-reattach.test.mjs
+ create mode 100644 apps/host/tests/ui-do.test.mjs
+ create mode 100644 apps/host/tests/ui-r3.test.mjs
+ create mode 100644 apps/host/tests/update-messages.test.mjs
+ create mode 100644 apps/host/tests/version-picker.test.mjs
+ create mode 100644 apps/host/tests/window-title.test.mjs
+ create mode 100644 bench/results/README.md
+ create mode 100644 cmake/backends/cpu.cmake
+ create mode 100644 cmake/backends/cuda.cmake
+ create mode 100644 cmake/backends/hip.cmake
+ create mode 100644 cmake/backends/metal.cmake
+ create mode 100644 cmake/backends/sycl.cmake
+ create mode 100644 cmake/strata_geometry.cmake
+ create mode 100644 cmake/strata_ggml.cmake
+ create mode 100644 cmake/strata_gpu_engine.cmake
+ create mode 100644 data/dflash2-tuned/LICENSE
+ create mode 100644 data/dflash2-tuned/NOTICE.md
+ create mode 100644 data/dsv41/coder-set.json
+ create mode 100644 data/dsv41/profile-coder.bin
+ create mode 100644 data/dsv41/profile-coder.bin.sha256
+ create mode 100644 data/settings-register.json
+ create mode 100644 docs/CAPABILITIES.md
+ create mode 100644 docs/SETTINGS.md
+ create mode 100644 docs/SPLIT_ENGINE.md
+ create mode 100644 docs/data/capabilities.json
+ create mode 100644 docs/data/release.json
+ create mode 100644 docs/work/README.md
+ create mode 100644 history/LINK-BASELINE.md
+ create mode 100644 history/README.md
+ rename {apps => history/apps}/host/audit-fixes/FINDING-STATUS.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/PROGRESS.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/PROMPTS.md (100%)
+ copy {apps => history/apps}/host/audit-fixes/README.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/REVIEW.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/apply-chat.py (100%)
+ rename {apps => history/apps}/host/audit-fixes/apply-engine.py (100%)
+ rename {apps => history/apps}/host/audit-fixes/apply-finishing.py (100%)
+ rename {apps => history/apps}/host/audit-fixes/apply-model.py (100%)
+ rename {apps => history/apps}/host/audit-fixes/apply-screens.py (100%)
+ rename {apps => history/apps}/host/audit-fixes/apply-shared.py (100%)
+ rename {apps => history/apps}/host/audit-fixes/baseline-preview-state.json (100%)
+ rename {apps => history/apps}/host/audit-fixes/changed-files.txt (100%)
+ rename {apps => history/apps}/host/audit-fixes/designs/Engine v3.dc.html (100%)
+ rename {apps => history/apps}/host/audit-fixes/designs/Model.dc.html (100%)
+ rename {apps => history/apps}/host/audit-fixes/finding-status.json (100%)
+ rename {apps => history/apps}/host/audit-fixes/findings.json (100%)
+ rename {apps => history/apps}/host/audit-fixes/review-fixture.json (100%)
+ rename {apps => history/apps}/host/audit-fixes/summary.json (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T01-one-model-name.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T02-overlay-layering.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T03-control-states.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T04-error-notice.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T05-live-numbers.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T06-response-hover.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T07-hide-unbuilt.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T08-nav-engine-model.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T09-model-page.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T10-engine-page.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T11-chat.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T12-time-skip.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T13-serving.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T14-monitor.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T15-skills-tasks.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T16-settings-setup.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T17-navigation.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T18-preview-panel.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/tasks/T19-dark-mode.md (100%)
+ rename {apps => history/apps}/host/audit-fixes/write-review.py (100%)
+ rename {apps => history/apps}/host/docs/README-historical.md (100%)
+ rename {apps => history/apps}/host/docs/annotations-19-2026-10-09.md (100%)
+ rename {apps => history/apps}/host/docs/annotations-32-2026-10-09.md (100%)
+ rename {apps => history/apps}/host/docs/annotations-followup-2026-10-09.md (100%)
+ rename {apps => history/apps}/host/docs/chat-shell-2026-10-06.md (100%)
+ rename {apps => history/apps}/host/docs/design-improvements-2026-10-05.md (100%)
+ rename {apps => history/apps}/host/docs/dsh-recon.md (100%)
+ rename {apps => history/apps}/host/docs/engine-models-onboarding-2026-10-05.md (100%)
+ rename {apps => history/apps}/host/docs/native-engine-handover.md (96%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/01-gamer-debate.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/01-gamer-vote.json (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/01-gamer.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/02-mac-debate.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/02-mac-vote.json (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/02-mac.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/03-teacher-debate.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/03-teacher-vote.json (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/03-teacher.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/04-newcomer-debate.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/04-newcomer-vote.json (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/04-newcomer.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/05-tinkerer-debate.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/05-tinkerer-vote.json (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/05-tinkerer.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/06-parallel-debate.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/06-parallel-vote.json (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/06-parallel.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/07-research-debate.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/07-research-vote.json (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/07-research.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/08-office-debate.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/08-office-vote.json (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/08-office.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/ballot.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/decision-report.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/implementation-verification.md (100%)
+ rename {apps => history/apps}/host/docs/persona-review-2026-10-05/vote-tally.json (100%)
+ rename {apps => history/apps}/host/docs/plans/01-chat.md (100%)
+ rename {apps => history/apps}/host/docs/plans/02-models.md (100%)
+ rename {apps => history/apps}/host/docs/plans/03-engine-tuning.md (100%)
+ rename {apps => history/apps}/host/docs/plans/04-monitor.md (100%)
+ rename {apps => history/apps}/host/docs/plans/05-serving.md (100%)
+ rename {apps => history/apps}/host/docs/plans/06-workspace.md (100%)
+ rename {apps => history/apps}/host/docs/plans/07-skills.md (100%)
+ rename {apps => history/apps}/host/docs/plans/08-settings.md (100%)
+ rename {apps => history/apps}/host/docs/plans/09-first-run.md (100%)
+ rename {apps => history/apps}/host/docs/plans/09-multiple-models.md (100%)
+ rename {apps => history/apps}/host/docs/plans/10-sidebar.md (100%)
+ rename {apps => history/apps}/host/docs/plans/11-command-palette.md (100%)
+ rename {apps => history/apps}/host/docs/plans/12-context-rail.md (100%)
+ rename {apps => history/apps}/host/docs/plans/13-overlays.md (100%)
+ rename {apps => history/apps}/host/docs/plans/14-states.md (100%)
+ rename {apps => history/apps}/host/docs/plans/15-motion.md (100%)
+ rename {apps => history/apps}/host/docs/plans/16-accessibility.md (100%)
+ rename {apps => history/apps}/host/docs/plans/17-local-model-import.md (100%)
+ rename {apps => history/apps}/host/docs/plans/18-native-feature-parity.md (100%)
+ rename {apps => history/apps}/host/docs/plans/INDEX-CHECKLIST.md (100%)
+ copy {apps => history/apps}/host/docs/plans/README.md (100%)
+ rename {apps => history/apps}/host/docs/ui-followup-2026-10-06.md (100%)
+ rename {apps => history/apps}/host/docs/user-feedback-2026-10-05.md (100%)
+ rename {apps => history/apps}/host/docs/user-feedback-2026-10-06.md (100%)
+ rename {docs => history/docs}/work/ACCEPTANCE-EVIDENCE.md (100%)
+ rename {docs => history/docs}/work/IMPLEMENTATION_STATUS.md (100%)
+ rename {docs => history/docs}/work/PHASE-A-RETURN-PACKET.md (100%)
+ rename {docs => history/docs}/work/QUALIFICATION-KIT.md (100%)
+ rename {docs => history/docs}/work/evidence/VERIFICATION-MATRIX.txt (100%)
+ rename {docs => history/docs}/work/evidence/artifact.txt (100%)
+ rename {docs => history/docs}/work/evidence/bridge-e2e.txt (100%)
+ rename {docs => history/docs}/work/evidence/desktop-smoke-packaged.txt (100%)
+ rename {docs => history/docs}/work/evidence/desktop-smoke-unpackaged.txt (100%)
+ rename {docs => history/docs}/work/evidence/engine-build.txt (100%)
+ rename {docs => history/docs}/work/evidence/metal-parity.md (100%)
+ rename {docs => history/docs}/work/evidence/offline.txt (100%)
+ rename {docs => history/docs}/work/evidence/owner-transport-suite.txt (100%)
+ rename {docs => history/docs}/work/evidence/serve-suite.txt (100%)
+ rename {docs => history/docs}/work/evidence/tauri-artifact.txt (100%)
+ rename {docs => history/docs}/work/evidence/tauri-selftest-from-dmg.json (100%)
+ rename {docs => history/docs}/work/evidence/tauri-selftest.json (100%)
+ rename {docs => history/docs}/work/evidence/terminal-dist.txt (100%)
+ rename {docs => history/docs}/work/evidence/terminal-suite.txt (100%)
+ rename {docs => history/docs}/work/evidence/timeskip-harness.txt (100%)
+ rename {docs => history/docs}/work/evidence/timeskip-http.txt (100%)
+ rename {docs => history/docs}/work/evidence/timeskip-suite.txt (100%)
+ rename {docs => history/docs}/work/evidence/tool-flow.txt (100%)
+ rename {docs => history/docs}/work/evidence/tuning-apply.txt (100%)
+ rename {docs => history/docs}/work/evidence/tuning-http.txt (100%)
+ rename {docs => history/docs}/work/evidence/tuning-plan.txt (100%)
+ rename {docs => history/docs}/work/evidence/tuning-suite.txt (100%)
+ rename {docs => history/docs}/work/evidence/tuning-sweep.txt (100%)
+ rename {packaging => history/packaging}/acceptance_matrix.py (87%)
+ create mode 100644 history/tools/README.md
+ rename {tools => history/tools}/dflash2/analyze2.py (100%)
+ rename {tools => history/tools}/dflash2/final_tables.py (100%)
+ create mode 100644 packaging/acceptance_matrix.md
+ create mode 100644 packaging/build_dsv41_hip_linux.sh
+ create mode 100644 packaging/build_split_cuda.sh
+ create mode 100644 packaging/build_split_hip.sh
+ create mode 100644 packaging/make_model_release.py
+ create mode 100644 packaging/shape_build.sh
+ create mode 100644 packaging/templates/model-release/MODEL-CARD.md
+ create mode 100644 packaging/templates/model-release/RELEASE-NOTES.md
+ create mode 100644 requirements-dev.txt
+ create mode 100644 research/stage-reserve-proposal/README.md
+ create mode 100644 research/stage-reserve-proposal/proposal.hpp
+ create mode 100644 research/stage-reserve-proposal/proposal_test.cpp
+ create mode 100644 research/tools/README.md
+ create mode 100644 research/tools/ab-harnesses-2026-10/README.md
+ rename {tools => research/tools/ab-harnesses-2026-10}/arc/ab.py (94%)
+ rename {tools => research/tools/ab-harnesses-2026-10}/arc/b.py (100%)
+ rename {tools => research/tools/ab-harnesses-2026-10}/arc/kl.py (100%)
+ rename {tools => research/tools/ab-harnesses-2026-10}/h2d_bench.cu (97%)
+ rename {tools => research/tools/ab-harnesses-2026-10}/idle_gpu_ab.py (100%)
+ rename {tools => research/tools/ab-harnesses-2026-10}/quant_bound.py (95%)
+ create mode 100644 research/tools/dgx-spark-2026-10/README.md
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_128k.py (98%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_compare.py (97%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_concurrent.py (97%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_gate_ref.py (80%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_kvresident.py (98%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_kvresident2.py (98%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_longctx.py (98%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_needle.py (96%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_quality.py (98%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_quality24.py (96%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_smoke.py (90%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_turns.py (96%)
+ rename {tools => research/tools/dgx-spark-2026-10}/dgx_warm.py (94%)
+ create mode 100644 research/tools/live-probes-2026-10/README.md
+ rename {tools => research/tools/live-probes-2026-10}/batch_groups_cache_test.py (97%)
+ rename {tools => research/tools/live-probes-2026-10}/cancel_park_test.py (95%)
+ rename {tools => research/tools/live-probes-2026-10}/harness_reuse_probe.py (97%)
+ rename {tools => research/tools/live-probes-2026-10}/logit_bias_http_probe.py (100%)
+ rename {tools => research/tools/live-probes-2026-10}/session_pressure_test.py (97%)
+ rename {tools => research/tools/live-probes-2026-10}/split_mtp_batch_parity.py (100%)
+ rename {tools => research/tools/live-probes-2026-10}/stop_resend_test.py (97%)
+ create mode 100644 research/tools/live-probes-2026-10/stream_ownership_probe.py
+ create mode 100644 screenlog.0
+ create mode 100644 serve/nonblocking_out.py
+ create mode 100644 serve/test_abort_sync.py
+ create mode 100644 serve/test_anthropic_tool_results.py
+ create mode 100644 serve/test_drafting_retry.py
+ create mode 100644 serve/test_ds4_restore_points.py
+ create mode 100644 serve/test_ds_parallel.py
+ create mode 100644 serve/test_fatal_gpu_restart.py
+ create mode 100644 serve/test_param_end_options.py
+ create mode 100644 serve/test_resource_warnings.py
+ create mode 100644 serve/test_serve_robustness.py
+ create mode 100644 serve/test_speed_average.py
+ create mode 100644 serve/test_split_fallback.py
+ create mode 100644 serve/test_stop_closed_pipe.py
+ create mode 100644 serve/test_stream_ownership.py
+ create mode 100644 serve/test_tool_format.py
+ create mode 100644 serve/test_tool_name_mcp_member.py
+ create mode 100644 serve/test_tool_name_prefix.py
+ create mode 100644 serve/test_tool_opener_misspelt.py
+ create mode 100644 serve/test_tool_search.py
+ create mode 100644 serve/test_vision_cpu_fallback.py
+ create mode 100644 serve/test_vision_ctx_retry.py
+ create mode 100644 serve/test_vision_no_room.py
+ create mode 100644 serve/test_vision_ready_pipe.py
+ create mode 100644 serve/test_web_start_question.py
+ create mode 100644 serve/test_winjob_early_child.py
+ create mode 100644 serve/test_yield_accounting.py
+ create mode 100644 serve/tool_parser_golden.json
+ create mode 100644 serve/toolformat.py
+ create mode 100644 strata_cli/split_cmd.py
+ create mode 100644 sycl/include/strata/core/dflash2.hpp
+ create mode 100644 sycl/include/strata/core/short_cache.hpp
+ create mode 100644 sycl/include/strata/kernels/iq4_lut.hpp
+ create mode 100644 sycl/include/strata/uc_probe.hpp
+ create mode 100644 sycl/src/core/dflash2.cpp
+ create mode 100644 sycl/src/core/dflash2_ring_test.cpp
+ create mode 100644 sycl/src/core/short_cache_test.cpp
+ create mode 100644 sycl/src/core/verify_refusal_test.cpp
+ create mode 100644 sycl/src/kernels/cuda/dflash2.dp.cpp
+ create mode 100644 sycl/src/kernels/dflash2_bench.cpp
+ create mode 100644 sycl/src/kernels/dq_dense_parity.cpp
+ create mode 100644 sycl/src/kernels/slot_history_test.cpp
+ create mode 100644 tests/core/device_free_error_test.cpp
+ create mode 100644 tests/core/flag_order_test.cu
+ create mode 100644 tests/core/gpu_pause_time_test.cpp
+ create mode 100644 tests/core/lookup_default_test.cpp
+ create mode 100644 tests/core/resident_ram_copy_test.cpp
+ create mode 100644 tests/core/run_manifest_test.cpp
+ create mode 100644 tests/core/serve_stop_bound_test.cpp
+ create mode 100644 tests/core/stream_watch_test.cpp
+ create mode 100644 tests/cuda/hc_q8_stream_test.cu
+ create mode 100644 tests/cuda/prefill_iq4_w4a8_test.cu
+ create mode 100644 tests/cuda/prefill_mmq_v31_test.cpp
+ create mode 100755 tests/dsv41/build_dq_test.sh
+ create mode 100644 tests/dsv41/dq_dense_test.cpp
+ create mode 100644 tests/dsv41/dq_pascal_shim.h
+ create mode 100644 tests/dsv41/ds4_lane_bench.cpp
+ create mode 100644 tests/dsv41/ds4_route_guard_test.cu
+ create mode 100644 tests/dsv41/evt_test.cpp
+ create mode 100644 tests/dsv41/marks_test.cpp
+ create mode 100644 tests/dsv41/path_policy_test.cpp
+ create mode 100644 tests/dsv41/ring_link_test.cpp
+ create mode 100644 tests/dsv41/run_dq_test.ps1
+ create mode 100755 tests/dsv41/run_dq_test.sh
+ create mode 100644 tests/dsv41/short_prompt_check.py
+ create mode 100644 tests/fixtures/unsloth_v31/headers.json.gz
+ create mode 100644 tests/ngram/ple_issue_bench.cpp
+ create mode 100644 tests/platform/io_priority_test.cpp
+ create mode 100644 tests/prefill/mmq_ids_margin_test.cpp
+ create mode 100644 tests/prefill/qsa_two_pass_status_test.cpp
+ create mode 100644 tests/prefill/qsa_two_pass_test.cpp
+ create mode 100644 tests/prefill/routed_stream_test.cpp
+ create mode 100644 tests/prefill/timer_marks_test.cpp
+ create mode 100644 tests/program/adaptive_range_test.cpp
+ create mode 100644 tests/program/q36_context_fit_test.cpp
+ create mode 100644 tests/program/split_part_price_test.cpp
+ create mode 100644 tests/program/split_walk_test.cpp
+ create mode 100644 tests/snapshot/README.md
+ create mode 100644 tests/snapshot/__init__.py
+ create mode 100644 tests/snapshot/allowlist.py
+ create mode 100644 tests/snapshot/app_driver.mjs
+ create mode 100644 tests/snapshot/control_shim.py
+ create mode 100644 tests/snapshot/driver.py
+ create mode 100644 tests/snapshot/generate.py
+ create mode 100644 tests/snapshot/golden/arc_a750/deepseek.json
+ create mode 100644 tests/snapshot/golden/arc_a750/iq3_s.json
+ create mode 100644 tests/snapshot/golden/arc_a750/ud_iq4_xs_v31.json
+ create mode 100644 tests/snapshot/golden/arc_a750/ud_q4_k_xl.json
+ create mode 100644 tests/snapshot/golden/dgx_spark/deepseek.json
+ create mode 100644 tests/snapshot/golden/dgx_spark/iq3_s.json
+ create mode 100644 tests/snapshot/golden/dgx_spark/ud_iq4_xs_v31.json
+ create mode 100644 tests/snapshot/golden/dgx_spark/ud_q4_k_xl.json
+ create mode 100644 tests/snapshot/golden/mac_large/deepseek.json
+ create mode 100644 tests/snapshot/golden/mac_large/iq3_s.json
+ create mode 100644 tests/snapshot/golden/mac_large/ud_iq4_xs_v31.json
+ create mode 100644 tests/snapshot/golden/mac_large/ud_q4_k_xl.json
+ create mode 100644 tests/snapshot/golden/mac_small/deepseek.json
+ create mode 100644 tests/snapshot/golden/mac_small/iq3_s.json
+ create mode 100644 tests/snapshot/golden/mac_small/ud_iq4_xs_v31.json
+ create mode 100644 tests/snapshot/golden/mac_small/ud_q4_k_xl.json
+ create mode 100644 tests/snapshot/golden/nv_12gb_streaming/deepseek.json
+ create mode 100644 tests/snapshot/golden/nv_12gb_streaming/iq3_s.json
+ create mode 100644 tests/snapshot/golden/nv_12gb_streaming/ud_iq4_xs_v31.json
+ create mode 100644 tests/snapshot/golden/nv_12gb_streaming/ud_q4_k_xl.json
+ create mode 100644 tests/snapshot/golden/nv_resident/deepseek.json
+ create mode 100644 tests/snapshot/golden/nv_resident/iq3_s.json
+ create mode 100644 tests/snapshot/golden/nv_resident/ud_iq4_xs_v31.json
+ create mode 100644 tests/snapshot/golden/nv_resident/ud_q4_k_xl.json
+ create mode 100644 tests/snapshot/golden/r9700_linux/deepseek.json
+ create mode 100644 tests/snapshot/golden/r9700_linux/iq3_s.json
+ create mode 100644 tests/snapshot/golden/r9700_linux/ud_iq4_xs_v31.json
+ create mode 100644 tests/snapshot/golden/r9700_linux/ud_q4_k_xl.json
+ create mode 100644 tests/snapshot/golden/strix_halo_win/deepseek.json
+ create mode 100644 tests/snapshot/golden/strix_halo_win/iq3_s.json
+ create mode 100644 tests/snapshot/golden/strix_halo_win/ud_iq4_xs_v31.json
+ create mode 100644 tests/snapshot/golden/strix_halo_win/ud_q4_k_xl.json
+ create mode 100644 tests/snapshot/matrix.py
+ create mode 100644 tests/snapshot/normalize.py
+ create mode 100644 tests/snapshot/report.py
+ create mode 100644 tests/snapshot/setup_driver.py
+ create mode 100644 tests/snapshot/test_config_snapshot.py
+ create mode 100644 tests/snapshot/test_entry_points_agree.py
+ create mode 100644 tests/snapshot/test_strix_app_reserve.py
+ create mode 100644 tests/snapshot/test_strix_reserve.py
+ create mode 100644 tests/snapshot/world.py
+ create mode 100644 tests/split/convert_check.py
+ create mode 100644 tests/split/test_split_engine.py
+ create mode 100644 tests/split/test_split_gen_keys.py
+ create mode 100644 tests/split/test_split_hcsplit.py
+ create mode 100644 tests/split/tile_check.py
+ create mode 100644 tests/terminal/conftest.py
+ create mode 100644 tests/terminal/cutserver.py
+ create mode 100644 tests/terminal/engine_flow.sh
+ create mode 100644 tests/terminal/net_dead.py
+ create mode 100644 tests/terminal/prompt_check.py
+ create mode 100644 tests/terminal/pty_drive.py
+ create mode 100644 tests/terminal/test_app_first_load_drafter_0214.py
+ create mode 100644 tests/terminal/test_app_policy.py
+ create mode 100644 tests/terminal/test_arc_feed_models.py
+ create mode 100644 tests/terminal/test_backend_choice.py
+ create mode 100644 tests/terminal/test_bench_redaction_0213_qatui.py
+ create mode 100644 tests/terminal/test_bench_stop.py
+ create mode 100644 tests/terminal/test_bench_term_0213_qatui.py
+ create mode 100644 tests/terminal/test_cfg_paths.py
+ create mode 100644 tests/terminal/test_cim_cache_0213_qatui.py
+ create mode 100644 tests/terminal/test_clean1a_strings.py
+ create mode 100644 tests/terminal/test_client_output_cap_0213.py
+ create mode 100644 tests/terminal/test_control_paths_0214.py
+ create mode 100644 tests/terminal/test_deepseek_word_flags_0213.py
+ create mode 100644 tests/terminal/test_df2ux_0213.py
+ create mode 100644 tests/terminal/test_download_dedup.py
+ create mode 100644 tests/terminal/test_drafting_auto_mtp.py
+ create mode 100644 tests/terminal/test_drafting_card_window.py
+ create mode 100644 tests/terminal/test_drafting_hardware.py
+ create mode 100644 tests/terminal/test_drafting_selector_q4.py
+ create mode 100644 tests/terminal/test_drafting_single.py
+ create mode 100644 tests/terminal/test_drafting_streaming_class.py
+ create mode 100644 tests/terminal/test_drafting_switch.py
+ create mode 100644 tests/terminal/test_drafting_tuned.py
+ create mode 100644 tests/terminal/test_dsv41_mac_vision.py
+ create mode 100644 tests/terminal/test_dsv41_update_path.py
+ create mode 100644 tests/terminal/test_dsv41_vision_reserve.py
+ create mode 100644 tests/terminal/test_engine_library.py
+ create mode 100644 tests/terminal/test_engine_library_shapes.py
+ create mode 100644 tests/terminal/test_engine_selection_0213.py
+ create mode 100644 tests/terminal/test_feed_drafter_none_0214.py
+ create mode 100644 tests/terminal/test_feed_model_plan_drafter.py
+ create mode 100644 tests/terminal/test_feed_models.py
+ create mode 100644 tests/terminal/test_feed_models_screens.py
+ create mode 100644 tests/terminal/test_feed_tool_gzip.py
+ create mode 100644 tests/terminal/test_fix3_0212.py
+ create mode 100644 tests/terminal/test_folders_mounts.py
+ create mode 100644 tests/terminal/test_gpu_plan_main.py
+ create mode 100644 tests/terminal/test_home_hermetic.py
+ create mode 100644 tests/terminal/test_intel_app_install.py
+ create mode 100644 tests/terminal/test_intel_prepare.py
+ create mode 100644 tests/terminal/test_issue_5717.py
+ create mode 100644 tests/terminal/test_launch_dsv41_parallel.py
+ create mode 100644 tests/terminal/test_launch_leftover_4824.py
+ create mode 100644 tests/terminal/test_launch_precedence_0213.py
+ create mode 100644 tests/terminal/test_launch_stop_exit_0213.py
+ create mode 100644 tests/terminal/test_launch_unreadable_state_0213_qatui.py
+ create mode 100644 tests/terminal/test_launch_worker_closed_app.py
+ create mode 100644 tests/terminal/test_make_model_release.py
+ create mode 100644 tests/terminal/test_monitor_help_0213_qafix.py
+ create mode 100644 tests/terminal/test_move_dir.py
+ create mode 100644 tests/terminal/test_multispill_launch.py
+ create mode 100644 tests/terminal/test_net_alt_reader.py
+ create mode 100644 tests/terminal/test_net_guard.py
+ create mode 100644 tests/terminal/test_net_install_sh.py
+ create mode 100644 tests/terminal/test_net_launch_waits.py
+ create mode 100644 tests/terminal/test_net_own_folder.py
+ create mode 100644 tests/terminal/test_net_plan_truth.py
+ create mode 100644 tests/terminal/test_net_silent_callers.py
+ create mode 100644 tests/terminal/test_net_transfer.py
+ create mode 100644 tests/terminal/test_netpolicy.py
+ create mode 100644 tests/terminal/test_no_debugger_children.py
+ create mode 100644 tests/terminal/test_own_path_fit.py
+ create mode 100644 tests/terminal/test_pictures.py
+ create mode 100644 tests/terminal/test_profile_identity_0213.py
+ create mode 100644 tests/terminal/test_qwen_v31_names.py
+ create mode 100644 tests/terminal/test_reader_no_room.py
+ create mode 100644 tests/terminal/test_shape_engine.py
+ create mode 100644 tests/terminal/test_smi_cache_0213_qatui.py
+ create mode 100644 tests/terminal/test_split_engine_flag.py
+ create mode 100644 tests/terminal/test_split_parallel.py
+ create mode 100644 tests/terminal/test_strix_q4_note.py
+ create mode 100644 tests/terminal/test_sysinfo.py
+ create mode 100644 tests/terminal/test_unsloth_gpu_fit_0213.py
+ create mode 100644 tests/terminal/test_update_consent_wording_0214.py
+ create mode 100644 tests/terminal/test_update_control_source_0213_qatui.py
+ create mode 100644 tests/terminal/test_update_launch_rules.py
+ create mode 100644 tests/terminal/test_update_notice.py
+ create mode 100644 tests/terminal/test_update_source_install.py
+ create mode 100644 tests/terminal/test_update_with_model.py
+ create mode 100644 tests/terminal/test_update_with_model_ds.py
+ create mode 100644 tests/terminal/update_model_flow.sh
+ create mode 100644 tests/terminal/update_model_flow_ds.sh
+ create mode 100644 tests/tuning/test_tuning_availability_0213.py
+ create mode 100644 third_party/antirez-ds4/LICENSE
+ create mode 100644 third_party/antirez-ds4/NOTICE.md
+ create mode 100644 third_party/sfnx/LICENSE
+ create mode 100644 third_party/sfnx/NOTICE.md
+ create mode 100644 third_party/strata-ggml/LICENSE
+ create mode 100644 third_party/strata-ggml/UPSTREAM.md
+ create mode 100644 third_party/strata-ggml/ggml/CMakeLists.txt
+ create mode 100644 third_party/strata-ggml/ggml/cmake/common.cmake
+ create mode 100644 third_party/strata-ggml/ggml/include/ggml-alloc.h
+ create mode 100644 third_party/strata-ggml/ggml/include/ggml-backend.h
+ create mode 100644 third_party/strata-ggml/ggml/include/ggml-cpp.h
+ create mode 100644 third_party/strata-ggml/ggml/include/ggml-cpu.h
+ create mode 100644 third_party/strata-ggml/ggml/include/ggml-cuda.h
+ create mode 100644 third_party/strata-ggml/ggml/include/ggml-opt.h
+ create mode 100644 third_party/strata-ggml/ggml/include/ggml.h
+ create mode 100644 third_party/strata-ggml/ggml/include/gguf.h
+ create mode 100644 third_party/strata-ggml/ggml/src/CMakeLists.txt
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-alloc.c
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-backend-impl.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-backend-meta.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-backend.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-common.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/CMakeLists.txt
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/amx/amx.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/amx/amx.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/amx/common.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/amx/mmq.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/amx/mmq.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/arch-fallback.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/arch/arm/quants.c
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/arch/arm/repack.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/arch/x86/quants.c
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/arch/x86/repack.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/binary-ops.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/binary-ops.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/cmake/FindSIMD.cmake
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/common.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/ggml-cpu-impl.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/ggml-cpu.c
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/ggml-cpu.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/hbm.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/hbm.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/iqp.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/iqp.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/ops.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/ops.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/quants.c
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/quants.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/repack.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/repack.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/simd-gemm.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/simd-mappings.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/traits.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/traits.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/unary-ops.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/unary-ops.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/vec.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cpu/vec.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/include/ggml-alloc.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/include/ggml-backend.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/include/ggml-cpp.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/include/ggml-cpu.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/include/ggml-cuda.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/include/ggml-opt.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/include/ggml.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/include/gguf.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-ampere.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-cdna.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-gcn.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-pascal-dp4a.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-pascal-older.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-rdna2.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-rdna3-5.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-rdna3.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-config-rdna4.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-load-tiles.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq-vec-dot.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/mmq.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/quantize.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/quantize.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/template-instances/mmq-instance-tq2_t.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/template-instances/mmq-instance-tqk6.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/template-instances/mmq-instance-tqk7.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/template-instances/mmq-instance-tqp5.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/template-instances/mmq-instance-tqp6.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda-tq/template-instances/mmq-instance-tqp7.cu
+ rename third_party/{ggml-tq => strata-ggml/ggml/src/ggml-cuda-tq}/tq-mmq-tiles.cuh (92%)
+ rename third_party/{ggml-tq => strata-ggml/ggml/src/ggml-cuda-tq}/tq.cuh (96%)
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/common.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mma.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-ampere.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-blackwell.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-cdna.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-gcn.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-pascal-dp4a.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-pascal-older.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-rdna2.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-rdna3.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-config-rdna4.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-load-tiles.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq-vec-dot.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/mmq.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/quantize.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/quantize.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-iq2_s.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-iq2_xs.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-iq2_xxs.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-iq3_s.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-iq3_xxs.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-iq4_nl.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-iq4_xs.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-q2_0.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-q4_k.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-q5_0.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-q5_1.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-q5_k.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-q6_k.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/template-instances/mmq-instance-q8_0.cu
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/vecdotq.cuh
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/vendors/cuda.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-cuda/vendors/hip.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-impl.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-opt.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-quants.c
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-quants.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-threading.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-threading.h
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml-version.h.in
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml.c
+ create mode 100644 third_party/strata-ggml/ggml/src/ggml.cpp
+ create mode 100644 third_party/strata-ggml/ggml/src/gguf.cpp
+ create mode 100644 third_party/strata-ggml/strata-quant-common.h
+ create mode 100644 tools/bench_results_index.py
+ create mode 100644 tools/capability_table.py
+ rename chat.py => tools/chat.py (98%)
+ create mode 100644 tools/check
+ create mode 100644 tools/check_links.py
+ create mode 100644 tools/check_lookup_window_serve.py
+ create mode 100644 tools/check_vendored.py
+ create mode 100644 tools/conftest.py
+ create mode 100644 tools/dflash2/check_metal_dump.py
+ create mode 100644 tools/dflash2/mk_serve_scenario.py
+ create mode 100644 tools/dflash2/serve_test.py
+ create mode 100644 tools/doc_pages.py
+ create mode 100644 tools/dsv41/pin_coder.py
+ create mode 100644 tools/feed_model_install_gate.py
+ create mode 100644 tools/force_check.py
+ rename highlight.py => tools/highlight.py (100%)
+ create mode 100644 tools/hip/gfx1030-rocblas-5.2.0.dabb6df2b98-dirty.txt
+ create mode 100644 tools/hip/gfx1030-rocblas-5.4.0.ad84daa81c.txt
+ create mode 100644 tools/q4geo_synth.py
+ create mode 100644 tools/qwen4_intake.py
+ create mode 100644 tools/qwen4_intake_fixtures/ds41_ud_q8_k_xl.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_coder_iq1_m.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_gyro_s.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_ista_iq3_s.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_ista_q2_0.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_swift_iq3_s.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_unsloth_mmproj.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_unsloth_q8_0.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_unsloth_ud_iq4_xs.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_unsloth_ud_q2_k_xl.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/fn_unsloth_ud_q4_k_xl.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/q36_mmproj.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/q36_q8_0.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/q36_ud_q4_k_xl.json.gz
+ create mode 100644 tools/qwen4_intake_fixtures/qwen3-0.6b.chat_template.jinja
+ create mode 100644 tools/release_manifest.py
+ create mode 100644 tools/settings_register.py
+ create mode 100644 tools/test_appimage_elf.py
+ create mode 100644 tools/test_bench_results_index.py
+ create mode 100644 tools/test_capability_table.py
+ create mode 100644 tools/test_check_links.py
+ create mode 100644 tools/test_check_lookup_window_serve.py
+ create mode 100644 tools/test_dflash2_vocab.py
+ create mode 100644 tools/test_feed_model_install_realfile.py
+ create mode 100644 tools/test_func_attr_scope.py
+ create mode 100644 tools/test_neutral_profile.py
+ create mode 100644 tools/test_quant_formats_hf.py
+ create mode 100644 tools/test_qwen4_intake.py
+ create mode 100644 tools/test_release_manifest.py
+ create mode 100644 tools/test_settings_register.py
+ create mode 100644 tools/test_setup_coder.py
+ create mode 100644 tools/test_setup_disk_room.py
+ create mode 100644 tools/test_setup_feed_models.py
+ create mode 100644 tools/test_setup_probe_retry.py
+ create mode 100644 tools/test_setup_shape.py
+ create mode 100644 tools/test_setup_uma_pool.py
+ create mode 100644 tools/test_setup_unsloth_v31.py
+ create mode 100644 tools/test_strata_mcp_zombie.py
+ create mode 100644 tools/trellis/conftest.py
+ create mode 100644 tools/unsloth_v31_fixture.py

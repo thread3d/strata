@@ -246,102 +246,7 @@ kernel void mm_down(device const uchar* W [[buffer(0)]], device const float* H [
 }
 
 // grid (T * n_embd / 256), 256 threads
-#else
-// The v1 gate/up without MetalPerformancePrimitives: plain-loop accumulation over the same staged tiles as the matmul2d
-// version above.  Activations are fp32 rows of x indexed by srt_tok; the result silu(gate)*up lands in H as fp32 rows of n_ff.
-template <int F, int TM, int TN, int TK, int SG>
-kernel void mm_gu(device const uchar* W [[buffer(0)]], device const float* x [[buffer(1)]],
-                  device float* H [[buffer(2)]], device const int* srt_tok [[buffer(3)]],
-                  device const int2* tiles [[buffer(4)]], constant MmArgs& a [[buffer(5)]],
-                  uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]]) {
-    constexpr int NTH = SG * 32;
-    constexpr int NOUT = (TM * TN + NTH - 1) / NTH;
-    threadgroup half xa[TM * TK];
-    threadgroup half wg[TN * TK];
-    threadgroup half wu[TN * TK];
-    threadgroup uint tab[fmt<F>::TAB];
-    threadgroup int tok[TM];
-    load_tab<F>(tab, tid, NTH);
-    const int2 tl = tiles[tg.y];
-    const int e = tl.x, row0 = tl.y, f0 = int(tg.x) * TN;
-    device const uchar* g0 = W + a.gate_off + ulong(e) * a.gu_stride + ulong(f0) * a.gu_row;
-    device const uchar* u0 = W + a.up_off + ulong(e) * a.gu_stride + ulong(f0) * a.gu_row;
-    float ag[NOUT], au[NOUT];
-    int mi[NOUT], fi[NOUT];
-    for (int q = 0; q < NOUT; ++q) {
-        const int it = int(tid) + q * NTH;
-        mi[q] = it / TN;
-        fi[q] = it % TN;
-        ag[q] = au[q] = 0.0f;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (int k0 = 0; k0 < int(a.n_embd); k0 += TK) {
-        for (int it = tid; it < TM * TK; it += NTH) {
-            const int m = it / TK, k = it - m * TK;
-            xa[it] = tok[m] >= 0 ? half(x[ulong(tok[m]) * a.n_embd + k0 + k]) : half(0.0f);
-        }
-        stage_w<F, TN, TK>(g0, a.gu_row, k0, wg, tab, tid, NTH);
-        stage_w<F, TN, TK>(u0, a.gu_row, k0, wu, tab, tid, NTH);
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        const int kc = min(TK, int(a.n_embd) - k0);
-        for (int k = 0; k < kc; ++k)
-            for (int q = 0; q < NOUT; ++q) {
-                const half xv = xa[mi[q] * TK + k];
-                ag[q] += float(xv) * float(wg[fi[q] * TK + k]);
-                au[q] += float(xv) * float(wu[fi[q] * TK + k]);
-            }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
-    for (int q = 0; q < NOUT; ++q) {
-        const float g = ag[q];
-        H[ulong(row0 + mi[q]) * ulong(a.n_ff) + ulong(f0 + fi[q])] = g / (1.0f + exp(-g)) * au[q];
-    }
-}
-
-// The v1 down projection without MetalPerformancePrimitives: plain-loop accumulation of acc[m][d] over the K chunks with the
-// staged TN rows of the down matrix, written to YE[d][m] - a row of n_embd per token, fp32.
-template <int F, int TM, int TN, int TK, int SG>
-kernel void mm_down(device const uchar* W [[buffer(0)]], device const float* H [[buffer(1)]],
-                    device float* YE [[buffer(2)]], device const int2* tiles [[buffer(3)]],
-                    constant MmArgs& a [[buffer(4)]],
-                    uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]]) {
-    constexpr int NTH = SG * 32;
-    constexpr int NOUT = (TM * TN + NTH - 1) / NTH;
-    threadgroup half ha[TM * TK];
-    threadgroup half wd[TN * TK];
-    threadgroup uint tab[fmt<F>::TAB];
-    load_tab<F>(tab, tid, NTH);
-    const int2 tl = tiles[tg.y];
-    const int e = tl.x, row0 = tl.y, d0 = int(tg.x) * TN;
-    device const uchar* w0 = W + a.down_off + ulong(e) * a.d_stride + ulong(d0) * a.d_row;
-    float acc[NOUT];
-    int mi[NOUT], fi[NOUT];
-    for (int q = 0; q < NOUT; ++q) {
-        const int it = int(tid) + q * NTH;
-        mi[q] = it / TN;
-        fi[q] = it % TN;
-        acc[q] = 0.0f;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (int k0 = 0; k0 < int(a.n_ff); k0 += TK) {
-        for (int it = tid; it < TM * TK; it += NTH) {
-            const int m = it / TK, k = it - m * TK;
-            ha[it] = half(H[ulong(row0 + m) * a.n_ff + k0 + k]);
-        }
-        stage_w<F, TN, TK>(w0, a.d_row, k0, wd, tab, tid, NTH);
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        const int kc = min(TK, int(a.n_ff) - k0);
-        for (int k = 0; k < kc; ++k)
-            for (int q = 0; q < NOUT; ++q) {
-                const half hv = ha[mi[q] * TK + k];
-                acc[q] += float(hv) * float(wd[fi[q] * TK + k]);
-            }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
-    for (int q = 0; q < NOUT; ++q)
-        YE[ulong(row0 + mi[q]) * ulong(a.n_embd) + ulong(d0 + fi[q])] = acc[q];
-}
-#endif  // (the v1 kernels: matmul2d when MPP is present, plain loops otherwise)
+#endif  // (the v1 kernels are matmul2d-only)
 
 kernel void mm_combine(device const float* YE [[buffer(0)]], device const int* pos [[buffer(1)]],
                        device const float* srt_w [[buffer(2)]], device float* y [[buffer(3)]],
@@ -357,6 +262,7 @@ kernel void mm_combine(device const float* YE [[buffer(0)]], device const int* p
     y[gid] = s;
 }
 
+#if STRATA_HAVE_MPP   // (the v1 kernels' specializations)
 #define MMGU_(F, M, N, K, S) template [[host_name("mm_gu_" #F "_" #M "_" #N "_" #K "_" #S)]] kernel decltype(mm_gu<F, M, N, K, S>) mm_gu<F, M, N, K, S>;
 #define MMDN_(F, M, N, K, S) template [[host_name("mm_down_" #F "_" #M "_" #N "_" #K "_" #S)]] kernel decltype(mm_down<F, M, N, K, S>) mm_down<F, M, N, K, S>;
 #define MMGU(F, M, N, K, S) MMGU_(F, M, N, K, S)
@@ -365,6 +271,7 @@ kernel void mm_combine(device const float* YE [[buffer(0)]], device const int* p
 #define MM_DN_SET(F) MMDN(F, 32, 64, 64, 4) MMDN(F, 64, 64, 64, 4) MMDN(F, 16, 64, 64, 2) MMDN(F, 32, 32, 64, 2)
 MM_GU_SET(T_Q2_0) MM_GU_SET(T_IQ3_XXS) MM_GU_SET(T_IQ2_XXS) MM_GU_SET(T_IQ2_XS) MM_GU_SET(T_IQ2_S) MM_GU_SET(T_IQ3_S)
 MM_DN_SET(T_Q2_0) MM_DN_SET(T_IQ4_NL) MM_DN_SET(T_Q5_0)
+#endif
 
 // ---- v2: activations gathered once per layer as fp16 rows, read by matmul2d from device memory ---------------------
 // mm_gather: XS[row][k] = half(x[srt_tok[row]][k]) (0 on padding rows).  grid (rows), 256 threads.

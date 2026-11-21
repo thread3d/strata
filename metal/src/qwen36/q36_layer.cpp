@@ -20,7 +20,30 @@ bool join(mtl::Context& cx, LayerKernels& lk, mtl::Buffer& x, const mtl::Buffer*
     d.grid[1] = d.grid[2] = 1;
     d.tg[0] = 256;
     d.tg[1] = d.tg[2] = 1;
+    if (std::getenv("Q36_TRACE")) {
+        const float* xv = (const float*)x.ptr;
+        std::fprintf(stderr, "Q36_TRACE   join x pre-dispatch: %g %g %g\n", (double)xv[0], (double)xv[1], (double)xv[2]);
+        std::fflush(stderr);
+        // Debug: copy x[0..3] via GPU to verify the GPU can read x at all.
+        mtl::Buffer dbg = cx.alloc(4 * 4);
+        mtl::Pipeline dbg_p = cx.pipeline(lk.glue_lib, "q36_debug_copy");
+        mtl::Dispatch dbg_d;
+        dbg_d.p = &dbg_p;
+        dbg_d.args = {mtl::Arg::B(x), mtl::Arg::B(dbg), mtl::Arg::V(4u)};
+        dbg_d.tg[0] = 4; dbg_d.tg[1] = 1; dbg_d.tg[2] = 1;
+        dbg_d.grid[0] = 1; dbg_d.grid[1] = 1; dbg_d.grid[2] = 1;
+        cx.run({dbg_d});
+        const float* dv = (const float*)dbg.ptr;
+        std::fprintf(stderr, "Q36_TRACE   GPU reads x[0..3]: %g %g %g %g\n", (double)dv[0], (double)dv[1], (double)dv[2], (double)dv[3]);
+        std::fflush(stderr);
+        cx.free(dbg);
+    }
     cx.run({d});
+    if (std::getenv("Q36_TRACE")) {
+        const float* hv = (const float*)h.ptr;
+        std::fprintf(stderr, "Q36_TRACE   join h post-dispatch: %g %g %g\n", (double)hv[0], (double)hv[1], (double)hv[2]);
+        std::fflush(stderr);
+    }
     (void) err;
     return true;
 }
@@ -36,6 +59,11 @@ bool embed_row(mtl::Context& cx, LayerKernels& lk, const mtl::Buffer& table, mtl
     d.grid[0] = (uint32_t) ((n_embd + 63) / 64);
     d.grid[1] = d.grid[2] = 1;
     cx.run({d});
+    if (std::getenv("Q36_TRACE")) {
+        const float* xv = (const float*)x.ptr;
+        std::fprintf(stderr, "Q36_TRACE   embed_row post-dispatch x[0..3]: %g %g %g %g\n", (double)xv[0], (double)xv[1], (double)xv[2], (double)xv[3]);
+        std::fflush(stderr);
+    }
     (void) err;
     return true;
 }
@@ -80,8 +108,19 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
     }
     if (!layer_scratch(cx, s, n, err)) return false;
 
+    if (std::getenv("Q36_TRACE")) {
+        const float* xv = (const float*) x.ptr;
+        std::fprintf(stderr, "Q36_TRACE   x input to layer: %g %g %g\n", (double)xv[0], (double)xv[1], (double)xv[2]);
+        std::fflush(stderr);
+    }
+
     // 1. h = rms(x) * attn_norm, with NO add - always.
     (void) from_embedding;
+    if (std::getenv("Q36_TRACE")) {
+        const float* nw = (const float*)w.attn_norm->ptr;
+        std::fprintf(stderr, "Q36_TRACE   attn_norm[0..3]: %g %g %g %g\\n", (double)nw[0], (double)nw[1], (double)nw[2], (double)nw[3]);
+        std::fflush(stderr);
+    }
     if (!join(cx, lk, x, nullptr, *w.attn_norm, w.attn_norm_off, s.h, n, eps, false, err)) return false;
     {   // Q36_DUMP_H2: the normed row this layer's mixer read, for Q36_DUMP_LAYER - the calibration input a host reference needs
         const char* lp = std::getenv("Q36_DUMP_LAYER");
@@ -106,9 +145,29 @@ bool layer_forward(mtl::Context& cx, LayerKernels& lk, DenseKernels& dk, DenseSc
             return false;
     }
     const mtl::Buffer& mix = w.attention ? io.attn_scratch->y : io.gdn_scratch->out;
+    if (std::getenv("Q36_TRACE")) {
+        auto scan = [](const mtl::Buffer& b, int n, const char* what) {
+            const float* v = (const float*) b.ptr;
+            size_t bad = 0;
+            for (int i = 0; i < n; ++i) if (!std::isfinite(v[i])) ++bad;
+            std::printf("Q36_TRACE   %s: %g %g %g, non-finite %zu of %d\n", what, (double) v[0], (double) v[1], (double) v[2], bad, n);
+            std::fflush(stdout);
+        };
+        scan(s.h, n, "h after the first norm");
+        scan(mix, n, "the mixer's output");
+        scan(x, n, "x after the mixer join");
+    }
 
     // 3. x += mixer; h = rms(x) * post_attention_norm
     if (!join(cx, lk, x, &mix, *w.post_norm, w.post_norm_off, s.h, n, eps, true, err)) return false;
+    if (std::getenv("Q36_TRACE")) {
+        const float* sh = (const float*)s.h.ptr;
+        const float* pnw = (const float*)w.post_norm->ptr;
+        std::fprintf(stderr, "Q36_TRACE   h after post-norm: %g %g %g | post_norm[0..3]: %g %g %g %g\\n",
+                     (double)sh[0], (double)sh[1], (double)sh[2],
+                     (double)pnw[0], (double)pnw[1], (double)pnw[2], (double)pnw[3]);
+        std::fflush(stderr);
+    }
 
     // 4. the MoE: the shared expert, its gate, then the routed experts and the combine
     if (!shared_forward(cx, dk, ds, io.shared, w.shared, *io.shared_scratch, s.h, err)) return false;

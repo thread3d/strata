@@ -508,9 +508,6 @@ static inline float max32(float v) {
     for (ushort o = 16; o > 0; o >>= 1) v = max(v, simd_shuffle_xor(v, o));
     return v;
 }
-// (no sum_lpr: an XOR shuffle with o < 32 already stays inside the lane's own 32-lane half, and an
-// unconditional `v += shuffle` is what leaves the total in every lane.  A directional/masked form is not
-// equivalent: for LPR = 4 it leaves lanes 2 and 3 with a partial sum.)
 // The exclusive prefix sum over the thread's 32-lane group (lane: lane32(tid, lane_)).  simd_prefix_exclusive_sum scans the
 // whole hardware group, so on a 64-lane GPU the second logical group would start from the first one's total; a
 // Hillis-Steele scan over the low lane bits gives each group its own.

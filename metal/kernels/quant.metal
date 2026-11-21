@@ -522,32 +522,6 @@ template <> inline float deq<T_IQ3_S>(device const uchar* b, int ui, thread floa
     return rdh(b) * float(1 + 2 * ((sc >> (4 * (ib & 1))) & 15));
 }
 
-// IQ1_M: qs[32], qh[16], four u16 scale words (the F16 scale in their top nibbles), 56 B a block; a 32-value group
-// has four 8-value grid slices, the first two on the group's dl1 and the last two on dl2, each with a +-0.125 delta
-// from a qh bit.  The unit is 16 values = two slices, on one of the two scales.
-template <> inline float deq<T_IQ1_M>(device const uchar* b, int ui, thread float* q, threadgroup const uint*) {
-    const int ib = ui >> 1, h = ui & 1;
-    const uint s0 = uint(b[48]) | (uint(b[49]) << 8), s1 = uint(b[50]) | (uint(b[51]) << 8);
-    const uint s2 = uint(b[52]) | (uint(b[53]) << 8), s3 = uint(b[54]) | (uint(b[55]) << 8);
-    const float d = float(as_type<half>(ushort((s0 >> 12) | ((s1 >> 8) & 0x00f0u) | ((s2 >> 4) & 0x0f00u) | (s3 & 0xf000u))));
-    const uint sc = uint(((device const ushort*) (b + 48))[ib >> 1]);
-    const float dl = d * float(2u * ((sc >> (6u * uint(ib & 1) + (h ? 3u : 0u))) & 7u) + 1u);
-    for (int l2 = 0; l2 < 2; ++l2) {
-        const int g = 2 * h + l2;
-        const uint qh = (g < 2) ? uint(b[32 + 2 * ib]) : uint(b[33 + 2 * ib]);
-        const uint idx = uint(b[4 * ib + g]) | (((g & 1) != 0) ? ((qh << 4u) & 0x700u) : ((qh << 8u) & 0x700u));
-        const bool neg = ((g & 1) != 0) ? ((qh & 0x80u) != 0u) : ((qh & 0x08u) != 0u);
-        const ulong gr = iq1s_grid[idx];
-        const float delta = neg ? -0.125f : 0.125f;
-        for (int j = 0; j < 8; ++j) {
-            const uint by = uint((gr >> (8u * uint(j))) & 0xffu);
-            const int c = (by & 0x80u) != 0u ? int(by) - 256 : int(by);
-            q[8 * l2 + j] = float(c) + delta;
-        }
-    }
-    return dl;
-}
-
 // IQ4_NL: 32 = 1 unit; low nibbles are elements 0..15, high 16..31 (one half2 lookup per byte).
 template <> inline float deq<T_IQ4_NL>(device const uchar* b, int, thread float* q, threadgroup const uint* tab) {
     device const ushort* p = (device const ushort*)(b + 2);

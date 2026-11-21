@@ -73,8 +73,7 @@ kernel void gr_norm2(device float* R [[buffer(0)]], device const float* bo [[buf
                      device const float* inj [[buffer(2)]], device const float* w_norm [[buffer(3)]],
                      device float* xn [[buffer(4)]], constant GrArgs& a [[buffer(5)]],
                      uint3 tg [[threadgroup_position_in_grid]], ushort tid [[thread_index_in_threadgroup]],
-                     ushort sg_ [[simdgroup_index_in_threadgroup]], ushort lane_ [[thread_index_in_simdgroup]]) {
-    const ushort sg = sg32(tid, sg_), lane = lane32(tid, lane_);   // the tile's own 32-lane group (the runtime's prologue)
+                     ushort sg [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
     constexpr int NJ = GR_NJ;
     threadgroup float part[8];
     const uint c = tg.x, t = tg.y, n = a.n_embd;
@@ -98,7 +97,7 @@ kernel void gr_norm2(device float* R [[buffer(0)]], device const float* bo [[buf
     }
     if (a.apply)
         for (int j = 0; j < NJ; ++j) r[tid + 256 * j] = rv[j];
-    ss = sum32(ss);
+    ss = simd_sum(ss);
     if (lane == 0) part[sg] = ss;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float tot = 0.0f;

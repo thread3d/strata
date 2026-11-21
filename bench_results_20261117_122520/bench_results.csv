@@ -1,0 +1,20 @@
+quant,model,context_tokens,query_tokens,run,total_s,per_step_s,tokens_per_s
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",4,8,1,20.73,1.728,.385914
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",8,8,1,27.34,1.709,.292611
+UD-Q6_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",4,2,2,17.83,2.972,.112170
+UD-Q6_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",8,2,2,21.95,2.195,.091116
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",4,2,2,8.57,1.428,.233372
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",16,8,3,40.18,1.674,.199104
+UD-Q4_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",8,2,1,14.84,1.484,.134770
+UD-Q4_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",4,1,2,5.54,1.108,.180505
+UD-Q4_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",8,4,1,15.06,1.255,.265604
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",4,1,1,6.98,1.396,.143266
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",32,8,3,66.16,1.654,.120918
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",8,4,1,18.12,1.510,.220750
+UD-Q6_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",32,2,3,74.65,2.196,.026791
+UD-Q4_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",32,4,1,48.80,1.356,.081967
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",8,4,3,18.04,1.504,.221729
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",16,2,3,27.51,1.528,.072700
+UD-Q6_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",16,4,3,32.74,1.637,.122174
+Q8_0,"/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",2,1,2,3.70,1.232,.270270
+UD-Q4_K_XL,"/Volumes/Sonnet Raid/Users/threaded/projects/Strata-data/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",2,4,1,6.99,1.164,.572246

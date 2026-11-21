@@ -278,8 +278,7 @@ public:
     // slot b's state <-> the main one (the GPU is idle between windows): the running state and the first `upto` cells of K/V
     bool slot_copy(bool into_slot, int b, int64_t upto, bool kv_only, std::string& err);
     void activate(int set);
-    // a caller that asks for no verify window (--spec 0: plain one-token decode) still needs a one-row window
-    void set_max_t(int t) { max_t_ = std::min(std::max(t, 1), MAXT); }
+    void set_max_t(int t) { max_t_ = std::min(t, MAXT); }
     // ---- the MTP draft layer (mtp.hpp's math on mac-kern's kernels; the MTP GGUF from tools/mtp_pack.py)
     bool mtp_load(const std::string& gguf, int max_t, std::string& err);
     bool mtp_prefill(const int32_t* next_tokens, int64_t n, int64_t cell0, std::string& err);
@@ -541,18 +540,6 @@ public:
     void at_cut(int s) {
         st_->at_layer(s, seg_T_, TOPK, cut_ids_ ? cut_ids_ : ids_.as<int32_t>(), st_pred_ && !cut_ids_ ? predL_.as<float>() + (size_t) s * MAXT * 512 : nullptr,
                       predL2_.ptr && !cut_ids_ ? predL2_.as<float>() + (size_t) s * MAXT * 512 : nullptr);
-        // STRATA_WIN_LAYERCHECK (bring-up tooling, off by default): the residual after each layer, for finding the
-        // first layer whose output is non-finite.  One host read per segment; never for a timed run.
-        static const bool lchk = std::getenv("STRATA_WIN_LAYERCHECK") != nullptr;
-        if (lchk && R_.ptr != nullptr) {
-            const size_t n = (size_t) seg_T_ * HC * N;
-            const float* p = R_.as<float>();
-            size_t bad = 0; float mx = 0.0f;
-            for (size_t i = 0; i < n; ++i) { if (!std::isfinite(p[i])) ++bad; else mx = std::max(mx, std::fabs(p[i])); }
-            std::fprintf(stderr, "strata metal: layer %d residual: %zu non-finite of %zu, max|.| %.5g\n", s, bad, n,
-                         (double) mx);
-            std::fflush(stderr);
-        }
     }
 private:
     std::vector<float> ple_hist_;    // NG_HIST x hc_dim normalized rows, row-fastest
@@ -1421,14 +1408,6 @@ bool Window::run(int Tn, const int32_t* tokens, int64_t pos0, bool head, int32_t
     mtp_src_ = nullptr;
     if (Tn < 1 || Tn > MAXT || (head && Tn > max_t_)) { err = "metal window: window size out of range"; return false; }
     if (pos0 + Tn + 1 >= max_cells_) { err = "metal window: the window runs past the context"; return false; }
-    // A token id outside the vocabulary would read rows past the embedding tensor: refuse it here rather than let a
-    // dequantised row read unmapped memory (a head that returned a non-finite argmax, e.g. 0x7fffffff, did exactly that).
-    for (int t = 0; t < Tn; ++t)
-        if (tokens[t] < 0 || (int64_t) tokens[t] >= n_vocab_) {
-            err = "metal window: the token id " + std::to_string((long long) tokens[t]) + " is outside the vocabulary (0.." +
-                  std::to_string((long long) (n_vocab_ - 1)) + ")";
-            return false;
-        }
     const double t0 = now_ms();
     // ---- the embeddings (CPU dequant of the token rows straight into the shared buffer), broadcast to the streams
     const gguf::Tensor& te = T("token_embd.weight");
@@ -1477,10 +1456,6 @@ bool Window::run(int Tn, const int32_t* tokens, int64_t pos0, bool head, int32_t
             mtl::Arg* qa = nullptr;
             for (auto& g : d.args)
                 if (!g.bytes.empty()) qa = &g;
-            if (qa == nullptr) {   // a cached QSA dispatch without its inline QsaArgs: not patchable
-                std::fprintf(stderr, "strata metal: cached QSA dispatch %zu has no inline argument; its positions stay as built\n", (size_t) i);
-                continue;
-            }
             std::memcpy(qa->bytes.data(), &a, sizeof a);
             if (kind == 2) d.grid[0] = (uint32_t) (((pos0 + Tn) / 4 + 1 + 7) / 8);
         }
