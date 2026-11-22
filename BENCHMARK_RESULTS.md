@@ -6,7 +6,7 @@ what turns "it runs" into a statement about correctness.
 
 | Family | Path | Result |
 |---|---|---|
-| Qwen3.6-35B-A3B | `build-metal/strata-q36-metal` | **runs**: 5 of 7 packs, 0.86 to 1.11 s per step — but only 2 of the 5 are correct |
+| Qwen3.6-35B-A3B | `build-metal/strata-q36-metal` | **runs and is correct**: 5 of 7 packs, 0.86 to 1.11 s per step, all 5 now match llama.cpp |
 | Qwen3.8-Flash-Next | `build-metal/strata` | **stops**: needs a 4.07 to 5.13 GiB Metal buffer; this card's limit is 3.5 GiB |
 | DeepSeek V4.1-Flash | `build-metal/strata_ds4` | **refuses by design**: no Metal 3 device addresses on macOS 11 |
 
@@ -20,16 +20,19 @@ token), which is the behaviour of a faithful engine.
 |---|---|---|---|
 | `Q8_0` | Q8_0, Q8_0 | **matches** | 1.114 |
 | `UD-Q6_K_XL` | Q6_K, Q8_0 | **matches** | 1.039 |
-| `Q6_K` | Q6_K, Q6_K | **wrong at token 4** | 0.986 |
-| `Q4_K_M` | Q4_K, Q6_K | **wrong at token 4** | 0.940 |
-| `UD-Q4_K_XL` | Q4_K, Q5_K | **wrong at token 4** | 0.864 |
+| `Q6_K` | Q6_K, Q6_K | **matches** | 0.986 |
+| `Q4_K_M` | Q4_K, Q6_K | **matches** | 0.940 |
+| `UD-Q4_K_XL` | Q4_K, Q5_K | **matches** | 0.864 |
 | `UD-Q2_K_XL` | — | refused: the embedding is Q5_K | — |
 | `UD-Q8_K_XL` | — | refused: the expert down tensor is BF16 | — |
 
-The split tracks the **expert down-projection** type and nothing else: Q8_0 down is right, K-quant
-down is wrong. So the three "K-group" answers are a bug, not a legitimate low-precision variant —
-they should be treated as invalid output. This is the K-quant down-kernel fault first recorded on
-2026-11-16; `be4cbc78f` did not fix it.
+All five now agree with llama.cpp, 23 of 24 tokens identical; the 24th is `25562` on the two
+Q6_K-down packs, the same near-tie llama.cpp's own `Q4_K_M` shows. That was not always true: until
+2026-11-22 the three K-quant-down packs diverged at token 4, on a fault first recorded on 2026-11-16
+that `be4cbc78f` did not fix. It is fixed now — `moe_down_k` took its simdgroup index and lane from
+the hardware attributes instead of mapping them through `sg32`/`lane32` like the other MoE kernels
+do, so on this card's 64-lane simdgroups the row formula overlapped and never wrote rows 24-31 of
+every threadgroup: a quarter of the output, and a relative L2 of exactly 0.5.
 
 **Speed.** On the identical 47-step workload, wall clock including load:
 
