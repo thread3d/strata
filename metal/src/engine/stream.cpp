@@ -182,7 +182,7 @@ bool ExpertStream::load_dense(gguf::File& f, mtl::Context& cx, const std::vector
                               std::string& err) {
     const double t0 = now_ms();
     std::vector<gguf::Tensor*> ts;
-    uint64_t tot = 0;
+    uint64_t tot = 0, span = 0;
     for (auto& kv : f.tensors) {
         gguf::Tensor& t = kv.second;
         if (t.name.find("_exps") != std::string::npos) continue;
@@ -192,8 +192,9 @@ bool ExpertStream::load_dense(gguf::File& f, mtl::Context& cx, const std::vector
         if (std::find(skip.begin(), skip.end(), t.name) != skip.end()) { t.offset = 0; continue; }
         ts.push_back(&t);
         tot += (t.bytes + 255) / 256 * 256;
+        if (t.bytes > span) span = t.bytes;   // the chunks overlap by the largest tensor (see alloc_chunked)
     }
-    out = cx.alloc((tot + PAGE - 1) / PAGE * PAGE);
+    out = cx.alloc_chunked((tot + PAGE - 1) / PAGE * PAGE, (size_t) span);
     std::vector<uint64_t> src(ts.size()), dst(ts.size());
     uint64_t o = 0;
     for (size_t i = 0; i < ts.size(); ++i) {
@@ -209,7 +210,7 @@ bool ExpertStream::load_dense(gguf::File& f, mtl::Context& cx, const std::vector
             for (;;) {
                 const size_t i = next++;
                 if (i >= ts.size()) break;
-                if (!read(out.as<uint8_t>() + dst[i], ts[i]->bytes, src[i])) ok = false;
+                if (!read(cx.host_ptr(out, dst[i]), ts[i]->bytes, src[i])) ok = false;
             }
         });
     for (auto& x : th) x.join();

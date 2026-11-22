@@ -109,6 +109,11 @@ public:
     Pipeline pipeline(int lib, const std::string& fn, const Constants& c = {});
 
     Buffer alloc(size_t bytes, const void* src = nullptr);   // shared storage; if src != nullptr, Metal copies src's bytes at creation
+    // shared-storage arena of `bytes` above maxBufferLength, as overlapping chunks (see wrap). `max_span`
+    // is the largest single tensor that will be bound inside it; host_ptr(b, off) is where to write the
+    // bytes at logical `off`, and is exactly the chunk that binding will select for it.
+    Buffer alloc_chunked(size_t bytes, size_t max_span);
+    void* host_ptr(const Buffer& b, size_t off);
     Buffer alloc_private(size_t bytes);                      // private (GPU-only) storage, coherent for compute kernels
     Buffer wrap(void* page_aligned, size_t bytes);  // no-copy wrap (page-aligned, size multiple of page)
     // the same, also when bytes > maxBufferLength: then overlapping chunks, each holding any range of up to

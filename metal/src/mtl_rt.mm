@@ -956,6 +956,44 @@ Buffer Context::wrap(void* p, size_t bytes, size_t max_span) {
     return r;
 }
 
+Buffer Context::alloc_chunked(size_t bytes, size_t max_span) {
+    const size_t pg = 16384, maxlen = [impl_->dev maxBufferLength] / pg * pg;
+    if (bytes <= maxlen) return alloc(bytes);
+    const size_t span = (max_span + pg - 1) / pg * pg;
+    if (span >= maxlen / 2) {
+        std::fprintf(stderr, "mtl: alloc_chunked %zu: a tensor of %zu bytes does not fit the chunks\n", bytes, max_span);
+        std::exit(4);
+    }
+    Buffer r;
+    r.chunks = std::make_shared<std::vector<void*>>();
+    r.stride = maxlen - span;
+    for (size_t base = 0; base < bytes; base += r.stride) {
+        const size_t len = std::min(maxlen, (bytes - base + pg - 1) / pg * pg);
+        id<MTLBuffer> b = [impl_->dev newBufferWithLength:len options:MTLResourceStorageModeShared];
+        if (!b) {
+            std::fprintf(stderr, "mtl: alloc_chunked %zu: chunk at %zu (%zu bytes) failed\n", bytes, base, len);
+            std::exit(4);
+        }
+        std::memset([b contents], 0, len);
+        r.chunks->push_back((__bridge_retained void*)b);
+        if (base + len >= bytes) break;
+    }
+    allocated_ += bytes;
+    r.handle = (*r.chunks)[0];
+    r.ptr = [(__bridge id<MTLBuffer>)(*r.chunks)[0] contents];
+    r.bytes = bytes;
+    std::fprintf(stderr, "mtl: arena %.2f GB as %zu overlapped buffers (maxBufferLength %.2f GB, overlap %.2f GB)\n",
+                 bytes / 1e9, r.chunks->size(), maxlen / 1e9, span / 1e9);
+    return r;
+}
+
+void* Context::host_ptr(const Buffer& b, size_t off) {
+    if (!b.chunks) return (uint8_t*) b.ptr + off;
+    const size_t k = std::min(off / b.stride, b.chunks->size() - 1);
+    id<MTLBuffer> x = (__bridge id<MTLBuffer>)(*b.chunks)[k];
+    return (uint8_t*) [x contents] + (off - k * b.stride);
+}
+
 #if defined(STRATA_DS4_RUNTIME)
 // The runtime's own MTLBuffer under a CPU address (strata::gpu's allocations), when [p, p + bytes) lies inside one.  Binding it
 // - the same MTLBuffer, so the same GPU address, as every other kernel that touches this memory - instead of a fresh no-copy
