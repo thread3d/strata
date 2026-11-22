@@ -4807,11 +4807,17 @@ int main(int argc, char** argv) {
                                  "and --prefill CHUNK\n", o.pack.c_str());
             return 2;
         }
-        if (g.n_mtp_layers <= 0) {   // --spec proposes from the MTP drafter; a pack without one cannot fill the window
+        // --spec proposes from a draft source: by default the model's own MTP layer, else an external
+        // one (--draft dflash2 with --draft-model PACK). Only the default source needs n_mtp_layers.
+        const bool mtp_source = o.draft.empty() || o.draft == "mtp";
+        if (mtp_source && g.n_mtp_layers <= 0) {
             std::fprintf(stderr,
-                         "strata generate: %s is a native (IQ) pack, which requires --spec T (T >= 2), but the pack "
-                         "carries no MTP drafter (no mtp.* tensors), so the verify window has nothing to propose "
-                         "from. Use a pack that ships the drafter, or a non-native pack.\n", o.pack.c_str());
+                         "strata generate: %s is a native (IQ) pack, which requires --spec T (T >= 2), but the "
+                         "draft source is mtp and the model carries no MTP layer (nextn_predict_layers is absent), "
+                         "so the verify window has nothing to propose from. The alternative source, "
+                         "--draft dflash2 with an external --draft-model, is CUDA/HIP only and is not built "
+                         "for this backend; use a model that ships the MTP layer.\n",
+                         o.pack.c_str());
             return 2;
         }
         const auto embed_t0 = std::chrono::steady_clock::now();
