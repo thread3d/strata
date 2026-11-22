@@ -161,8 +161,10 @@ def write_svg(rows) -> Path:
 
     legend_y = top + row_h * len(timed) + 36
     add('<text x="16" y="%d" font-size="10" fill="%s">Error bars are one standard deviation across '
-        'the %d runs per pack; min and max are in decode-steps.csv and in each bar\u2019s tooltip. '
-        'The reference comparison is in same-workload-wall.svg</text>' % (legend_y, MUTED, runs))
+        'the %d runs per pack, so where the runs agree closely the bar is narrower than the mark '
+        'itself - the figures beside each bar give the exact mean and deviation. Min and max are in '
+        'decode-steps.csv and in each bar\u2019s tooltip; the reference comparison is in '
+        'same-workload-wall.svg</text>' % (legend_y, MUTED, runs))
 
     note_y = legend_y + 24
     for r in refused:

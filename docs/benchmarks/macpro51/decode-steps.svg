@@ -52,7 +52,7 @@
 <line x1="723.7" y1="244.5" x2="723.7" y2="254.5" stroke="#111827" stroke-width="1.4"/>
 <line x1="722.4" y1="242.5" x2="722.4" y2="256.5" stroke="#111827" stroke-width="1.6"/>
 <text x="731.7" y="254" font-size="11" fill="#1f2933">1.172 ± 0.003</text>
-<text x="16" y="314" font-size="10" fill="#6b7280">Error bars are one standard deviation across the 5 runs per pack; min and max are in decode-steps.csv and in each bar’s tooltip. The reference comparison is in same-workload-wall.svg</text>
+<text x="16" y="314" font-size="10" fill="#6b7280">Error bars are one standard deviation across the 5 runs per pack, so where the runs agree closely the bar is narrower than the mark itself - the figures beside each bar give the exact mean and deviation. Min and max are in decode-steps.csv and in each bar’s tooltip; the reference comparison is in same-workload-wall.svg</text>
 <text x="16" y="338" font-size="10" fill="#6b7280">UD-Q2_K_XL refused: cannot read the model: token_embd.weight is Q5_K, q36_embed only supports Q8_0, Q6_K and Q4_K</text>
 <text x="16" y="352" font-size="10" fill="#6b7280">UD-Q8_K_XL refused: cannot read the model: blk.34.ffn_down_exps.weight is BF16, and this port has no grouped expert </text>
 </svg>
