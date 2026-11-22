@@ -115,8 +115,8 @@ struct Kernels {
 int xkind(int t) {
     switch (t) {
         case ref::Q2_0: return 1;  // Q2_0 uses plane 1 (XK_Q2)
+        case ref::Q4_K: case ref::Q5_K: return 2;  // XK_P4, as units.metal's XKind says
         case ref::Q3_K: case ref::Q6_K: return 3;  // Q3_K/Q6_K use plane 3 (XK_P2, p2s scaling)
-        // Q4_K/Q5_K use plane 0 (raw) with Dec matching CPU reference
         default: return 0;
     }
 }
