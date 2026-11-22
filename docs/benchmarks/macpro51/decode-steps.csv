@@ -1,0 +1,8 @@
+pack,down,bytes,gib,run1_s_per_step,run2_s_per_step,status
+UD-Q2_K_XL,Q5_K (embed),12574128416,11.7,,,refused
+Q4_K_M,Q6_K,21166758368,19.7,0.948,0.948,runs
+UD-Q4_K_XL,Q5_K,22853663008,21.3,0.869,0.880,runs
+Q6_K,Q6_K,28514152928,26.6,0.998,0.991,runs
+UD-Q6_K_XL,Q8_0,32611711264,30.4,1.048,1.052,runs
+Q8_0,Q8_0,37801097504,35.2,1.124,1.125,runs
+UD-Q8_K_XL,BF16,39099447584,36.4,,,refused
