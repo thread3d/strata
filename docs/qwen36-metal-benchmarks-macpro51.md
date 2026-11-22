@@ -1,5 +1,7 @@
 # Qwen3.6-35B-A3B Metal Benchmarks on macpro51 (Radeon RX 580 8GB)
 
+> **Superseded 2026-11-22.** The numbers below were not reproduced by the branch tip (`be4cbc78f`) and some cannot be: the token ids listed for several packs change at the fourth token, and the file sizes are wrong (Q8_0 is 37.8 GB, not 52 GB). See [macpro51-2026-11-22.md](macpro51-2026-11-22.md) for what the engine actually does on this machine now.
+
 ## Hardware
 - **Mac**: MacPro5,1 (2010/2012)
 - **OS**: macOS 11.7.11

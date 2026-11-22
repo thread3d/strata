@@ -283,13 +283,15 @@ The code is in `metal/` (the engine's side in `metal/src/engine`, the kernels in
 
 ## An Intel Mac
 
-The engine **builds** on an Intel Mac; it does not **run** there. Running needs three things the Intel Mac does not have (below), and
-the build no longer stands in the way of finding that out.
+The engine **builds** on an Intel Mac. The Qwen3.6 path also **runs** there and returns text; the Qwen3.8 and DeepSeek paths
+do not, for the reasons below. What was measured on 2026-11-22, and what each path does now, is in
+[macpro51-2026-11-22.md](macpro51-2026-11-22.md).
 
 Measured on: an Intel Mac Pro (2 × 6-core Xeon X5675, 24 threads), 96 GB, Radeon RX 580 8 GB (Metal 2), macOS 11.7.11, Command
 Line Tools 13 (Apple clang 13.0.0, macOS 12.1 SDK). Built there from a git checkout: the engine (`build-metal/strata`), the
 DeepSeek engine (`build-metal/strata_ds4`) and the image encoder (`build-vision/bin/strata-vision`), with `-DSTRATA_GGML_DIR`
-pointing at a llama.cpp checkout. Running `strata --version` prints `strata 0.1.55-metal`.
+pointing at a llama.cpp checkout. Running `strata --version` prints `strata 0.1.59-metal` in a build of the branch tip
+(2026-11-22); the 2026-11-19 build printed `strata 0.1.55-metal`.
 
 ```sh
 ./setup.sh --unsupported-mac --build --no-start      # or STRATA_METAL_UNSUPPORTED_MAC=1
@@ -376,9 +378,13 @@ on a failure.
 
 ### The DeepSeek engine (`strata_ds4`)
 
-It builds here as well, and it was brought much further than the Qwen engine before stopping: on the Mac above it loads the
-2.00 bpw pack, keeps all 15 360 routed experts in place in the model's files, runs a real prompt (5 tokens, 1.3 tok/s) and
-decodes tokens at about 1.5 tok/s with the CPU lane doing its share.
+It builds here as well, and it was brought much further than the Qwen engine before stopping: in the 2026-11-19 runs it loaded
+the 2.00 bpw pack, kept all 15 360 routed experts in place in the model's files, ran a real prompt (5 tokens, 1.3 tok/s) and
+decoded tokens at about 1.5 tok/s with the CPU lane doing its share.
+
+**As of 2026-11-22 it refuses to start here.** Without Metal 3's device addresses its dispatch has reset this card, so the
+engine now stops with that reason (0.01 s, no GPU work) unless `STRATA_DS4_ALLOW_UNSTABLE_METAL=1` is set; that flag was not
+used. The measurements in this section are a record of the earlier runs, not a current result.
 
 ```sh
 tools/dsv41/pack_gguf.py --model <the GGUF folder> --shards ... --engram ... --dspark-gguf ... --out <folder>/maya-ds4
@@ -391,11 +397,12 @@ beside the `matmul2d` one, the bf16 attention gives way to the same format's oth
 model's pages are mapped writable-private (this driver refuses a no-copy buffer over a read-only mapping), and the embedding
 declines its raw-address port where the Metal has no `gpuAddress`.
 
-**It computes on this card now**, with the four rules below learned the hard way; it is still not deterministic, and that is the
-open problem, not the arithmetic. On the Mac Pro above it produces real logits (`--dump-logits`: 775 680 floats, max 15.54, no zeros),
-its own kernel-versus-host checks agree (`q8 recompute=0.039644 kernel_y=0.039644`, `iq host=-0.009077 kernel=-0.0090405`,
-`pnorm expected x0=0.0228355 kernel x0=0.0228355`), it decodes tokens, and the attention contributes real values where it once summed
-zeros. No GPU resets in the recent runs (43 since this machine was set up, unchanged).
+**It computed on this card in the 2026-11-19 runs**, with the four rules below learned the hard way. In those runs, on the Mac
+Pro above, it produced real logits (`--dump-logits`: 775 680 floats, max 15.54, no zeros), its own kernel-versus-host checks
+agreed (`q8 recompute=0.039644 kernel_y=0.039644`, `iq host=-0.009077 kernel=-0.0090405`, `pnorm expected x0=0.0228355 kernel
+x0=0.0228355`), it decoded tokens, and the attention contributed real values where it once summed zeros. There were no GPU
+resets in those runs (43 since this machine was set up). It was still not deterministic, and that remained the open problem.
+The engine now refuses the path by default, as the paragraph above says.
 
 Four fixes that any Metal 2 card will need, each measured here:
 

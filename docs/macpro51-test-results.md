@@ -1,5 +1,7 @@
 # macpro51 Qwen3.6 Metal Test Results (2026-11-16)
 
+> **Superseded 2026-11-22.** The numbers below were not reproduced by the branch tip (`be4cbc78f`) and some cannot be: the token ids listed for several packs change at the fourth token, and the file sizes are wrong (Q8_0 is 37.8 GB, not 52 GB). See [macpro51-2026-11-22.md](macpro51-2026-11-22.md) for what the engine actually does on this machine now.
+
 ## Hardware
 - **Host**: MacPro5,1 (macOS 11.7.11)
 - **CPU**: 2x Intel Xeon X5675 (12 cores / 24 threads @ 3.07 GHz)
