@@ -1412,7 +1412,15 @@ bool Window::run(int Tn, const int32_t* tokens, int64_t pos0, bool head, int32_t
     // ---- the embeddings (CPU dequant of the token rows straight into the shared buffer), broadcast to the streams
     const gguf::Tensor& te = T("token_embd.weight");
     const size_t rb = ref::row_bytes(te.type, N);
+    // A token id outside the table would walk off the arena (window.cpp:1407). The spec path can hand
+    // this loop an uninitialised id, so say so rather than take a SIGSEGV on the read.
+    const size_t nrows = rb != 0 ? te.bytes / rb : 0;
     for (int t = 0; t < Tn; ++t) {
+        if (tokens[t] < 0 || (size_t) tokens[t] >= nrows) {
+            err = "metal window: token id " + std::to_string(tokens[t]) + " is outside the embedding table ("
+                  + std::to_string(nrows) + " rows)";
+            return false;
+        }
         float* r = R_.as<float>() + (size_t) t * HC * N;
         if (const float* img = img_row(pos0 + t)) std::memcpy(r, img, (size_t) N * 4);
         else ref::dequant(te.type, (const uint8_t*) W_.ptr + te.offset + (size_t) tokens[t] * rb, r, N);
