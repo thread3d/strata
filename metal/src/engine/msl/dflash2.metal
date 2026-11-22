@@ -29,8 +29,8 @@ kernel void df2_rms(device const float* x [[buffer(0)]], device const float* w [
     device const float* xr = x + tg.x * a.n;
     float ss = 0.0f;
     for (uint d = tid; d < a.n; d += 256) ss = fma(xr[d], xr[d], ss);
-    ss = simd_sum(ss);
-    if (lane == 0) part[sg] = ss;
+    ss = sum32(ss);
+    if (lane32(tid, lane) == 0) part[sg32(tid, sg)] = ss;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float tot = 0.0f;
     for (int i = 0; i < 8; ++i) tot += part[i];
@@ -67,8 +67,8 @@ kernel void df2_norm_rope(device const float* in [[buffer(0)]], device const flo
     threadgroup float y[HD];
     const uint r = tg.x, h = tg.y;
     const float x = in[r * a.in_stride + h * HD + d];
-    float ss = simd_sum(x * x);
-    if (lane == 0) red[sg] = ss;
+    float ss = sum32(x * x);
+    if (lane32(d, lane) == 0) red[sg32(d, sg)] = ss;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     const float tot = red[0] + red[1] + red[2] + red[3];
     const float v = x * rsqrt(tot / float(HD) + a.eps) * gamma[d];
@@ -248,7 +248,7 @@ kernel void df2_topk_part(device const float* logits [[buffer(0)]], device float
             const int oi = simd_shuffle_xor(bi, o);
             if (better(ov, oi, bv, bi)) { bv = ov; bi = oi; }
         }
-        if (lane == 0) { wv[sg] = bv; wi[sg] = bi; }
+        if (lane32(tid, lane) == 0) { wv[sg32(tid, sg)] = bv; wi[sg32(tid, sg)] = bi; }
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid == 0) {
             float v = wv[0];
@@ -288,7 +288,7 @@ kernel void df2_topk_merge(device const float* cval [[buffer(0)]], device const 
             const int op = simd_shuffle_xor(bp, o);
             if (better(ov, oi, bv, bi)) { bv = ov; bi = oi; bp = op; }
         }
-        if (lane == 0) { wv[sg] = bv; wi[sg] = bi; wp[sg] = bp; }
+        if (lane32(tid, lane) == 0) { wv[sg32(tid, sg)] = bv; wi[sg32(tid, sg)] = bi; wp[sg32(tid, sg)] = bp; }
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid == 0) {
             float v = wv[0];
@@ -316,22 +316,23 @@ kernel void df2_select(device const float* hp [[buffer(0)]], device const float*
     threadgroup float vp[256];
     threadgroup float sc[TOPK];
     threadgroup int prev;
+    const ushort w32 = sg32(tid, w), l32 = lane32(tid, lane);   // this thread's 32-lane tile (the runtime's prologue)
     if (tid == 0) prev = *anchor_tok;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     for (uint i = 0; i < a.rows; ++i) {
         vp[tid] = bf16f(pred_cb[uint(prev) * a.rank + tid]) * hp[i * a.rank + tid];
         threadgroup_barrier(mem_flags::mem_threadgroup);
-        for (int j = w * 2; j < w * 2 + 2; ++j) {
+        for (int j = w32 * 2; j < w32 * 2 + 2; ++j) {
             const int t = tok[i * TOPK + j];
-            const uint4 raw = *(device const uint4*)(succ_cb + uint(t) * a.rank + lane * 8);
+            const uint4 raw = *(device const uint4*)(succ_cb + uint(t) * a.rank + l32 * 8);
             const uint u[4] = {raw.x, raw.y, raw.z, raw.w};
             float acc = 0.0f;
             for (int e = 0; e < 4; ++e) {
-                acc = fma(as_type<float>(u[e] << 16), vp[lane * 8 + e * 2], acc);
-                acc = fma(as_type<float>(u[e] & 0xffff0000u), vp[lane * 8 + e * 2 + 1], acc);
+                acc = fma(as_type<float>(u[e] << 16), vp[l32 * 8 + e * 2], acc);
+                acc = fma(as_type<float>(u[e] & 0xffff0000u), vp[l32 * 8 + e * 2 + 1], acc);
             }
-            acc = simd_sum(acc);
-            if (lane == 0) sc[j] = unary[i * TOPK + j] + acc;
+            acc = sum32(acc);
+            if (l32 == 0) sc[j] = unary[i * TOPK + j] + acc;
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid == 0) {
@@ -367,19 +368,20 @@ kernel void df2_select_q4(device const float* hp [[buffer(0)]], device const flo
     threadgroup float vp[256];
     threadgroup float sc[TOPK];
     threadgroup int prev;
+    const ushort w32 = sg32(tid, w), l32 = lane32(tid, lane);   // this thread's 32-lane tile (the runtime's prologue)
     const uint rowb = (a.rank / 32) * 18;   // 144 bytes a row
     if (tid == 0) prev = *anchor_tok;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     for (uint i = 0; i < a.rows; ++i) {
         vp[tid] = q4_0_val(pred_cb + uint(prev) * rowb, tid) * hp[i * a.rank + tid];
         threadgroup_barrier(mem_flags::mem_threadgroup);
-        for (int j = w * 2; j < w * 2 + 2; ++j) {
+        for (int j = w32 * 2; j < w32 * 2 + 2; ++j) {
             const int t = tok[i * TOPK + j];
             device const uchar* row = succ_cb + uint(t) * rowb;
             float acc = 0.0f;
-            for (int e = 0; e < 8; ++e) acc = fma(q4_0_val(row, lane * 8 + e), vp[lane * 8 + e], acc);
-            acc = simd_sum(acc);
-            if (lane == 0) sc[j] = unary[i * TOPK + j] + acc;
+            for (int e = 0; e < 8; ++e) acc = fma(q4_0_val(row, l32 * 8 + e), vp[l32 * 8 + e], acc);
+            acc = sum32(acc);
+            if (l32 == 0) sc[j] = unary[i * TOPK + j] + acc;
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (tid == 0) {
@@ -428,7 +430,8 @@ kernel void df2_mm(device const char* qs [[buffer(0)]], device const half* sc [[
                    ushort tid [[thread_index_in_threadgroup]], ushort sgi [[simdgroup_index_in_threadgroup]],
                    ushort lane [[thread_index_in_simdgroup]]) {
     threadgroup float4 xs[8 * 128];   // [col][s * 32 + lane]: float4 number lane * 4 + s of the chunk (a conflict-free read for the lanes)
-    const uint row0 = (tg.x * SG + sgi) * R;
+    const ushort sg = sg32(tid, sgi), ln = lane32(tid, lane);   // this thread's 32-lane tile (the runtime's prologue)
+    const uint row0 = (tg.x * SG + sg) * R;
     const uint nb = a.K / 32;
     device const char* wr[R];
     device const half* sr[R];
@@ -440,7 +443,7 @@ kernel void df2_mm(device const char* qs [[buffer(0)]], device const half* sc [[
     float acc[R][8];
     for (int r = 0; r < R; ++r)
         for (int c = 0; c < 8; ++c) acc[r][c] = 0.0f;
-    const uint kk = uint(lane) * 16;
+    const uint kk = uint(ln) * 16;
     uint4 raw[R];
     float d[R];
     for (int r = 0; r < R; ++r) {
@@ -465,7 +468,7 @@ kernel void df2_mm(device const char* qs [[buffer(0)]], device const half* sc [[
         threadgroup_barrier(mem_flags::mem_threadgroup);
         for (int sub = 0; sub < 4; ++sub) {
             float4 xv[8];
-            for (int c = 0; c < NCOL; ++c) xv[c] = xs[c * 128 + sub * 32 + lane];
+            for (int c = 0; c < NCOL; ++c) xv[c] = xs[c * 128 + sub * 32 + ln];
             for (int r = 0; r < R; ++r) {
                 const uint word = sub == 0 ? raw[r].x : sub == 1 ? raw[r].y : sub == 2 ? raw[r].z : raw[r].w;
                 const float4 w = float4(as_type<char4>(word)) * d[r];
@@ -477,8 +480,8 @@ kernel void df2_mm(device const char* qs [[buffer(0)]], device const half* sc [[
     }
     for (int r = 0; r < R; ++r)
         for (int c = 0; c < NCOL; ++c) {
-            const float v = simd_sum(acc[r][c]);
-            if (lane == 0 && row0 + uint(r) < a.rows) y[ulong(c) * a.y_stride + row0 + r] = v;
+            const float v = sum32(acc[r][c]);
+            if (ln == 0 && row0 + uint(r) < a.rows) y[ulong(c) * a.y_stride + row0 + r] = v;
         }
 }
 
@@ -498,9 +501,10 @@ kernel void df2_mm4(device const uchar* qs [[buffer(0)]], device const half* sc 
                     ushort tid [[thread_index_in_threadgroup]], ushort sgi [[simdgroup_index_in_threadgroup]],
                     ushort lane [[thread_index_in_simdgroup]]) {
     threadgroup float4 xs[8 * 128];   // [col][128 float4 of the chunk]
-    const uint row0 = (tg.x * SG + sgi) * R;
+    const ushort sg = sg32(tid, sgi), ln = lane32(tid, lane);   // this thread's 32-lane tile (the runtime's prologue)
+    const uint row0 = (tg.x * SG + sg) * R;
     const uint nb = a.K / 32;
-    const uint blk = uint(lane) >> 1, hh = uint(lane) & 1;
+    const uint blk = uint(ln) >> 1, hh = uint(ln) & 1;
     device const uchar* wr[R];
     device const half* sr[R];
     for (int r = 0; r < R; ++r) {
@@ -547,8 +551,8 @@ kernel void df2_mm4(device const uchar* qs [[buffer(0)]], device const half* sc 
     }
     for (int r = 0; r < R; ++r)
         for (int c = 0; c < NCOL; ++c) {
-            const float v = simd_sum(acc[r][c]);
-            if (lane == 0 && row0 + uint(r) < a.rows) y[ulong(c) * a.y_stride + row0 + r] = v;
+            const float v = sum32(acc[r][c]);
+            if (ln == 0 && row0 + uint(r) < a.rows) y[ulong(c) * a.y_stride + row0 + r] = v;
         }
 }
 
@@ -566,21 +570,23 @@ struct MmaQArgs { uint K; uint rows; uint y_stride; uint x_stride; };
 template <int RT, int SG>
 kernel void df2_mma4(device const uint* qw [[buffer(0)]], device const half* sc [[buffer(1)]], device const half* xh [[buffer(2)]],
                      device float* y [[buffer(3)]], constant MmaQArgs& a [[buffer(4)]], uint3 tg [[threadgroup_position_in_grid]],
-                     ushort sgi [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort tid [[thread_index_in_threadgroup]], ushort sgi [[simdgroup_index_in_threadgroup]],
+                     ushort lane [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sgi), ln = lane32(tid, lane);   // this thread's 32-lane tile (the runtime's prologue)
     const uint nb = a.K / 32;
     const uint nrt_total = (a.rows + 7) / 8;
-    const uint rt0 = (tg.x * SG + sgi) * RT;
+    const uint rt0 = (tg.x * SG + sg) * RT;
     if (rt0 >= nrt_total) return;
-    const uint qid = uint(lane) >> 2;
-    const uint fm = (qid & 4) + ((uint(lane) >> 1) & 3);
-    const uint fn = (qid & 2) * 2 + (uint(lane) & 1) * 2;
+    const uint qid = uint(ln) >> 2;
+    const uint fm = (qid & 4) + ((uint(ln) >> 1) & 3);
+    const uint fn = (qid & 2) * 2 + (uint(ln) & 1) * 2;
     float acc0[RT], acc1[RT];
     for (int r = 0; r < RT; ++r) { acc0[r] = 0.0f; acc1[r] = 0.0f; }
     device const uint* wp[RT];
     device const half* sp[RT];
     for (int r = 0; r < RT; ++r) {
         const uint rt = min(rt0 + uint(r), nrt_total - 1);
-        wp[r] = qw + (ulong(rt) * nb) * 32 + lane;
+        wp[r] = qw + (ulong(rt) * nb) * 32 + ln;
         sp[r] = sc + (ulong(rt) * nb) * 8 + fm;
     }
     uint wcur[RT]; half dcur[RT];
@@ -635,22 +641,24 @@ kernel void df2_f16(device const float* x [[buffer(0)]], device half* y [[buffer
 template <int RT, int SG>
 kernel void df2_mma4s(device const uint* qw [[buffer(0)]], device const half* sc [[buffer(1)]], device const half* xh [[buffer(2)]],
                       device float* y [[buffer(3)]], constant MmaQArgs& a [[buffer(4)]], uint3 tg [[threadgroup_position_in_grid]],
-                      ushort sgi [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                      ushort tid [[thread_index_in_threadgroup]], ushort sgi [[simdgroup_index_in_threadgroup]],
+                      ushort lane [[thread_index_in_simdgroup]]) {
     threadgroup float part[SG][RT][2][32];
+    const ushort sg = sg32(tid, sgi), ln = lane32(tid, lane);   // this thread's 32-lane tile (the runtime's prologue)
     const uint nb = a.K / 32;
     const uint nrt_total = (a.rows + 7) / 8;
     const uint rt0 = tg.x * RT;
-    const uint qid = uint(lane) >> 2;
-    const uint fm = (qid & 4) + ((uint(lane) >> 1) & 3);
-    const uint fn = (qid & 2) * 2 + (uint(lane) & 1) * 2;
-    const uint b0 = nb * uint(sgi) / SG, b1 = nb * (uint(sgi) + 1) / SG;
+    const uint qid = uint(ln) >> 2;
+    const uint fm = (qid & 4) + ((uint(ln) >> 1) & 3);
+    const uint fn = (qid & 2) * 2 + (uint(ln) & 1) * 2;
+    const uint b0 = nb * uint(sg) / SG, b1 = nb * (uint(sg) + 1) / SG;
     float acc0[RT], acc1[RT];
     for (int r = 0; r < RT; ++r) { acc0[r] = 0.0f; acc1[r] = 0.0f; }
     device const uint* wp[RT];
     device const half* sp[RT];
     for (int r = 0; r < RT; ++r) {
         const uint rt = min(rt0 + uint(r), nrt_total - 1);
-        wp[r] = qw + (ulong(rt) * nb) * 32 + lane;
+        wp[r] = qw + (ulong(rt) * nb) * 32 + ln;
         sp[r] = sc + (ulong(rt) * nb) * 8 + fm;
     }
     for (uint b = b0; b < b1; b += 2) {
@@ -685,12 +693,12 @@ kernel void df2_mma4s(device const uint* qw [[buffer(0)]], device const half* sc
             }
         }
     }
-    for (int r = 0; r < RT; ++r) { part[sgi][r][0][lane] = acc0[r]; part[sgi][r][1][lane] = acc1[r]; }
+    for (int r = 0; r < RT; ++r) { part[sg][r][0][ln] = acc0[r]; part[sg][r][1][ln] = acc1[r]; }
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    if (sgi == 0) {
+    if (sg == 0) {
         for (int r = 0; r < RT; ++r) {
             float t0 = 0.0f, t1 = 0.0f;
-            for (int g = 0; g < SG; ++g) { t0 += part[g][r][0][lane]; t1 += part[g][r][1][lane]; }
+            for (int g = 0; g < SG; ++g) { t0 += part[g][r][0][ln]; t1 += part[g][r][1][ln]; }
             const uint row = (rt0 + uint(r)) * 8 + fm;
             if (rt0 + uint(r) < nrt_total && row < a.rows) {
                 y[ulong(fn) * a.y_stride + row] = t0;
@@ -706,21 +714,23 @@ DF2MMA4S(1, 2) DF2MMA4S(1, 4) DF2MMA4S(1, 8) DF2MMA4S(2, 4) DF2MMA4S(2, 8)
 template <int RT, int SG>
 kernel void df2_mma8(device const uint2* qw [[buffer(0)]], device const half* sc [[buffer(1)]], device const half* xh [[buffer(2)]],
                      device float* y [[buffer(3)]], constant MmaQArgs& a [[buffer(4)]], uint3 tg [[threadgroup_position_in_grid]],
-                     ushort sgi [[simdgroup_index_in_threadgroup]], ushort lane [[thread_index_in_simdgroup]]) {
+                     ushort tid [[thread_index_in_threadgroup]], ushort sgi [[simdgroup_index_in_threadgroup]],
+                     ushort lane [[thread_index_in_simdgroup]]) {
+    const ushort sg = sg32(tid, sgi), ln = lane32(tid, lane);   // this thread's 32-lane tile (the runtime's prologue)
     const uint nb = a.K / 32;
     const uint nrt_total = (a.rows + 7) / 8;
-    const uint rt0 = (tg.x * SG + sgi) * RT;
+    const uint rt0 = (tg.x * SG + sg) * RT;
     if (rt0 >= nrt_total) return;
-    const uint qid = uint(lane) >> 2;
-    const uint fm = (qid & 4) + ((uint(lane) >> 1) & 3);
-    const uint fn = (qid & 2) * 2 + (uint(lane) & 1) * 2;
+    const uint qid = uint(ln) >> 2;
+    const uint fm = (qid & 4) + ((uint(ln) >> 1) & 3);
+    const uint fn = (qid & 2) * 2 + (uint(ln) & 1) * 2;
     float acc0[RT], acc1[RT];
     for (int r = 0; r < RT; ++r) { acc0[r] = 0.0f; acc1[r] = 0.0f; }
     device const uint2* wp[RT];
     device const half* sp[RT];
     for (int r = 0; r < RT; ++r) {
         const uint rt = min(rt0 + uint(r), nrt_total - 1);
-        wp[r] = qw + (ulong(rt) * nb) * 32 + lane;
+        wp[r] = qw + (ulong(rt) * nb) * 32 + ln;
         sp[r] = sc + (ulong(rt) * nb) * 8 + fm;
     }
     uint2 wcur[RT]; half dcur[RT];
@@ -775,8 +785,8 @@ kernel void df2_rms_h(device const float* x [[buffer(0)]], device const float* w
     device const float* xr = x + tg.x * a.n;
     float ss = 0.0f;
     for (uint d = tid; d < a.n; d += 256) ss = fma(xr[d], xr[d], ss);
-    ss = simd_sum(ss);
-    if (lane == 0) part[sg] = ss;
+    ss = sum32(ss);
+    if (lane32(tid, lane) == 0) part[sg32(tid, sg)] = ss;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float tot = 0.0f;
     for (int i = 0; i < 8; ++i) tot += part[i];

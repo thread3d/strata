@@ -102,6 +102,7 @@ struct Window::Df2 {
     gguf::Tensor head_t;
     mtl::Buffer own_head, vmap, hq, hsc;     // hq / hsc: the draft head requantized to Q8_0 (int8 [nd][2560], half [nd][80])
     bool head_q8 = true;
+    bool wide = false;                         // the device's simdgroup is 64 lanes wide (an AMD card): no matrix units, the scalar GEMM kernels and flat pack layouts
     bool use_map = false;
     // state and activations
     mtl::Buffer kring[8], vring[8];
@@ -233,6 +234,20 @@ bool Window::df2_load_pack(std::string& err) {
         fseeko(f, (off_t) (data_off + t.offset), SEEK_SET);
         if (std::fread(tmp.data(), 1, t.bytes, f) != t.bytes) { std::fclose(f); err = "dflash2: the pack is shorter than its index"; return false; }
         if (t.type == ref::Q4_0 && !is_codebook(n)) {
+            if (d.wide) {   // flat Q4_0 (df2_mm4): 16 code bytes a block, the row's half scales beside them
+                const uint64_t K = t.shape[0], rows = t.shape[1], nb = K / 32;
+                uint8_t* qs = d.wq.as<uint8_t>() + woff[n];
+                uint16_t* sc = (uint16_t*) (d.wq.as<uint8_t>() + soff[n]);
+                for (uint64_t r = 0; r < rows; ++r)
+                    for (uint64_t b = 0; b < nb; ++b) {
+                        const uint8_t* src = tmp.data() + (r * nb + b) * 18;
+                        std::memcpy(qs + (r * nb + b) * 16, src + 2, 16);
+                        std::memcpy(&sc[r * nb + b], src, 2);
+                    }
+                t.offset = woff[n];
+                d.scoff[n] = soff[n];
+                continue;
+            }
             // Q4_0 blocks (half d, 16 bytes: byte j = element j low nibble, element j + 16 high nibble) -> the matrix units' fragment order (df2_mma4s):
             // for a tile of 8 rows and one block, lane l (fragment row fm, columns fn, fn + 1) holds the codes of W[fm][8 s + fn + e] as nibble 2 s + e
             const uint64_t K = t.shape[0], rows = t.shape[1], nb = K / 32, nrt = rows / 8;
@@ -286,6 +301,7 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
     Df2& d = *df2_;
     if (d.bound) return true;
     if (!taps_on_) { err = "dflash2: the window keeps no taps"; return false; }
+    d.wide = cx_->simd_width() != 32;
     if (!df2_load_pack(err)) return false;
     {   // the text strata_control/drafting.py looks for in the program to know that this engine reads a pack whose selector tables are Q4_0 rows
         const auto cb = d.ten.find("candidate_selector.predecessor_codebook");
@@ -343,6 +359,14 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
                     const uint64_t tok = vocab.empty() ? i : (uint64_t) vocab[i];
                     ref::dequant(out_t.type, (const uint8_t*) W_.ptr + out_t.offset + tok * rb, tmpf.data(), N);
                     ref::quantize_q8_0(tmpf.data(), N, blk.data());
+                    if (d.wide) {   // flat Q8_0 (df2_mm): int8 [row][K] and half scales [row][K / 32]
+                        int8_t* q = (int8_t*) (d.hq.as<uint8_t>() + i * (uint64_t) N);
+                        for (uint64_t b = 0; b < nb; ++b) {
+                            std::memcpy(d.hsc.as<uint8_t>() + (i * nb + b) * 2, blk.data() + b * 34, 2);
+                            std::memcpy(q + b * 32, blk.data() + b * 34 + 2, 32);
+                        }
+                        return;
+                    }
                     // this row's fm in its tile; the 8 rows of a tile are written by whichever thread owns each row: lane words are filled byte by byte
                     const uint64_t rt = i / 8, fmr = i % 8;
                     for (uint64_t b = 0; b < nb; ++b) {
@@ -409,6 +433,9 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
     d.rowlog = A((size_t) DF2_RING * N * 2);
     { const char* fe = std::getenv("STRATA_DF2_FUSE_H"); d.fuse_h = !(fe && fe[0] == '0'); }
     d.bound = true;
+    if (d.wide)
+        std::fprintf(stderr, "strata metal: DFlash2: %d-lane simdgroups, so the matrix units are not used: the scalar Q4_0 / Q8_0 GEMMs and flat pack layouts\n",
+                     cx_->simd_width());
     std::fprintf(stderr, "strata metal: DFlash2 drafter ready (%.0f MiB: pack %.0f, %lld-token draft head %s), in %.0f ms\n", d.bytes / 1048576.0,
                  (d.wq.bytes + d.pack.bytes) / 1048576.0, (long long) d.nd, d.head_q8 ? (d.use_map ? "as Q8_0" : "as Q8_0, the whole head") : "native", now_ms() - t0);
     return true;
@@ -451,8 +478,25 @@ void Window::df2_mm(std::vector<mtl::Dispatch>& ds, const mtl::Buffer& qs, size_
 // Q4_0 (fragment order) x up to 8 float columns on the matrix units: the activation is rounded to half once (df2_f16, skipped when `reuse`: the previous
 // call read the same x), then df2_mma4s (split-K over the simdgroups of a threadgroup, 2 row tiles per threadgroup, 8 simdgroups)
 void Window::df2_mm4(std::vector<mtl::Dispatch>& ds, const mtl::Buffer& qs, size_t qs_off, const mtl::Buffer& sc, size_t sc_off, uint32_t K, uint32_t rows,
-                     const mtl::Buffer& x, size_t x_off, const mtl::Buffer& y, uint32_t y_stride, int ncol, bool reuse) {
+                     const mtl::Buffer& x, size_t x_off, uint32_t x_stride, const mtl::Buffer& y, uint32_t y_stride, int ncol, bool reuse) {
     Df2& d = *df2_;
+    if (d.wide) {   // 64-lane simdgroups: matrix units are unusable, so the scalar kernel over flat Q4_0 blocks (df2_mm4), floats in
+        struct Mm4Args { uint32_t K, rows, y_stride, x_stride; } a{K, rows, y_stride, x_stride};
+        static const std::pair<int, int> RS4 = [] {
+            int r = 4, s = 8;
+            if (const char* e = std::getenv("STRATA_DF2_MM4")) std::sscanf(e, "%d,%d", &r, &s);   // rows per simdgroup, simdgroups per threadgroup
+            return std::make_pair(r, s);
+        }();
+        const int R = RS4.first, SGN = RS4.second;
+        const std::string fn4 = "df2_mm4_" + std::to_string(R) + "_" + std::to_string(SGN);
+        mtl::Dispatch d4;
+        d4.p = P(ldf2_, fn4, mtl::Constants().i(0, ncol), fn4 + "#" + std::to_string(ncol));
+        d4.args = {mtl::Arg::B(qs, qs_off), mtl::Arg::B(sc, sc_off), mtl::Arg::B(x, x_off), mtl::Arg::B(y), mtl::Arg::V(a)};
+        d4.grid[0] = (rows + SGN * R - 1) / (SGN * R);
+        d4.tg[0] = SGN * 32;
+        push(ds, d4);
+        return;
+    }
     if (!reuse) {
         const uint32_t n = (uint32_t) ncol * K;
         mtl::Dispatch c;
@@ -478,7 +522,7 @@ void Window::df2_mmn(std::vector<mtl::Dispatch>& ds, const std::string& name, co
     const gguf::Tensor& t = d.ten.at(name);
     if (d.fuse_h && name != "fc.weight") reuse = true;   // the producer of x wrote its half copy (fc reads the window's taps: converted here)
     if (t.type == ref::Q4_0) {
-        df2_mm4(ds, d.wq, t.offset, d.wq, d.scoff.at(name), (uint32_t) t.shape[0], (uint32_t) t.shape[1], x, x_off, y, y_stride, ncol, reuse);
+        df2_mm4(ds, d.wq, t.offset, d.wq, d.scoff.at(name), (uint32_t) t.shape[0], (uint32_t) t.shape[1], x, x_off, x_stride, y, y_stride, ncol, reuse);
         return;
     }
     df2_mm(ds, d.wq, t.offset, d.wq, d.scoff.at(name), (uint32_t) t.shape[0], (uint32_t) t.shape[1], x, x_off, x_stride, y, 0, y_stride, ncol);
@@ -620,7 +664,9 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
     }
     df2_rms(ds, d.h, d.fn, "norm.weight", B);
     const int ND = d.ndraft;
-    if (d.head_q8) {
+    if (d.head_q8 && d.wide) {   // flat Q8_0 rows through the scalar kernel: df2_mm over the ND block rows of fn
+        df2_mm(ds, d.hq, 0, d.hsc, 0, (uint32_t) N, (uint32_t) d.nd, d.fn, (size_t) N * 4, (uint32_t) N, d.logits, 0, (uint32_t) d.nd, ND);
+    } else if (d.head_q8) {
         {   // rows 1..ND of fn to half (unless the final norm wrote them), then the Q8_0 head rows on the matrix units (8 columns wide whatever ND is: the cap saves top-k and selector work)
             if (!d.fuse_h) {
                 const uint32_t n = (uint32_t) ND * N;
@@ -743,6 +789,12 @@ bool Window::df2_draft(int n_new, int64_t pos0, int32_t anchor, int32_t* drafts,
     Df2& d = *df2_;
     if (!d.bound) { err = "dflash2: not bound"; return false; }
     if (n_new < 1 || n_new > DF2_ROWS) { err = "dflash2: draft rows out of range"; return false; }
+    if (anchor < 0 || (int64_t) anchor >= n_vocab_) {   // the anchor is an embedding row: a token id outside the vocabulary would read past the table
+        char b[128];
+        std::snprintf(b, sizeof b, "dflash2: the anchor token %d is outside the vocabulary (%lld rows)", anchor, (long long) n_vocab_);
+        err = b;
+        return false;
+    }
     const double t0 = now_ms();
     const int64_t s = pos0 + n_new;
     int32_t* dp = d.dpos.as<int32_t>();
