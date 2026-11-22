@@ -4,6 +4,9 @@
 Pure standard library on purpose - the sweep machine has no matplotlib, and an SVG is the better
 deliverable in a repository anyway: it is crisp at any zoom and readable as text.
 
+The error bars are the standard deviation across the runs, which is what makes the spread
+comparable between packs; the min and max stay in the CSV and the tooltip so nothing is hidden.
+
     python3 bench/macpro51/charts.py
 """
 
@@ -12,6 +15,7 @@ from __future__ import annotations
 import csv
 import html
 import json
+import math
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -23,6 +27,7 @@ INK = "#1f2933"
 MUTED = "#6b7280"
 GRID = "#e5e7eb"
 BAR = "#2563eb"
+ERR = "#111827"
 
 # The down-projection type is the one property that tracks the two answers (see the report); for
 # the packs that never start there is no slab line, so the type comes from the refusal itself.
@@ -31,6 +36,15 @@ REFUSED_DOWN = {"UD-Q2_K_XL": "Q5_K (embed)", "UD-Q8_K_XL": "BF16"}
 
 def esc(value) -> str:
     return html.escape(str(value), quote=True)
+
+
+def stdev(values) -> float:
+    """Sample standard deviation; 0 for a single run."""
+    n = len(values)
+    if n < 2:
+        return 0.0
+    mean = sum(values) / n
+    return math.sqrt(sum((v - mean) ** 2 for v in values) / (n - 1))
 
 
 def summarise():
@@ -57,6 +71,8 @@ def summarise():
         if steps:
             row["status"] = "runs"
             row["mean"] = sum(steps) / len(steps)
+            row["sd"] = stdev(steps)
+            row["runs"] = len(steps)
             row["lo"], row["hi"] = steps[0], steps[-1]
         else:
             row["status"] = "refused"
@@ -71,10 +87,12 @@ def write_csv(rows) -> Path:
     path = OUT / "decode-steps.csv"
     with path.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["pack", "down", "bytes", "gib", "runs", "mean_s_per_step", "min", "max", "status"])
+        w.writerow(["pack", "down", "bytes", "gib", "runs", "mean_s_per_step", "std", "min", "max",
+                    "status"])
         for r in rows:
-            w.writerow([r["pack"], r["down"], r["bytes"], r["gib"], len(r["steps"]),
+            w.writerow([r["pack"], r["down"], r["bytes"], r["gib"], r.get("runs", 0),
                         "%.3f" % r["mean"] if r["steps"] else "",
+                        "%.3f" % r["sd"] if r["steps"] else "",
                         "%.3f" % r["lo"] if r["steps"] else "",
                         "%.3f" % r["hi"] if r["steps"] else "",
                         r["status"]])
@@ -85,14 +103,16 @@ def write_svg(rows) -> Path:
     timed = [r for r in rows if r["steps"]]
     refused = [r for r in rows if not r["steps"]]
     x_max = 1.30
-    left, right, top = 232, 96, 58
+    left, right, top = 232, 104, 58
     row_h, bar_h = 44, 15
-    height = top + row_h * len(timed) + 78 + 20 * len(refused)
-    width = 860
+    height = top + row_h * len(timed) + 84 + 20 * len(refused)
+    width = 880
     plot = width - left - right
 
     def sx(v):
-        return left + plot * (min(v, x_max) / x_max)
+        return left + plot * (min(max(v, 0.0), x_max) / x_max)
+
+    runs = max((r["runs"] for r in timed), default=0)
 
     parts = []
     add = parts.append
@@ -102,7 +122,8 @@ def write_svg(rows) -> Path:
     add('<text x="%d" y="26" font-size="15" font-weight="600" fill="%s">'
         'Qwen3.6-35B-A3B on macpro51 (RX 580, Metal 2): seconds per step</text>' % (left, INK))
     add('<text x="%d" y="44" font-size="11" fill="%s">23-token prompt + 24 greedy tokens, 47 steps; '
-        'bar = mean of the runs, whisker = min to max</text>' % (left, MUTED))
+        'bar = mean of %d runs, error bar = \u00b11 standard deviation</text>'
+        % (left, MUTED, runs))
 
     for tick in [0.0, 0.3, 0.6, 0.9, 1.2]:
         x = sx(tick)
@@ -113,22 +134,35 @@ def write_svg(rows) -> Path:
 
     for i, r in enumerate(timed):
         y = top + i * row_h
+        mean, sd = r["mean"], r["sd"]
         add('<text x="16" y="%d" font-size="12" font-weight="600" fill="%s">%s</text>'
             % (y + 13, INK, esc(r["pack"])))
         add('<text x="16" y="%d" font-size="10" fill="%s">down %s \u00b7 %.1f GiB</text>'
             % (y + 27, MUTED, esc(r["down"]), r["gib"]))
+        tip = "%s: %.3f \u00b1 %.3f s/step over %d runs (%s)" % (
+            r["pack"], mean, sd, r["runs"], " / ".join("%.3f" % s for s in r["steps"]))
         add('<rect x="%d" y="%d" width="%.1f" height="%d" rx="2" fill="%s">'
-            '<title>%s: %.3f s/step over %d runs (%s)</title></rect>'
-            % (left, y + 8, sx(r["mean"]) - left, bar_h, BAR, esc(r["pack"]), r["mean"],
-               len(r["steps"]), " / ".join("%.3f" % s for s in r["steps"])))
-        add('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="%s" stroke-width="1.5"/>'
-            % (sx(r["lo"]), y + 3, sx(r["hi"]), y + 3, MUTED))
-        add('<text x="%.1f" y="%d" font-size="11" fill="%s">%.3f</text>'
-            % (sx(r["hi"]) + 6, y + 20, INK, r["mean"]))
+            '<title>%s</title></rect>'
+            % (left, y + 8, sx(mean) - left, bar_h, BAR, esc(tip)))
 
-    legend_y = top + row_h * len(timed) + 34
-    add('<text x="16" y="%d" font-size="10" fill="%s">Whisker is the spread across runs; the '
-        'reference comparison is in same-workload-wall.svg</text>' % (legend_y, MUTED))
+        # error bar: a bar-wide rule at the mean, capped, spanning mean-sd to mean+sd
+        mid = y + 8 + bar_h / 2.0
+        x_lo, x_hi, x_mid = sx(mean - sd), sx(mean + sd), sx(mean)
+        add('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="1.4"/>'
+            % (x_lo, mid, x_hi, mid, ERR))
+        for xe in (x_lo, x_hi):
+            add('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="1.4"/>'
+                % (xe, mid - 5, xe, mid + 5, ERR))
+        add('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="%s" stroke-width="1.6"/>'
+            % (x_mid, mid - 7, x_mid, mid + 7, ERR))
+
+        add('<text x="%.1f" y="%d" font-size="11" fill="%s">%.3f \u00b1 %.3f</text>'
+            % (x_hi + 8, y + 20, INK, mean, sd))
+
+    legend_y = top + row_h * len(timed) + 36
+    add('<text x="16" y="%d" font-size="10" fill="%s">Error bars are one standard deviation across '
+        'the %d runs per pack; min and max are in decode-steps.csv and in each bar\u2019s tooltip. '
+        'The reference comparison is in same-workload-wall.svg</text>' % (legend_y, MUTED, runs))
 
     note_y = legend_y + 24
     for r in refused:

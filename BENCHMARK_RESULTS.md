@@ -16,13 +16,13 @@ what turns "it runs" into a statement about correctness.
 tokenisation. llama.cpp returns the same 24 ids on **every** pack (bar one near-tie at the last
 token), which is the behaviour of a faithful engine.
 
-| Pack | gate/up, down | strata vs llama.cpp | s/step (mean of 3) |
+| Pack | gate/up, down | strata vs llama.cpp | s/step (mean of 5) |
 |---|---|---|---|
-| `Q8_0` | Q8_0, Q8_0 | **matches** | 1.253 |
-| `UD-Q6_K_XL` | Q6_K, Q8_0 | **matches** | 1.172 |
-| `Q6_K` | Q6_K, Q6_K | **matches** | 1.051 |
-| `Q4_K_M` | Q4_K, Q6_K | **matches** | 1.008 |
-| `UD-Q4_K_XL` | Q4_K, Q5_K | **matches** | 0.936 |
+| `Q8_0` | Q8_0, Q8_0 | **matches** | 1.172 ± 0.003 |
+| `UD-Q6_K_XL` | Q6_K, Q8_0 | **matches** | 1.097 ± 0.002 |
+| `Q6_K` | Q6_K, Q6_K | **matches** | 1.017 ± 0.002 |
+| `Q4_K_M` | Q4_K, Q6_K | **matches** | 0.980 ± 0.005 |
+| `UD-Q4_K_XL` | Q4_K, Q5_K | **matches** | 0.905 ± 0.003 |
 | `UD-Q2_K_XL` | — | refused: the embedding is Q5_K | — |
 | `UD-Q8_K_XL` | — | refused: the expert down tensor is BF16 | — |
 
@@ -38,11 +38,11 @@ every threadgroup: a quarter of the output, and a relative L2 of exactly 0.5.
 
 | Pack | strata (Metal 2) | llama.cpp (CPU) |
 |---|---|---|
-| `UD-Q4_K_XL` | 48.6 s | 15.1 s |
-| `Q4_K_M` | 50.3 s | 17.5 s |
-| `Q6_K` | 53.7 s | 16.3 s |
-| `UD-Q6_K_XL` | 57.7 s | 14.3 s |
-| `Q8_0` | 61.4 s | 15.5 s |
+| `UD-Q4_K_XL` | 48.1 s | 15.1 s |
+| `Q4_K_M` | 49.3 s | 17.5 s |
+| `Q6_K` | 52.4 s | 16.3 s |
+| `UD-Q6_K_XL` | 57.0 s | 14.3 s |
+| `Q8_0` | 60.6 s | 15.5 s |
 
 A CPU build of llama.cpp beats the Metal path by 2.9 to 4.0 times. That is the readback fault
 showing up as cost, and it means these Metal timings say nothing about what the card could do.
