@@ -1,46 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="392" viewBox="0 0 860 392" font-family="Helvetica, Arial, sans-serif">
-<rect width="860" height="392" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="396" viewBox="0 0 860 396" font-family="Helvetica, Arial, sans-serif">
+<rect width="860" height="396" fill="#ffffff"/>
 <text x="232" y="26" font-size="15" font-weight="600" fill="#1f2933">Qwen3.6-35B-A3B on macpro51 (RX 580, Metal 2): seconds per step</text>
-<text x="232" y="44" font-size="11" fill="#6b7280">23-token prompt + 24 greedy tokens, 47 steps; two runs of each pack, in order</text>
+<text x="232" y="44" font-size="11" fill="#6b7280">23-token prompt + 24 greedy tokens, 47 steps; bar = mean of the runs, whisker = min to max</text>
 <line x1="232.0" y1="52" x2="232.0" y2="278" stroke="#e5e7eb"/>
 <text x="232.0" y="292" font-size="10" fill="#6b7280" text-anchor="middle">0.0</text>
-<line x1="365.0" y1="52" x2="365.0" y2="278" stroke="#e5e7eb"/>
-<text x="365.0" y="292" font-size="10" fill="#6b7280" text-anchor="middle">0.4</text>
-<line x1="498.0" y1="52" x2="498.0" y2="278" stroke="#e5e7eb"/>
-<text x="498.0" y="292" font-size="10" fill="#6b7280" text-anchor="middle">0.8</text>
-<line x1="631.0" y1="52" x2="631.0" y2="278" stroke="#e5e7eb"/>
-<text x="631.0" y="292" font-size="10" fill="#6b7280" text-anchor="middle">1.2</text>
-<line x1="764.0" y1="52" x2="764.0" y2="278" stroke="#e5e7eb"/>
-<text x="764.0" y="292" font-size="10" fill="#6b7280" text-anchor="middle">1.6</text>
+<line x1="354.8" y1="52" x2="354.8" y2="278" stroke="#e5e7eb"/>
+<text x="354.8" y="292" font-size="10" fill="#6b7280" text-anchor="middle">0.3</text>
+<line x1="477.5" y1="52" x2="477.5" y2="278" stroke="#e5e7eb"/>
+<text x="477.5" y="292" font-size="10" fill="#6b7280" text-anchor="middle">0.6</text>
+<line x1="600.3" y1="52" x2="600.3" y2="278" stroke="#e5e7eb"/>
+<text x="600.3" y="292" font-size="10" fill="#6b7280" text-anchor="middle">0.9</text>
+<line x1="723.1" y1="52" x2="723.1" y2="278" stroke="#e5e7eb"/>
+<text x="723.1" y="292" font-size="10" fill="#6b7280" text-anchor="middle">1.2</text>
 <text x="16" y="71" font-size="12" font-weight="600" fill="#1f2933">Q4_K_M</text>
 <text x="16" y="85" font-size="10" fill="#6b7280">down Q6_K · 19.7 GiB</text>
-<rect x="232" y="60" width="315.2" height="13" rx="2" fill="#c7d2fe"><title>Q4_K_M run 1: 0.948 s/step</title></rect>
-<rect x="232" y="75" width="315.2" height="13" rx="2" fill="#2563eb"><title>Q4_K_M run 2: 0.948 s/step</title></rect>
-<text x="553.2" y="85" font-size="11" fill="#1f2933">0.948</text>
+<rect x="232" y="66" width="384.8" height="15" rx="2" fill="#2563eb"><title>Q4_K_M: 0.940 s/step over 3 runs (0.925 / 0.948 / 0.948)</title></rect>
+<line x1="610.5" y1="61" x2="620.0" y2="61" stroke="#6b7280" stroke-width="1.5"/>
+<text x="626.0" y="78" font-size="11" fill="#1f2933">0.940</text>
 <text x="16" y="115" font-size="12" font-weight="600" fill="#1f2933">UD-Q4_K_XL</text>
 <text x="16" y="129" font-size="10" fill="#6b7280">down Q5_K · 21.3 GiB</text>
-<rect x="232" y="104" width="288.9" height="13" rx="2" fill="#c7d2fe"><title>UD-Q4_K_XL run 1: 0.869 s/step</title></rect>
-<rect x="232" y="119" width="292.6" height="13" rx="2" fill="#2563eb"><title>UD-Q4_K_XL run 2: 0.880 s/step</title></rect>
-<text x="530.6" y="129" font-size="11" fill="#1f2933">0.880</text>
+<rect x="232" y="110" width="353.6" height="15" rx="2" fill="#2563eb"><title>UD-Q4_K_XL: 0.864 s/step over 3 runs (0.843 / 0.869 / 0.880)</title></rect>
+<line x1="577.0" y1="105" x2="592.1" y2="105" stroke="#6b7280" stroke-width="1.5"/>
+<text x="598.1" y="122" font-size="11" fill="#1f2933">0.864</text>
 <text x="16" y="159" font-size="12" font-weight="600" fill="#1f2933">Q6_K</text>
 <text x="16" y="173" font-size="10" fill="#6b7280">down Q6_K · 26.6 GiB</text>
-<rect x="232" y="148" width="331.8" height="13" rx="2" fill="#c7d2fe"><title>Q6_K run 1: 0.998 s/step</title></rect>
-<rect x="232" y="163" width="329.5" height="13" rx="2" fill="#2563eb"><title>Q6_K run 2: 0.991 s/step</title></rect>
-<text x="567.5" y="173" font-size="11" fill="#1f2933">0.991</text>
+<rect x="232" y="154" width="403.4" height="15" rx="2" fill="#2563eb"><title>Q6_K: 0.986 s/step over 3 runs (0.968 / 0.991 / 0.998)</title></rect>
+<line x1="628.1" y1="149" x2="640.4" y2="149" stroke="#6b7280" stroke-width="1.5"/>
+<text x="646.4" y="166" font-size="11" fill="#1f2933">0.986</text>
 <text x="16" y="203" font-size="12" font-weight="600" fill="#1f2933">UD-Q6_K_XL</text>
 <text x="16" y="217" font-size="10" fill="#6b7280">down Q8_0 · 30.4 GiB</text>
-<rect x="232" y="192" width="348.5" height="13" rx="2" fill="#c7d2fe"><title>UD-Q6_K_XL run 1: 1.048 s/step</title></rect>
-<rect x="232" y="207" width="349.8" height="13" rx="2" fill="#2563eb"><title>UD-Q6_K_XL run 2: 1.052 s/step</title></rect>
-<text x="587.8" y="217" font-size="11" fill="#1f2933">1.052</text>
+<rect x="232" y="198" width="425.3" height="15" rx="2" fill="#2563eb"><title>UD-Q6_K_XL: 1.039 s/step over 3 runs (1.018 / 1.048 / 1.052)</title></rect>
+<line x1="648.6" y1="193" x2="662.5" y2="193" stroke="#6b7280" stroke-width="1.5"/>
+<text x="668.5" y="210" font-size="11" fill="#1f2933">1.039</text>
 <text x="16" y="247" font-size="12" font-weight="600" fill="#1f2933">Q8_0</text>
 <text x="16" y="261" font-size="10" fill="#6b7280">down Q8_0 · 35.2 GiB</text>
-<rect x="232" y="236" width="373.7" height="13" rx="2" fill="#c7d2fe"><title>Q8_0 run 1: 1.124 s/step</title></rect>
-<rect x="232" y="251" width="374.1" height="13" rx="2" fill="#2563eb"><title>Q8_0 run 2: 1.125 s/step</title></rect>
-<text x="612.1" y="261" font-size="11" fill="#1f2933">1.125</text>
-<rect x="232" y="304" width="10" height="10" rx="2" fill="#c7d2fe"/>
-<text x="247" y="312" font-size="10" fill="#6b7280">run 1</text>
-<rect x="342" y="304" width="10" height="10" rx="2" fill="#2563eb"/>
-<text x="357" y="312" font-size="10" fill="#6b7280">run 2</text>
-<text x="16" y="338" font-size="10" fill="#6b7280">UD-Q2_K_XL refused: cannot read the model: token_embd.weight is Q5_K, q36_embed only supports Q8_0, Q6_K and Q4_K</text>
-<text x="16" y="352" font-size="10" fill="#6b7280">UD-Q8_K_XL refused: cannot read the model: blk.34.ffn_down_exps.weight is BF16, and this port has no grouped expert </text>
+<rect x="232" y="242" width="455.7" height="15" rx="2" fill="#2563eb"><title>Q8_0: 1.114 s/step over 3 runs (1.092 / 1.124 / 1.125)</title></rect>
+<line x1="678.9" y1="237" x2="692.4" y2="237" stroke="#6b7280" stroke-width="1.5"/>
+<text x="698.4" y="254" font-size="11" fill="#1f2933">1.114</text>
+<text x="16" y="312" font-size="10" fill="#6b7280">Whisker is the spread across runs; the reference comparison is in same-workload-wall.svg</text>
+<text x="16" y="336" font-size="10" fill="#6b7280">UD-Q2_K_XL refused: cannot read the model: token_embd.weight is Q5_K, q36_embed only supports Q8_0, Q6_K and Q4_K</text>
+<text x="16" y="350" font-size="10" fill="#6b7280">UD-Q8_K_XL refused: cannot read the model: blk.34.ffn_down_exps.weight is BF16, and this port has no grouped expert </text>
 </svg>

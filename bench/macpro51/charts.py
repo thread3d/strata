@@ -22,8 +22,7 @@ OUT = REPO / "docs" / "benchmarks" / "macpro51"
 INK = "#1f2933"
 MUTED = "#6b7280"
 GRID = "#e5e7eb"
-RUN1 = "#c7d2fe"
-RUN2 = "#2563eb"
+BAR = "#2563eb"
 
 # The down-projection type is the one property that tracks the two answers (see the report); for
 # the packs that never start there is no slab line, so the type comes from the refusal itself.
@@ -43,24 +42,25 @@ def summarise():
     rows = []
     for pack, runs in packs.items():
         timed = [r for r in runs if "s_per_step" in r]
+        steps = sorted(r["s_per_step"] for r in timed)
         row = {
             "pack": pack,
             "bytes": runs[0].get("bytes", 0),
             "gib": round(runs[0].get("bytes", 0) / 1073741824.0, 1),
-            "cold": next((r["s_per_step"] for r in timed if r["round"] == 1), None),
-            "warm": next((r["s_per_step"] for r in timed if r["round"] == 2), None),
+            "steps": steps,
         }
         slab = next((r.get("slab") for r in timed if r.get("slab")), "")
         if "down" in slab:
             row["down"] = slab.split(",")[-1].strip().replace(" down", "")
         else:
             row["down"] = REFUSED_DOWN.get(pack, "-")
-        if row["warm"] is None:
+        if steps:
+            row["status"] = "runs"
+            row["mean"] = sum(steps) / len(steps)
+            row["lo"], row["hi"] = steps[0], steps[-1]
+        else:
             row["status"] = "refused"
             row["why"] = (runs[0].get("error") or "").strip()
-        else:
-            row["status"] = "runs"
-            row["why"] = ""
         rows.append(row)
     rows.sort(key=lambda r: r["bytes"])
     return rows
@@ -71,27 +71,28 @@ def write_csv(rows) -> Path:
     path = OUT / "decode-steps.csv"
     with path.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["pack", "down", "bytes", "gib", "run1_s_per_step", "run2_s_per_step", "status"])
+        w.writerow(["pack", "down", "bytes", "gib", "runs", "mean_s_per_step", "min", "max", "status"])
         for r in rows:
-            w.writerow([r["pack"], r["down"], r["bytes"], r["gib"],
-                        "" if r["cold"] is None else "%.3f" % r["cold"],
-                        "" if r["warm"] is None else "%.3f" % r["warm"],
+            w.writerow([r["pack"], r["down"], r["bytes"], r["gib"], len(r["steps"]),
+                        "%.3f" % r["mean"] if r["steps"] else "",
+                        "%.3f" % r["lo"] if r["steps"] else "",
+                        "%.3f" % r["hi"] if r["steps"] else "",
                         r["status"]])
     return path
 
 
 def write_svg(rows) -> Path:
-    timed = [r for r in rows if r["warm"] is not None]
-    refused = [r for r in rows if r["warm"] is None]
-    x_max = 1.6
+    timed = [r for r in rows if r["steps"]]
+    refused = [r for r in rows if not r["steps"]]
+    x_max = 1.30
     left, right, top = 232, 96, 58
-    row_h, bar_h = 44, 13
-    height = top + row_h * len(timed) + 74 + 20 * len(refused)
+    row_h, bar_h = 44, 15
+    height = top + row_h * len(timed) + 78 + 20 * len(refused)
     width = 860
     plot = width - left - right
 
     def sx(v):
-        return left + plot * (v / x_max)
+        return left + plot * (min(v, x_max) / x_max)
 
     parts = []
     add = parts.append
@@ -100,10 +101,10 @@ def write_svg(rows) -> Path:
     add('<rect width="%d" height="%d" fill="#ffffff"/>' % (width, height))
     add('<text x="%d" y="26" font-size="15" font-weight="600" fill="%s">'
         'Qwen3.6-35B-A3B on macpro51 (RX 580, Metal 2): seconds per step</text>' % (left, INK))
-    add('<text x="%d" y="44" font-size="11" fill="%s">23-token prompt + 24 greedy tokens, '
-        '47 steps; two runs of each pack, in order</text>' % (left, MUTED))
+    add('<text x="%d" y="44" font-size="11" fill="%s">23-token prompt + 24 greedy tokens, 47 steps; '
+        'bar = mean of the runs, whisker = min to max</text>' % (left, MUTED))
 
-    for tick in [0.0, 0.4, 0.8, 1.2, 1.6]:
+    for tick in [0.0, 0.3, 0.6, 0.9, 1.2]:
         x = sx(tick)
         add('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="%s"/>'
             % (x, top - 6, x, top + row_h * len(timed), GRID))
@@ -112,32 +113,27 @@ def write_svg(rows) -> Path:
 
     for i, r in enumerate(timed):
         y = top + i * row_h
-        add('<text x="%d" y="%d" font-size="12" font-weight="600" fill="%s">%s</text>'
-            % (16, y + 13, INK, esc(r["pack"])))
+        add('<text x="16" y="%d" font-size="12" font-weight="600" fill="%s">%s</text>'
+            % (y + 13, INK, esc(r["pack"])))
         add('<text x="16" y="%d" font-size="10" fill="%s">down %s \u00b7 %.1f GiB</text>'
             % (y + 27, MUTED, esc(r["down"]), r["gib"]))
-        if r["cold"] is not None:
-            add('<rect x="%d" y="%d" width="%.1f" height="%d" rx="2" fill="%s">'
-                '<title>%s run 1: %.3f s/step</title></rect>'
-                % (left, y + 2, sx(r["cold"]) - left, bar_h, RUN1, esc(r["pack"]), r["cold"]))
         add('<rect x="%d" y="%d" width="%.1f" height="%d" rx="2" fill="%s">'
-            '<title>%s run 2: %.3f s/step</title></rect>'
-            % (left, y + 17, sx(r["warm"]) - left, bar_h, RUN2, esc(r["pack"]), r["warm"]))
+            '<title>%s: %.3f s/step over %d runs (%s)</title></rect>'
+            % (left, y + 8, sx(r["mean"]) - left, bar_h, BAR, esc(r["pack"]), r["mean"],
+               len(r["steps"]), " / ".join("%.3f" % s for s in r["steps"])))
+        add('<line x1="%.1f" y1="%d" x2="%.1f" y2="%d" stroke="%s" stroke-width="1.5"/>'
+            % (sx(r["lo"]), y + 3, sx(r["hi"]), y + 3, MUTED))
         add('<text x="%.1f" y="%d" font-size="11" fill="%s">%.3f</text>'
-            % (sx(r["warm"]) + 6, y + 27, INK, r["warm"]))
+            % (sx(r["hi"]) + 6, y + 20, INK, r["mean"]))
 
     legend_y = top + row_h * len(timed) + 34
-    add('<rect x="%d" y="%d" width="10" height="10" rx="2" fill="%s"/>' % (left, legend_y - 8, RUN1))
-    add('<text x="%d" y="%d" font-size="10" fill="%s">run 1</text>' % (left + 15, legend_y, MUTED))
-    add('<rect x="%d" y="%d" width="10" height="10" rx="2" fill="%s"/>'
-        % (left + 110, legend_y - 8, RUN2))
-    add('<text x="%d" y="%d" font-size="10" fill="%s">run 2</text>'
-        % (left + 125, legend_y, MUTED))
+    add('<text x="16" y="%d" font-size="10" fill="%s">Whisker is the spread across runs; the '
+        'reference comparison is in same-workload-wall.svg</text>' % (legend_y, MUTED))
 
-    note_y = legend_y + 26
+    note_y = legend_y + 24
     for r in refused:
-        add('<text x="%d" y="%d" font-size="10" fill="%s">%s refused: %s</text>'
-            % (16, note_y, MUTED, esc(r["pack"]), esc(r["why"])[:96]))
+        add('<text x="16" y="%d" font-size="10" fill="%s">%s refused: %s</text>'
+            % (note_y, MUTED, esc(r["pack"]), esc(r["why"])[:96]))
         note_y += 14
     add("</svg>")
 
