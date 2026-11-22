@@ -18,11 +18,11 @@ token), which is the behaviour of a faithful engine.
 
 | Pack | gate/up, down | strata vs llama.cpp | s/step (mean of 3) |
 |---|---|---|---|
-| `Q8_0` | Q8_0, Q8_0 | **matches** | 1.114 |
-| `UD-Q6_K_XL` | Q6_K, Q8_0 | **matches** | 1.039 |
-| `Q6_K` | Q6_K, Q6_K | **matches** | 0.986 |
-| `Q4_K_M` | Q4_K, Q6_K | **matches** | 0.940 |
-| `UD-Q4_K_XL` | Q4_K, Q5_K | **matches** | 0.864 |
+| `Q8_0` | Q8_0, Q8_0 | **matches** | 1.253 |
+| `UD-Q6_K_XL` | Q6_K, Q8_0 | **matches** | 1.172 |
+| `Q6_K` | Q6_K, Q6_K | **matches** | 1.051 |
+| `Q4_K_M` | Q4_K, Q6_K | **matches** | 1.008 |
+| `UD-Q4_K_XL` | Q4_K, Q5_K | **matches** | 0.936 |
 | `UD-Q2_K_XL` | — | refused: the embedding is Q5_K | — |
 | `UD-Q8_K_XL` | — | refused: the expert down tensor is BF16 | — |
 
@@ -38,14 +38,18 @@ every threadgroup: a quarter of the output, and a relative L2 of exactly 0.5.
 
 | Pack | strata (Metal 2) | llama.cpp (CPU) |
 |---|---|---|
-| `UD-Q4_K_XL` | 45.1 s | 15.1 s |
-| `Q4_K_M` | 47.3 s | 17.5 s |
-| `Q6_K` | 50.0 s | 16.3 s |
-| `UD-Q6_K_XL` | 53.3 s | 14.3 s |
-| `Q8_0` | 56.5 s | 15.5 s |
+| `UD-Q4_K_XL` | 48.6 s | 15.1 s |
+| `Q4_K_M` | 50.3 s | 17.5 s |
+| `Q6_K` | 53.7 s | 16.3 s |
+| `UD-Q6_K_XL` | 57.7 s | 14.3 s |
+| `Q8_0` | 61.4 s | 15.5 s |
 
-A CPU build of llama.cpp beats the Metal path by 2.7 to 3.7 times. That is the readback fault
+A CPU build of llama.cpp beats the Metal path by 2.9 to 4.0 times. That is the readback fault
 showing up as cost, and it means these Metal timings say nothing about what the card could do.
+
+These figures are the ones taken after the down fix, on a freshly rebooted machine. They are about
+10% higher than the pre-fix run — but `Q8_0`, whose down kernel the fix does not touch, moved by
+the same amount, so that shift is machine state and not the fix.
 
 ![Same workload, wall clock](docs/benchmarks/macpro51/same-workload-wall.svg)
 ![Seconds per step](docs/benchmarks/macpro51/decode-steps.svg)

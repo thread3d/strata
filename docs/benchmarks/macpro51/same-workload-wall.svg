@@ -17,33 +17,33 @@
 <line x1="760.0" y1="56" x2="760.0" y2="292" stroke="#e5e7eb"/>
 <text x="760.0" y="306" font-size="10" fill="#6b7280" text-anchor="middle">60</text>
 <text x="16" y="74" font-size="12" font-weight="600" fill="#1f2933">UD-Q4_K_XL</text>
-<text x="16" y="88" font-size="10" fill="#6b7280">strata is 3.0x slower</text>
-<rect x="232" y="64" width="396.9" height="14" rx="2" fill="#2563eb"><title>strata: 45.1 s</title></rect>
-<text x="633.9" y="75" font-size="10" fill="#1f2933">45.1 s</text>
+<text x="16" y="88" font-size="10" fill="#6b7280">strata is 3.2x slower</text>
+<rect x="232" y="64" width="427.7" height="14" rx="2" fill="#2563eb"><title>strata: 48.6 s</title></rect>
+<text x="664.7" y="75" font-size="10" fill="#1f2933">48.6 s</text>
 <rect x="232" y="81" width="132.9" height="14" rx="2" fill="#c2410c"><title>llama.cpp: 15.1 s</title></rect>
 <text x="369.9" y="92" font-size="10" fill="#1f2933">15.1 s</text>
 <text x="16" y="120" font-size="12" font-weight="600" fill="#1f2933">Q4_K_M</text>
-<text x="16" y="134" font-size="10" fill="#6b7280">strata is 2.7x slower</text>
-<rect x="232" y="110" width="416.2" height="14" rx="2" fill="#2563eb"><title>strata: 47.3 s</title></rect>
-<text x="653.2" y="121" font-size="10" fill="#1f2933">47.3 s</text>
+<text x="16" y="134" font-size="10" fill="#6b7280">strata is 2.9x slower</text>
+<rect x="232" y="110" width="442.6" height="14" rx="2" fill="#2563eb"><title>strata: 50.3 s</title></rect>
+<text x="679.6" y="121" font-size="10" fill="#1f2933">50.3 s</text>
 <rect x="232" y="127" width="154.0" height="14" rx="2" fill="#c2410c"><title>llama.cpp: 17.5 s</title></rect>
 <text x="391.0" y="138" font-size="10" fill="#1f2933">17.5 s</text>
 <text x="16" y="166" font-size="12" font-weight="600" fill="#1f2933">Q6_K</text>
-<text x="16" y="180" font-size="10" fill="#6b7280">strata is 3.1x slower</text>
-<rect x="232" y="156" width="440.0" height="14" rx="2" fill="#2563eb"><title>strata: 50.0 s</title></rect>
-<text x="677.0" y="167" font-size="10" fill="#1f2933">50.0 s</text>
+<text x="16" y="180" font-size="10" fill="#6b7280">strata is 3.3x slower</text>
+<rect x="232" y="156" width="472.6" height="14" rx="2" fill="#2563eb"><title>strata: 53.7 s</title></rect>
+<text x="709.6" y="167" font-size="10" fill="#1f2933">53.7 s</text>
 <rect x="232" y="173" width="143.4" height="14" rx="2" fill="#c2410c"><title>llama.cpp: 16.3 s</title></rect>
 <text x="380.4" y="184" font-size="10" fill="#1f2933">16.3 s</text>
 <text x="16" y="212" font-size="12" font-weight="600" fill="#1f2933">UD-Q6_K_XL</text>
-<text x="16" y="226" font-size="10" fill="#6b7280">strata is 3.7x slower</text>
-<rect x="232" y="202" width="469.0" height="14" rx="2" fill="#2563eb"><title>strata: 53.3 s</title></rect>
-<text x="706.0" y="213" font-size="10" fill="#1f2933">53.3 s</text>
+<text x="16" y="226" font-size="10" fill="#6b7280">strata is 4.0x slower</text>
+<rect x="232" y="202" width="507.8" height="14" rx="2" fill="#2563eb"><title>strata: 57.7 s</title></rect>
+<text x="744.8" y="213" font-size="10" fill="#1f2933">57.7 s</text>
 <rect x="232" y="219" width="125.8" height="14" rx="2" fill="#c2410c"><title>llama.cpp: 14.3 s</title></rect>
 <text x="362.8" y="230" font-size="10" fill="#1f2933">14.3 s</text>
 <text x="16" y="258" font-size="12" font-weight="600" fill="#1f2933">Q8_0</text>
-<text x="16" y="272" font-size="10" fill="#6b7280">strata is 3.6x slower</text>
-<rect x="232" y="248" width="497.2" height="14" rx="2" fill="#2563eb"><title>strata: 56.5 s</title></rect>
-<text x="734.2" y="259" font-size="10" fill="#1f2933">56.5 s</text>
+<text x="16" y="272" font-size="10" fill="#6b7280">strata is 4.0x slower</text>
+<rect x="232" y="248" width="528.0" height="14" rx="2" fill="#2563eb"><title>strata: 61.4 s</title></rect>
+<text x="765.0" y="259" font-size="10" fill="#1f2933">61.4 s</text>
 <rect x="232" y="265" width="136.4" height="14" rx="2" fill="#c2410c"><title>llama.cpp: 15.5 s</title></rect>
 <text x="373.4" y="276" font-size="10" fill="#1f2933">15.5 s</text>
 <rect x="232" y="318" width="10" height="10" rx="2" fill="#2563eb"/>
