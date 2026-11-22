@@ -3,14 +3,18 @@
 
     python3 bench/macpro51/run_reference.py --runs 2
 
-The reference is ``~/q36_llama_dump``, a small local helper linked against the llama.cpp checkout
-at ``~/projects/llama.cpp`` (rev 8bed7cfb9, CPU + BLAS; there is no Metal backend in that build).
-It takes the context as token ids and prints the greedy continuation as token ids, which is the
-same contract as ``strata-q36-metal --tokens`` - so the two engines can be compared id for id
-instead of by eye over decoded text.
+The reference is ``llama_ref.cpp`` beside this file, built against the llama.cpp checkout at
+``~/projects/llama.cpp`` (rev 8bed7cfb9, CPU + BLAS; there is no Metal backend in that build).  It
+takes the context as token ids and prints the greedy continuation as token ids, which is the same
+contract as ``strata-q36-metal --tokens`` - so the two engines can be compared id for id instead of
+by eye over decoded text.  Build it with:
 
-The helper's own source is not in this repo.  It is used only as an oracle here; the ids it prints
-are recorded verbatim, and ``llama-cli`` on the same pack reproduces the same text.
+    cd ~/projects/llama.cpp
+    clang++ -O2 -std=c++17 -Iinclude -Iggml/include \
+        ~/projects/Strata/strata/bench/macpro51/llama_ref.cpp \
+        -Lbuild/bin -lllama -lggml -lggml-base -o ~/llama_ref
+
+and point --ref-bin at it (the default is ~/llama_ref).
 
 Writes ``results-reference.json`` beside this file.
 """
@@ -28,7 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 MODELS = Path.home() / "models" / "qwen36"
 RESULTS = HERE / "results-reference.json"
-DUMP = Path.home() / "q36_llama_dump"
+DUMP = Path.home() / "llama_ref"
 LLAMA_BIN = Path.home() / "projects" / "llama.cpp" / "build" / "bin"
 
 # The 23 ids strata-q36-metal printed for the prompt the matrix uses (see run_matrix.py).  Feeding
@@ -41,7 +45,7 @@ PACKS = ["Q4_K_M", "UD-Q4_K_XL", "Q6_K", "UD-Q6_K_XL", "Q8_0"]
 GEN = re.compile(r"^gen: (.*)$", re.M)
 
 
-def run_one(pack: str, round_no: int) -> dict:
+def run_one(pack: str, round_no: int, ref_bin: Path) -> dict:
     path = MODELS / ("Qwen3.6-35B-A3B-%s.gguf" % pack)
     rec = {"pack": pack, "round": round_no, "model": str(path), "decode": DECODE}
     if not path.is_file():
@@ -51,7 +55,7 @@ def run_one(pack: str, round_no: int) -> dict:
     env["DYLD_LIBRARY_PATH"] = str(LLAMA_BIN)
     started = time.time()
     proc = subprocess.run(
-        [str(DUMP), "--model", str(path), "--tokens", ",".join(str(i) for i in CONTEXT),
+        [str(ref_bin), "--model", str(path), "--tokens", ",".join(str(i) for i in CONTEXT),
          "--n", str(DECODE)],
         capture_output=True, text=True, timeout=5400, env=env,
     )
@@ -69,10 +73,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=2)
     ap.add_argument("--only", action="append", default=None)
+    ap.add_argument("--ref-bin", default=str(DUMP))
     args = ap.parse_args()
 
-    if not DUMP.is_file():
-        print("no reference helper at %s" % DUMP)
+    ref_bin = Path(args.ref_bin)
+    if not ref_bin.is_file():
+        print("no reference helper at %s (build llama_ref.cpp first)" % ref_bin)
         return 2
 
     records = json.loads(RESULTS.read_text()) if RESULTS.is_file() else []
@@ -81,7 +87,7 @@ def main() -> int:
         for pack in (args.only or PACKS):
             if (pack, round_no) in done:
                 continue
-            rec = run_one(pack, round_no)
+            rec = run_one(pack, round_no, ref_bin)
             records.append(rec)
             RESULTS.write_text(json.dumps(records, indent=1) + "\n")
             if "tokens" in rec:
