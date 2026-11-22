@@ -4807,6 +4807,13 @@ int main(int argc, char** argv) {
                                  "and --prefill CHUNK\n", o.pack.c_str());
             return 2;
         }
+        if (g.n_mtp_layers <= 0) {   // --spec proposes from the MTP drafter; a pack without one cannot fill the window
+            std::fprintf(stderr,
+                         "strata generate: %s is a native (IQ) pack, which requires --spec T (T >= 2), but the pack "
+                         "carries no MTP drafter (no mtp.* tensors), so the verify window has nothing to propose "
+                         "from. Use a pack that ships the drafter, or a non-native pack.\n", o.pack.c_str());
+            return 2;
+        }
         const auto embed_t0 = std::chrono::steady_clock::now();
         if (!native_embed.load(o.embd_gguf.empty() ? o.native_shards : std::vector<std::string>{o.embd_gguf}, g.n_embd,
                                g.n_vocab, err)) {
