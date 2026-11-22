@@ -110,11 +110,6 @@ int run(int argc, char** argv) {
                  (long long) model.n_trunk(), (long long) model.g.n_embd,
                  (long long) model.g.n_vocab, (long long) model.g.n_expert,
                  (long long) model.g.n_expert_used);
-    std::fprintf(stderr, "DEBUG: embed type=%d, gate_inp type=%d, attn_norm type=%d, n_ff=%lld\n",
-                 model.embed.type(),
-                 model.layers.empty() ? -1 : model.layers[0].gate_inp.type(),
-                 model.layers.empty() ? -1 : model.layers[0].attn_norm.type(),
-                 (long long) model.g.n_ff);
 
     // Metal context.
     mtl::Context ctx;

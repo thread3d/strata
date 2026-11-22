@@ -163,7 +163,6 @@ void encode_layer(std::vector<mtl::Dispatch>& ds, const Kernels& K, const mtl::B
     if (with_gu) {
         mtl::Dispatch d;
         d.p = &K.gu;
-        printf("DEBUG: g_gu_type=%d, xkind=%d, offset=%zu\n", g_gu_type, xkind(g_gu_type), (size_t)(4 * PLANE_X * xkind(g_gu_type))); fflush(stdout);
         d.args = {mtl::Arg::B(W, w_off), mtl::Arg::B(XPX, 4 * PLANE_X * xkind(g_gu_type)), mtl::Arg::B(h),
                   mtl::Arg::B(plan, plan_off), mtl::Arg::V(a), mtl::Arg::B(XPX, 4 * PLANE_X * 4)};
         if (g_f16) {
@@ -494,18 +493,10 @@ int main(int argc, char** argv) {
         mtl::Pipeline pp = cx.pipeline(lib, "xprep", g_f16 ? mtl::Constants().b(25, true) : mtl::Constants());
         cx.run({prep_dispatch(pp, x, XPX, N_EMBD, 8)});
     }
-    // DEBUG: check XPX after xprep
-    printf("DEBUG: XPX after xprep - plane 0 (raw): %.4f %.4f %.4f %.4f\n", XPX.as<float>()[0], XPX.as<float>()[1], XPX.as<float>()[2], XPX.as<float>()[3]);
-    printf("DEBUG: XPX after xprep - plane 2 (P4): %.4f %.4f %.4f %.4f\n", XPX.as<float>()[2*PLANE_X], XPX.as<float>()[2*PLANE_X+1], XPX.as<float>()[2*PLANE_X+2], XPX.as<float>()[2*PLANE_X+3]);
 
     if (!bench) {
         // ---------------- parity ----------------
         const int NE = tg_ && experts_first ? std::max(experts_first, 2 * TOPK) : 64;
-        // DEBUG: print x[0][0..15]
-        printf("DEBUG: x[0][0..15]: ");
-        for (int k = 0; k < 16; ++k) printf(" %.4f", x.as<float>()[k]);
-        printf("\n");
-        fflush(stdout);
         mtl::Buffer W = cx.alloc(L.blob * NE);
         std::vector<int> pick;
         for (int e = 0; e < NE; ++e) {
@@ -566,16 +557,6 @@ int main(int argc, char** argv) {
             ref::dequant(gu, b + L.up_off, wu.data(), wu.size());
             ref::dequant(dn, b + L.down_off, wd.data(), wd.size());
             const float* xt = x.as<float>() + t * N_EMBD;
-            // DEBUG: print first few weights
-            if (i == 0) {
-                printf("DEBUG: wg[0..7]: ");
-                for (int k = 0; k < 8; ++k) printf(" %.4f", wg[k]);
-                printf("\n");
-                printf("DEBUG: wu[0..7]: ");
-                for (int k = 0; k < 8; ++k) printf(" %.4f", wu[k]);
-                printf("\n");
-                fflush(stdout);
-            }
             std::vector<double> hr(N_FF);
             const int ent = P[P_TOKENT + i];
             for (int r = 0; r < N_FF; ++r) {
@@ -594,18 +575,6 @@ int main(int argc, char** argv) {
             }
             for (int r = 0; r < N_FF; ++r) {
                 eh.add(h.as<float>()[ent * N_FF + r], hr[r]);
-                if (i == 0 && r < 8) {
-                    printf("DEBUG: h[ent=%d][%d]=%.4f hr[%d]=%.4f\n", ent, r, h.as<float>()[ent * N_FF + r], r, hr[r]);
-                }
-                if (i == 0 && r == N_FF - 1) {
-                    printf("DEBUG: first entry (ent=%d) h[0..7]: ", ent);
-                    for (int k = 0; k < 8; ++k) printf(" %.4f", h.as<float>()[ent * N_FF + k]);
-                    printf("\n");
-                    printf("DEBUG: first entry hr[0..7]: ");
-                    for (int k = 0; k < 8; ++k) printf(" %.4f", hr[k]);
-                    printf("\n");
-                    fflush(stdout);
-                }
             }
             for (int r = 0; r < N_EMBD; ++r) {
                 double s = 0;
