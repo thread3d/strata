@@ -497,6 +497,14 @@ int main(int argc, char** argv) {
     if (!bench) {
         // ---------------- parity ----------------
         const int NE = tg_ && experts_first ? std::max(experts_first, 2 * TOPK) : 64;
+        // A real pack's expert count comes from the tensor itself (Qwen3.6 has 256, not the 512 this
+        // used to assume - a pick past the end read unrelated bytes and could decode to NaN).
+        const int n_ex = tg_ ? (int) (tg_->bytes / ((size_t) L.gu_row * (size_t) N_FF)) : NE;
+        if (tg_ && n_ex < 2) {
+            std::fprintf(stderr, "--gguf: %lld bytes / (%zu x %d) is not a whole number of experts\n",
+                         (long long) tg_->bytes, L.gu_row, N_FF);
+            return 2;
+        }
         mtl::Buffer W = cx.alloc(L.blob * NE);
         std::vector<int> pick;
         for (int e = 0; e < NE; ++e) {
@@ -504,7 +512,7 @@ int main(int argc, char** argv) {
             if (tg_) {   // real experts of the file: expert `ex` of the layer's three tensors
                 int ex;
                 if (experts_first) ex = e % experts_first;   // (a sparse copy holds only the first experts: reused when NE is larger)
-                else do ex = (int)(rng.next() % 512); while (std::find(pick.begin(), pick.end(), ex) != pick.end());
+                else do ex = (int)(rng.next() % (uint32_t) n_ex); while (std::find(pick.begin(), pick.end(), ex) != pick.end());
                 pick.push_back(ex);
                 std::memcpy(b, (const uint8_t*)gf.map + tg_->offset + (size_t)ex * L.gu_row * N_FF, L.gu_row * N_FF);
                 std::memcpy(b + L.up_off, (const uint8_t*)gf.map + tu_->offset + (size_t)ex * L.gu_row * N_FF, L.gu_row * N_FF);
@@ -521,7 +529,7 @@ int main(int argc, char** argv) {
         std::memcpy(bid.ptr, ids.data(), 4 * ids.size());
         std::memcpy(bw.ptr, w.data(), 4 * w.size());
         Kernels K = make(cgu, cdn);
-        MoeArgs a = args_for(K, ntok, 512);
+        MoeArgs a = args_for(K, ntok, n_ex);
         std::vector<mtl::Dispatch> ds;
         encode_layer(ds, K, W, 0, x, h, ye, y, bid, bw, plan, 0, a, true, true, true, true);
         cx.run(ds);
