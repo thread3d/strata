@@ -35,13 +35,13 @@ they should be treated as invalid output. This is the K-quant down-kernel fault 
 
 | Pack | strata (Metal 2) | llama.cpp (CPU) |
 |---|---|---|
-| `UD-Q4_K_XL` | 45.1 s | 16.1 s |
-| `Q4_K_M` | 47.3 s | 21.2 s |
-| `Q6_K` | 50.0 s | 21.0 s |
-| `UD-Q6_K_XL` | 53.3 s | 14.6 s |
-| `Q8_0` | 56.5 s | 13.0 s |
+| `UD-Q4_K_XL` | 45.1 s | 15.1 s |
+| `Q4_K_M` | 47.3 s | 17.5 s |
+| `Q6_K` | 50.0 s | 16.3 s |
+| `UD-Q6_K_XL` | 53.3 s | 14.3 s |
+| `Q8_0` | 56.5 s | 15.5 s |
 
-A CPU build of llama.cpp beats the Metal path by 2.2 to 4.3 times. That is the readback fault
+A CPU build of llama.cpp beats the Metal path by 2.7 to 3.7 times. That is the readback fault
 showing up as cost, and it means these Metal timings say nothing about what the card could do.
 
 ![Same workload, wall clock](docs/benchmarks/macpro51/same-workload-wall.svg)
@@ -57,8 +57,9 @@ numbers in `docs/MAC.md`.
 
 Every number, refusal message and command is in
 [`docs/macpro51-2026-11-22.md`](docs/macpro51-2026-11-22.md). The figures are produced, not
-transcribed: `bench/macpro51/run_matrix.py` and `run_reference.py` write the two JSON files, and
-`charts.py` and `charts_reference.py` draw the charts from them.
+transcribed: `bench/macpro51/run_matrix.py` and `run_reference.py` write the two JSON files,
+`charts.py` and `charts_reference.py` draw the charts from them, and the reference side is
+`bench/macpro51/llama_ref.cpp`, built against llama.cpp (the build line is in that page).
 
 The earlier macpro51 pages (`docs/macpro51-test-results.md` and the three
 `docs/qwen36-metal-*-benchmarks*.md` files) predate `be4cbc78f`, disagree with each other, and carry
