@@ -85,6 +85,20 @@ def main(argv):
     print("  confidence %s" % " ".join("%.3f" % out_f[16 + i] for i in range(DF2_DRAFTS)))
     print("  head argmax per row  %s"
           % [max(range(nd), key=lambda j: logits[i * nd + j]) for i in range(DF2_DRAFTS)])
+
+    # The ranking above is only as good as the logits it comes from, so report their shape.  A real language
+    # head spreads mass across the vocabulary; if almost every entry is zero then only a handful of rows were
+    # written, and the proposals (and the acceptance rate) follow from that, not from the context.
+    print("\nthe head's logits:")
+    for i in range(min(DF2_DRAFTS, 3)):
+        row = logits[i * nd:(i + 1) * nd]
+        mx = max(row)
+        mi = row.index(mx)
+        mean = sum(row) / nd
+        sd = math.sqrt(sum((v - mean) ** 2 for v in row) / nd)
+        live = sum(1 for v in row if abs(v) > 1e-6)
+        print("  row %d  max %.4f at %d, mean %.4f, sd %.4f, %d of %d entries above 1e-6"
+              % (i, mx, mi, mean, sd, live, nd))
     return 0
 
 
