@@ -353,3 +353,21 @@ What the table settles:
 
 The avoidable term remains the prompt path's ~4.34 GB of matrix-unit buffers (item 6), which this
 64-lane card cannot use at all.
+
+### Item 4: a longer acceptance sample (2026-11-23, `4d9549abb`)
+
+The 0-acceptance figure quoted on this page came from a 2-round run (0 of 7). This is the same command at
+`--max-new 8`, so 8 rounds of 8:
+
+```
+speculation              8 rounds of 8, drafts accepted 0 of 49 (0.000), 1.00 tokens per round
+output  : 1544 76 398 8709 96302 17776 78 76
+decode                   8 tokens in 16489.5 ms  ->  0.49 tok/s
+```
+
+49 drafts offered, none accepted, and the eight tokens are the sequence the drafter page records
+(`1544 76 398 8709 96302 17776 78 76`), so the target is behaving as documented while every proposal
+misses. With the logits measurement (16 of 106299 head rows written) this is no longer a mystery to be
+sampled further: a head that ranks only ids 0–15 cannot propose `96302`, so 0 is the expected rate, not a
+low one. The sample is recorded here to close the "0 of 7 is a small sample" objection, not as open
+evidence.
