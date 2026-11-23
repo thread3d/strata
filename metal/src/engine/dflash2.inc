@@ -605,13 +605,13 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
         dd.tg[0] = 256;
         push(ds, dd);
     };
-    auto stage = [&](int l, int k, const mtl::Buffer& b, size_t n) {   // STRATA_DF2_STAGE_DUMP: the layer's chain, slot by slot
+    auto stage = [&](int l, int k, const mtl::Buffer& b, size_t n, size_t boff = 0) {   // STRATA_DF2_STAGE_DUMP: the layer's chain, slot by slot
         if (!d.sdump.handle || l >= 2) return;
         mtl::Dispatch dc;
         dc.p = P(ldf2_, "df2_copy_flat", {}, "df2_copy_flat");
         const uint32_t sn = (uint32_t) n;
         const uint32_t soff = (uint32_t) ((size_t) (l * 16 + k) * (size_t) DF2_ROWS * (size_t) d.I);
-        dc.args = {mtl::Arg::B(b), mtl::Arg::B(d.sdump), mtl::Arg::V(sn), mtl::Arg::V(soff)};
+        dc.args = {mtl::Arg::B(b, boff), mtl::Arg::B(d.sdump), mtl::Arg::V(sn), mtl::Arg::V(soff)};
         dc.barrier = true;   // the copy must read what the stage before it wrote, not a later overwrite of the same buffer
         dc.grid[0] = (sn + 255) / 256;
         dc.tg[0] = 256;
@@ -641,8 +641,17 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
             kd.args = {mtl::Arg::B(d.k), mtl::Arg::B(d.pack, d.ten.at(p + "self_attn.k_norm.weight").offset), mtl::Arg::B(d.bpos), mtl::Arg::B(d.rtb),
                        mtl::Arg::B(d.kblk), mtl::Arg::V(ka)};
             kd.grid[0] = B; kd.grid[1] = 8; kd.tg[0] = 128;
-            nb_ = true;
-            push(ds, kd);
+            push(ds, kd);   // (a barrier: it reads d.k, which the k projection just wrote without one)
+        }
+        {   // STRATA_DF2_STAGE_DUMP: the ring row this layer's attention reads, and the block's own K/V
+            const int sp = d.anchor.as<int32_t>()[1];          // (df2_draft wrote s into an[1])
+            const size_t rslot = (size_t) (((sp - 1) % DF2_RING + DF2_RING) % DF2_RING) * 8 * 128;
+            if (d.sdump.handle && l < 2) {
+                stage(l, 12, d.kring[l], 1024, rslot * 4);     // one ring slot: [8 heads][128]
+                stage(l, 13, d.vring[l], 1024, rslot * 4);
+            }
+            stage(l, 14, d.kblk, (size_t) B * 1024);
+            stage(l, 15, d.v, (size_t) B * 1024);
         }
         {
             struct AttnArgs { uint32_t ring, window; } aa{(uint32_t) DF2_RING, (uint32_t) d.window};
