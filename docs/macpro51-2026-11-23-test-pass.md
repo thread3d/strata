@@ -304,3 +304,25 @@ parity Q2_0/Q2_0 ntok 1 gu 32,2,4 dn 8,2,4: plan ok (10 groups),
 Both halves pass against the fp16 tolerance (4e-3), and the numbers reproduce the ones recorded on
 2026-11-22 to three digits, so the 64-lane lane fix is exercised on `moe_gu16` / `moe_down16` too and has
 not regressed. `msl_dump --kq --f16` remains the compile check; this is the run.
+
+### Item 13: what `df2_bench`'s defaults cost on this card
+
+`df2_bench` defaults to `DF2B_ITERS=200` and interleaves the verify-window stand-in graph before every
+timed round. That stand-in was written for about 13 ms on a faster GPU and measures **1794.7 ms** here,
+so each timed stage runs 30 + 200 rounds of it: **about 413 s a stage, about 41 minutes for the default
+run**, which reads as a hang (the process sits in `waitUntilCompleted` the whole time).
+
+Since `2e158bc7d` the tool prints that cost before the first stage:
+
+```
+stand-in graph: 1794.7 ms a round; a stage warms up 30 and times 200, about 413 s. DF2B_STANDIN=0 leaves it out.
+```
+
+For this machine the useful forms are:
+
+| goal | invocation |
+|---|---|
+| the graph itself, in seconds | `DF2B_STANDIN=0 DF2B_ITERS=5 ./build-metal/df2_bench metal/src/engine/msl` (all three context stages in 2.35 s; 8 rows 9.456 ms) |
+| one stage only | add `DF2B_ONLY=ctx` (or `block`, `head`) |
+| where a stage stops | add `DF2B_TRACE=1`, which runs the stage as growing prefixes and prints every dispatch |
+| the full matrix | leave the defaults and give it ~41 minutes |
