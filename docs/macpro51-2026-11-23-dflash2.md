@@ -77,6 +77,49 @@ is never taken there.
 `df2_draft` also refuses an anchor token outside the vocabulary, instead of indexing the embedding
 table with it (the principle of `9aac01969`).
 
+## It runs (2026-11-23, `c22a8a6bd`)
+
+Qwen3.8-Flash-Next produces tokens on this card, with the DFlash2 drafter attached:
+
+```
+prompt  : 3 1 42498 456 11
+output  : 1544 76 398 8709 96302 17776 78 76
+decode                   8 tokens in 16671.8 ms  ->  0.48 tok/s
+prefill                  4 tokens in 26956.7 ms  ->  0.15 tok/s
+dflash2                  206.9 ms/round drafting (7 rounds, GPU 204.1), 1103 MiB of VRAM
+speculation              8 rounds of 8, drafts accepted 0 of 49 (0.000), 1.00 tokens per round
+```
+
+The fix was one defect, described above: **the dense arena's host reads did not go through
+`Context::host_ptr`**. The arena is two overlapped buffers on this card, and `W_.ptr + offset` is
+chunk 0's base only, so `token_embd.weight` — which sits at exactly `stride` (3.76 GiB), the first
+tensor in the second chunk — was dequantised out of unrelated memory. Fifteen host reads (ten in
+`window.cpp`, four in `dflash2.inc`, one in `prompt_chain.inc`) now ask the context for the pointer.
+
+Two independent oracles say the arithmetic around that fix is sound. `df2_bench` checks both of the
+drafter's GEMMs against plain CPU dot products - `df2_mm4` (Q4_0) at 3.35e-07 and, new in `fff3188e0`,
+`df2_mm` (Q8_0) at 4.31e-06. And `tools/dflash2/check_metal_dump.py` against the torch port agrees
+with the engine's selector walk on **7 of 7 picks** (probabilities within 0.01) and on `hsel` within
+0.085.
+
+## The drafter still drafts badly
+
+Acceptance is **0 of 49**, and the same torch check says why: the block's eight final rows come out
+with **cosine similarity 0.55-0.74** against the fp32 reference (the check's bar is 0.98), while their
+norms are right (0.96-0.99). So the block computes values that are the right size and the wrong
+direction — the selector then walks a wrong-but-confident tree, which is exactly what a run of
+`0.64 0.82 0.27 0.83 ...` probabilities with nothing accepted looks like.
+
+What it is *not*, each checked: the GEMMs (both pass above); the lane mapping (every kernel in
+`dflash2.metal` takes its group and lane from `sg32`/`lane32`, 12 of 12, and no `simd_sum` is left);
+the pack (clean, and the Q8_0 draft head requantised from the target's own rows); and the context
+(the ring is filled and advancing - `kring[0]` 4096 of 4096 non-zero, one context row per round at
+positions 4, 5, 6, ...).
+
+So the next step is to compare the block's *own* intermediates against torch, layer by layer. The
+dump carries the final rows and the head's logits but nothing in between, so `df2_draft` needs the
+same kind of stage dump the window now has.
+
 ## What is verified
 
 * `df2_bench`'s Q4_0 check against the CPU: **3.35e-07** on values up to 5.08 in magnitude.
