@@ -120,6 +120,44 @@ So the next step is to compare the block's *own* intermediates against torch, la
 dump carries the final rows and the head's logits but nothing in between, so `df2_draft` needs the
 same kind of stage dump the window now has.
 
+## Where the drafter's forward stands (2026-11-23, `9de180eea`)
+
+The port is not finished: acceptance is 0 of 49. What is known, measured stage by stage with
+`STRATA_DF2_STAGE_DUMP` (eleven buffers of layers 0 and 1, each copy behind a barrier) against
+`tools/dflash2/dflash2_ref.py` on the same taps:
+
+| stage | layer 0 | layer 1 |
+|---|---|---|
+| `xn` after the input norm | 1.000000 | 0.9998 |
+| `xc` after the conv | 0.9998 | 0.9996 |
+| the query after `q_norm` + rope | 0.99991 | 0.99975 |
+| `k_proj` / the block's K | 0.99997 | 0.99989 |
+| `v_proj` / the block's V | 0.99969 | 0.99966 |
+| **the attention's output** | 0.9998 | **0.909** |
+| `o_proj` | 0.9999 | 0.927 |
+| `h` after the attention half | 0.999997 | 0.998 |
+| `xn2` / `xc2` | 0.9999 / 0.9996 | 0.987 / 0.889 |
+| gate / up / swiglu | 0.9996 / 0.9996 / 0.9992 | 0.898 / 0.891 / 0.787 |
+| `mlp` | 0.9995 | 0.827 |
+
+Two things follow. First, **every operator is correct on this card**: layer 0 is exact at all
+eleven stages. Second, at layer 1 **every operand of the attention is right to about 3e-4**
+(xn, xc, q, k, v) while its output is wrong by 0.09, so the fault is in *which keys are folded in* -
+the attention's chunk/mask bookkeeping - not in any projection, norm, rope or GEMM.
+
+A cross-check guards against the trap I fell into twice: engine layer 0's `ao` scores 0.9998
+against the reference's layer 0 and 0.013 against its layer 1, and engine layer 1's `ao` 0.9086
+against layer 1 and 0.013 against layer 0. Each slot is provably its own layer.
+
+The open leads, in the order worth trying:
+
+* `d.part`, the per-chunk (m, l, O) buffer the merge reads over - the last unmeasured one;
+* the ring rows the **prompt** path filled (`Prefill` -> `df2.context` -> `df2_kv_list`), as distinct
+  from the rows the decode rounds fill; substituting zeros (0.48), layer 0's keys (0.27) or layer
+  0's keys for just those rows (0.879) all make the result worse than the engine's own 0.909, so
+  that context is *nearly* right;
+* `df2_attn_merge`'s `nchunks` against `df2_attn_part`'s placeholder rows for chunks past the end.
+
 ## What is verified
 
 * `df2_bench`'s Q4_0 check against the CPU: **3.35e-07** on values up to 5.08 in magnitude.
