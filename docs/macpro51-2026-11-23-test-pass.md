@@ -504,3 +504,62 @@ taps, so it agrees by construction. Two probes follow from that, in order:
 Not claimed: that any of these is the cause, that acceptance can be made non-zero on this card, and any
 timing as a performance number. The drafter's cost is unchanged at ~0.48 tok/s decode with speculation
 offering nothing.
+
+## Round 17: the tap conventions are not the discriminator (2026-11-23)
+
+Round 16 named the tap fold as the last unverified link. This round tested every axis of it that can be
+reached without an outside oracle, and none of them moves acceptance. All numbers are the documented
+Qwen3.8 `UD-IQ1_M` dflash2 run at `--max-new 8` (8 rounds of 8), and "rank" is
+`tools/dflash2/rank_true_token.py`: where the token the target actually emitted ranks among the head's
+logits.
+
+| tap convention / head | truth ranks (7 rows) | acceptance |
+|---|---|---|
+| output of layer l, gathered 106299-row Q8_0 head (default) | 457 / 2084 / 2282 / 15620 / 33206 / 91 / **10** | 0 of 49 |
+| the target's whole 248320-row head (`STRATA_DF2_HEAD=native`) | 521 / 2544 / 2746 / 24615 / 61052 / 92 / **10** (of 248320) | 0 of 49 |
+| output of layer l-1 (`STRATA_DF2_TAP_SHIFT=-1`) | 779 / 9152 / 2887 / 47886 / 68550 / 293 / 14 | 0 of 49 |
+| output of layer l+1 (`STRATA_DF2_TAP_SHIFT=+1`) | 99 / 920 / 3462 / 15651 / 27275 / 154 / 14 | 0 of 49 |
+| plain mean of the streams, no `bo` term (`STRATA_DF2_TAP_PLAIN=1`) | 382 / 3156 / 2563 / 20201 / 51856 / 86 / **7** | 0 of 49 |
+
+(The three `STRATA_DF2_TAP_*` switches were temporary experiment builds and are **not** in the tree; only
+the defaults are committed.)
+
+What that says, and the one real divergence it found:
+
+- **The fold is not a Metal invention.** `src/kernels/cuda/dflash2.cu`'s `tap_gr_kernel` is the same
+  formula as the port's `df2_tap`, term for term: `(Σ_c R_c + bo·Σ_c g_c)/hc`, `g_c = 2/(1+exp(-inj_c/hc))`.
+  The port reproduces the CUDA **decode** path exactly.
+- **But CUDA's prefill path uses a different fold.** `sycl/src/prefill/prefill.cpp:4950` calls
+  `df2_tap_rows` — commented "this layer's completed output, mean of the streams" — which is
+  `Σ_c R_c / hc` with **no `bo` term**; its kernel is `tap_rows_kernel` in the same CUDA file. So CUDA
+  emits one quantity for a prompt's rows and another for a decode window's, and the Metal port applies
+  the decode fold on both paths. That is a real divergence (worth aligning whichever way the drafter
+  wants), and the `STRATA_DF2_TAP_PLAIN` row above is what the prefill fold does: rank 7 on the last row
+  (the best single rank seen) but 51 856 on row 4, and no acceptance. So it is not the fix either, and
+  the divergence is recorded rather than guessed at.
+- **The gathered draft vocabulary is irrelevant to acceptance.** With the whole 248320-row head the
+  proposals are *identical* (`[626, 28, 16, 17, 18, 471, 16]`) and the ranks scale to the same weakness,
+  so the `--mtp-draft-vocab` list is not standing between the drafter and a draft.
+- **Layer indexing is not it, in either direction.** -1 is clearly worse; +1 is better on 3 rows
+  (99, 920, and 14) and worse on 2. No shift changes acceptance.
+
+**Net effect on the objective's question.** Every link that can be checked against a reference on this
+machine now matches it: the drafter's arithmetic against the torch port (block rows cos 0.9992-0.9995,
+walk 7 of 7), the tap fold against the CUDA decode kernel (identical), the head's coverage against its own
+size (106299 of 106299 after the Round 15 fix), and the vocabulary path against the whole head (identical
+proposals). Acceptance is still 0, so the term that remains is the *content* of the tap vectors — whether
+the target's post-layer, stream-folded hidden states are what this drafter was trained on. Nothing on this
+machine can answer that: the only target pack that fits in 8.6 GB is IQ1_M (1.06 bpw experts), no
+qwen4exp reference implementation is available to produce an independent `h`, and the reference port for
+the drafter consumes the engine's own taps, so it agrees by construction.
+
+The probes that would answer it, in the order I would run them: (1) the same drafter and prompt against a
+less quantized target on a machine that can hold one, and compare the truth ranks — a jump would put the
+blame on IQ1_M, no jump on the fold/layer semantics; (2) a write-race check on the tap read (dispatch
+`df2_tap` again at the start of the next layer, where `R_` is untouched, and diff), the one sequencing
+defect class this card has already shown; (3) the community's own target-extraction snippet, to settle the
+fold and the layer indexing by construction rather than by rank.
+
+Not claimed: acceptance, a speculative speedup, or that the taps are wrong — only that no convention
+reachable on this machine changes the outcome, and that the port now matches its reference everywhere it
+can be checked.
