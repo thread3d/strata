@@ -4,10 +4,12 @@ Companion to `docs/macpro51-2026-11-22.md`, which is the record for the Qwen3.6 
 machine. This page covers one thing: **DFlash2** (`--draft dflash2`, the block drafter for
 Qwen3.8-Flash-Next), which the Metal port carried but had never run here.
 
-The short version: **the drafter's kernels are ported to this card and verified against the CPU;
-the engine loads a real drafter pack, binds it, and enters the speculative loop; it then stops one
-step later, on a token the *verifier* never wrote — not on the drafter.** No end-to-end output and
-no acceptance figure exist yet, and nothing here is a performance number.
+The short version: **the drafter's kernels are ported to this card, the model runs end to end with
+the drafter attached, and the drafter's forward now agrees with the torch port on the same context
+(cos 0.9992-0.9995 on the block's eight final rows, the selector's walk 7 of 7). It still drafts
+nothing the verifier accepts — 0 of 105 — and the section "The `d.part` probe" says why that is now
+a question about the context the drafter is fed, not about its arithmetic.** Nothing here is a
+performance number. Sections are dated; the older ones are the trail, newest last.
 
 ## The machine and the build
 
@@ -157,6 +159,68 @@ The open leads, in the order worth trying:
   0's keys for just those rows (0.879) all make the result worse than the engine's own 0.909, so
   that context is *nearly* right;
 * `df2_attn_merge`'s `nchunks` against `df2_attn_part`'s placeholder rows for chunks past the end.
+
+## The `d.part` probe: the merge was reading the layer before's statistics (2026-11-23, `f708fe8ae`+)
+
+The lead this page ended on was `d.part`, the per-chunk (m, l, O) buffer `df2_attn_merge` reads over.
+Two probe changes were needed before it could be read: `STRATA_DF2_RING_DUMP` (the context K/V rows
+the block's attention actually reads, per layer, plus the `hctx` / `kc` / `vc` the context path last
+wrote), and a move of the stage-13 slot — it was dumped *before* the attention ran, so it held the
+previous layer's `d.part` (zeros at layer 0). It is now dumped after the merge.
+
+Run at round 3 (`s = 8`, `anchor 8709`, one chunk of 16 keys), against `tools/dflash2/dflash2_ref.py`
+on the same taps:
+
+* **The ring is right, on every layer.** `kring[l]` / `vring[l]` rows 0..7 against the port's
+  `Kc` / `Vc`: cos **0.999986-0.999993** for layers 0 and 1 and 0.99999 for layers 2-4 (V 0.99994+).
+  Both the rows the prompt filled (0-4) and the rows the decode rounds filled (5-7) are right, so
+  the context path, the ring slots and the rope at the context positions are not the fault. This
+  closes the "ring rows" lead.
+* **`d.part` is right too** — layer 1's chunk-0 O against the port: cos **0.99935** — **but the
+  merged `ao` was not.** Rebuilding `ao` from the engine's *own* dumped part gives cos 1.0 at layer
+  0 and the same 0.877 at layer 1: the engine's attention output disagreed with the buffer its own
+  merge had just read.
+* The disagreement had a shape: every 128-float head block of `ao` matched the part's O in
+  *direction* exactly (cos 1.00000) but some blocks were scaled by `l1 / l0`. The merge had divided
+  the fresh O by the **previous layer's `l`** — 32 of 32 sampled `(kvh, qi)` entries in row 0 whose
+  `l0` and `l1` differ divided by `l0`.
+
+**Root cause: the part kernel and the merge are two dispatches in one `MTLDispatchTypeConcurrent`
+encoder**, separated only by `memoryBarrierWithScope:MTLBarrierScopeBuffers`. On this card that
+barrier does not hold the reader back. Each 130-float struct is written by 64 threads (thread 0
+writes `m` and `l`, threads d write O[d] and O[d+64]), so a reader that starts before the writer's
+threadgroups retire can see thread 0's `(m, l)` still old while the other threads' O are new — a torn
+struct, not a whole stale buffer. **It is scheduling, not arithmetic**: inserting one extra dispatch
+between the two changed layer 1's `ao` (max |diff| 12.6) while every value through layer 0 stayed
+bit-identical. Layer 0 was clean because nothing had read `part` before it.
+
+The fix is `run_graph(ds, count, serial)` in `metal/src/mtl_rt.mm`: one serial compute encoder, so
+the dispatches run in order. The drafter's three graphs (the context update, the block, the lineage
+rebuild) take it; the rest of the engine does not (the window under `STRATA_METAL_STREAM=1` already
+runs segmented with shared-event handshakes between segments, which is a real GPU-side dependency).
+The block's list is barrier-dense already, so the cost is small: **226.3 ms/round against 218.0**
+(GPU 220.6), and the target model's own tokens are untouched — only the drafter's graphs changed.
+
+After it:
+
+| | before | after |
+|---|---|---|
+| layer 1 `ao` against the port | 0.877 | **0.99976** |
+| layer 1 `ao` against its own `d.part` | 0.877 | **1.0** |
+| the block's 8 final rows against the port | 0.55-0.74 | **0.9992-0.9995** |
+| selector walk (torch, on the engine's own rows) | 7 of 7 | 7 of 7 |
+| `tools/dflash2/check_metal_dump.py` | fails the row bar (0.98) | **ok** |
+
+**Acceptance is still 0 of 105** (`16 rounds of 8, drafts accepted 0 of 105 (0.000)`). That figure
+is now informative in a way it was not before: the drafter's forward is faithful to the torch port
+on the same context, so the disagreement is no longer inside the drafter. It is between the drafter
+and the verifier, and only two things can carry it: **the taps** the drafter is fed (the target
+model's hidden states at layers 5/15/25/35/45, folded by `df2_tap`) or **the target model's own
+argmax** on this card. `df2_tap`'s fold, `(Σ_c R_c + bo·Σ_c g_c) / hc` with `g_c = 2/(1+exp(-inj_c/hc))`,
+is the same math `hcf.metal` documents for the target's own hyper-connection read, so the formula is
+not the suspect; whether the *right* rows are being tapped (and whether qwen4exp's forward itself is
+right here) is. That needs an oracle for the target model's hidden states, which this machine does
+not have yet.
 
 ## What is verified
 
@@ -320,12 +384,14 @@ Two smaller things seen and not fixed:
 
 ## Not run, and therefore not claimed
 
-* **No end-to-end output.** Not one token has been produced with DFlash2 drafting on this machine.
-* **No acceptance rate.** The selector's picks have never been checked against a verify window.
-* **No `check_metal_dump.py` comparison.** That is the real oracle (the torch port of
-  `DFlash2DraftModel` in `tools/dflash2/dflash2_ref.py`); the engine's `STRATA_DF2_DUMP` path exists
-  and was reached, but the round it dumps never completes. Torch 2.2.2 is available on the
-  MacPro71 side if the dump is to be checked there.
+* **No end-to-end tokens from DFlash2 drafting** — the model produces tokens, but every draft is
+  rejected (0 of 105), so no speculative speedup exists. (Written before the model ran; kept as the
+  record of that state. The acceptance figure and the `check_metal_dump.py` comparison now exist,
+  see "The `d.part` probe".)
+* **No acceptance rate above zero.** The selector's walk matches torch 7 of 7 on the engine's own
+  rows, and the drafts are still all rejected.
+* **No comparison of the taps** with an independent implementation of qwen4exp's hidden states —
+  that is the open question the acceptance figure now points at.
 * **No other pack.** Only `UD-IQ1_M` was tried; `Q8_0` is 133 GB and the other UD packs were not
   exercised.
 * **No performance claim.** 93.3 ms is one cold iteration of a block, not a round, and not a
