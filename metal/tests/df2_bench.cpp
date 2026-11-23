@@ -1,6 +1,8 @@
 // metal/tests/df2_bench.cpp - DF2-METAL: what one DFlash2 drafter round costs on Metal (the Q4_0 pack's real shapes and bytes).
 //   df2_bench [KERNEL_DIR] ; env DF2B_POS (ring position, default 600), DF2B_ITERS (default 200), DF2B_GAPMS (host gap between rounds, default 0.4),
 //   DF2B_VARIANT (the mm4 R,SG pipeline as "R_SG", default 4_8), DF2B_HEADR (head df2_mm variant, default 4_8), DF2B_ONLY=ctx|block|head (stage alone)
+//   DF2B_STANDIN=0 leaves the verify-window stand-in graph out (a quick graph-only run); DF2B_TRACE=1 runs a stage as growing prefixes and
+//   prints each dispatch instead of timing it (the last prefix printed is where it stopped).
 // One round = the context update for n_new rows (fc 12800 -> 2560, per layer K/V projections, norm + rope, ring writes) + the 8-row block
 // (5 layers: dynamic conv projections, q/k/v, norm + rope, windowed attention over the ring, o, conv + rms, gate/up, swiglu, down) + the head over the
 // draft vocabulary (7 rows, Q8_0 rows requantized from the target's head, as the first Metal port did) + top-16 + the candidate selector.
@@ -77,6 +79,7 @@ int main(int argc, char** argv) {
     const std::string var = std::getenv("DF2B_VARIANT") ? std::getenv("DF2B_VARIANT") : "4_8";
     const std::string hvar = std::getenv("DF2B_HEADR") ? std::getenv("DF2B_HEADR") : "4_8";
     const std::string only = std::getenv("DF2B_ONLY") ? std::getenv("DF2B_ONLY") : "";
+    const bool STANDIN = !(std::getenv("DF2B_STANDIN") && std::string(std::getenv("DF2B_STANDIN")) == "0");
     auto parse_rs = [](const std::string& s, int& R, int& S) { std::sscanf(s.c_str(), "%d_%d", &R, &S); };
     int R4, S4, RH, SH;
     parse_rs(var, R4, S4); parse_rs(hvar, RH, SH);
@@ -453,11 +456,30 @@ int main(int argc, char** argv) {
     Mat big = make_q4(60000, 12800);
     std::vector<mtl::Dispatch> standin;
     for (int i = 0; i < 18; ++i) mm(standin, big, taps, logits, 3, true, var);
+    if (STANDIN) {   // what interleaving it costs here: the 13 ms it was written for is ~1.8 s on this card, and every stage pays it 30 + ITERS times
+        const double ms = cx.run_graph(standin) * 1000.0;
+        std::printf("stand-in graph: %.1f ms a round; a stage warms up 30 and times %d, about %.0f s. DF2B_STANDIN=0 leaves it out.\n",
+                    ms, ITERS, (30.0 + ITERS) * ms / 1000.0);
+        std::fflush(stdout);
+    }
     auto time_it = [&](const char* name, const std::vector<mtl::Dispatch>& ds) {
+        if (std::getenv("DF2B_TRACE")) {   // run one dispatch longer each time: the last prefix printed is the stall
+            for (size_t k = 1; k <= ds.size(); ++k) {
+                const mtl::Dispatch& d = ds[k - 1];
+                std::printf("  prefix %2zu/%2zu  %-16s grid %u,%u,%u  tg %u\n", k, ds.size(), d.p->name.c_str(),
+                            d.grid[0], d.grid[1], d.grid[2], d.tg[0]);
+                std::fflush(stdout);
+                std::vector<mtl::Dispatch> pre(ds.begin(), ds.begin() + (long) k);
+                cx.run_graph(pre);
+            }
+            std::printf("  trace complete\n");
+            return std::make_pair(0.0, 0.0);
+        }
         std::vector<double> gpu, wall;
-        for (int w = 0; w < 30; ++w) { cx.run_graph(standin); cx.run_graph(ds); }
+        const int warm = STANDIN ? 30 : 3;
+        for (int w = 0; w < warm; ++w) { if (STANDIN) cx.run_graph(standin); cx.run_graph(ds); }
         for (int i = 0; i < ITERS; ++i) {
-            cx.run_graph(standin);
+            if (STANDIN) cx.run_graph(standin);
             const double t1 = mtl::now_s();
             while ((mtl::now_s() - t1) * 1000.0 < GAPMS) {}
             const double t0 = mtl::now_s();
