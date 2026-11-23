@@ -798,7 +798,7 @@ bool Window::df2_context(const mtl::Buffer& taps, size_t taps_off, int64_t n, in
         }
         { const int g0l = (nb - 1) / 8 * 8; d.ctx_rows = nb - g0l; d.ctx_pos0 = pos0 + b0 + g0l; }
         const double tg0 = now_ms();
-        cx_->run_graph(ds);
+        cx_->run_graph(ds, (size_t) -1, true);   // serial: the k norm writes the ring, the V copy reads beside it, and this driver honours only execution order
         static const bool st2 = std::getenv("STRATA_DF2_STATS") != nullptr;
         if (st2 && nb > 16) std::fprintf(stderr, "strata metal: DFlash2 context graph of %d rows: %zu dispatches, built in %.1f ms, run %.1f ms\n", nb, ds.size(), tg0 - tc0, now_ms() - tg0);
     }
@@ -883,7 +883,7 @@ bool Window::df2_draft(int n_new, int64_t pos0, int32_t anchor, int32_t* drafts,
     int32_t* ot = d.outbuf.as<int32_t>();
     for (int i = 0; i < DF2_DRAFTS; ++i) ot[i] = -1;   // (draft ids past the cap stay -1)
     const double tr = now_ms();
-    const double g = cx_->run_graph(d.list[n_new]);
+    const double g = cx_->run_graph(d.list[n_new], (size_t) -1, true);   // serial: the merge must see the part kernel's m/l, which a memory barrier alone does not give here
     const double wall = now_ms() - tr;
     d.gpu_ms += 1000.0 * g;
     if (d.rounds >= 1 && d.last_build_ms == 0) { d.run_ms += wall; d.host_ms += now_ms() - t0 - wall; ++d.steady; }
@@ -1098,7 +1098,7 @@ int64_t Window::df2_restore_lineage(const std::vector<int32_t>& cur_hist, int64_
             push(ds, gt);
             df2_kv_list(ds, m, d.ctxpos, (size_t) g0 * 4, d.rtctx, (size_t) g0 * 128 * 4);
         }
-        cx_->run_graph(ds);
+        cx_->run_graph(ds, (size_t) -1, true);
         b0 += nb;
     }
     if (!match.chk.empty()) {   // test: the rebuilt rows against the original update's bytes
