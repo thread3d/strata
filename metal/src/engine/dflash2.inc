@@ -373,7 +373,7 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
                             std::memcpy(d.hsc.as<uint8_t>() + (i * nb + b) * 2, blk.data() + b * 34, 2);
                             std::memcpy(q + b * 32, blk.data() + b * 34 + 2, 32);
                         }
-                        return;
+                        continue;   // this row is written flat: the next one belongs to this thread too (a `return` here left rows 16.. to no thread at all)
                     }
                     // this row's fm in its tile; the 8 rows of a tile are written by whichever thread owns each row: lane words are filled byte by byte
                     const uint64_t rt = i / 8, fmr = i % 8;
@@ -391,6 +391,42 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
                 }
             });
         for (auto& x : th) x.join();
+        // STRATA_DF2_HEAD_PROBE: how much of the Q8_0 draft head the fill loop above actually wrote.
+        // item 3: only 16 of the head's 106299 logit columns are non-zero, and the tile experiments did
+        // not move that, so the question is whether the upstream fill covers the rows.
+        if (std::getenv("STRATA_DF2_HEAD_PROBE")) {
+            const uint8_t* qb = d.hq.as<uint8_t>();
+            const uint8_t* sb = d.hsc.as<uint8_t>();
+            uint64_t nzq = 0, nzs = 0;
+            for (uint64_t i = 0; i < nrow; ++i) {
+                const uint8_t* q = qb + i * (uint64_t) N;
+                bool any = false;
+                for (uint64_t b = 0; b < (uint64_t) N && !any; ++b) any = q[b] != 0;
+                nzq += any ? 1 : 0;
+                const uint8_t* s = sb + i * nb * 2;
+                bool anys = false;
+                for (uint64_t b = 0; b < nb * 2 && !anys; ++b) anys = s[b] != 0;
+                nzs += anys ? 1 : 0;
+            }
+            std::fprintf(stderr,
+                         "strata metal: DF2 head probe: head_q8=%d wide=%d nd=%lld N=%d nb=%llu nrt=%llu | hq %llu B (need %lld) hsc %llu B (need %llu) |"
+                         " rows with a non-zero q8 byte: %llu / %lld, with a non-zero scale: %llu\n",
+                         (int) d.head_q8, (int) d.wide, (long long) d.nd, (int) N, (unsigned long long) nb, (unsigned long long) nrt,
+                         (unsigned long long) d.hq.bytes, (long long) (nrow * (uint64_t) N), (unsigned long long) d.hsc.bytes,
+                         (unsigned long long) (nrow * nb * 2), (unsigned long long) nzq, (long long) nrow, (unsigned long long) nzs);
+            const uint64_t rows[] = {0, 1, 15, 16, 17, 100, 1024, 65535, nrow ? nrow - 1 : 0};
+            for (uint64_t i : rows) {
+                if (i >= nrow) continue;
+                const int8_t* q = (const int8_t*) (qb + i * (uint64_t) N);
+                double sabs = 0;
+                uint64_t cnz = 0;
+                for (uint64_t b = 0; b < (uint64_t) N; ++b) { sabs += q[b] < 0 ? -(double) q[b] : (double) q[b]; cnz += q[b] != 0; }
+                const uint8_t* sr = sb + i * nb * 2;
+                std::fprintf(stderr, "  row %llu: q8 |x| sum %.4g, non-zero %llu / %d, first scale bytes %02x %02x %02x %02x\n",
+                             (unsigned long long) i, sabs, (unsigned long long) cnz, (int) N, sr[0], sr[1], sr[2], sr[3]);
+            }
+            std::fflush(stderr);
+        }
     } else if (!vocab.empty()) {
         if (mhead_.handle && vocab == dvocab_) {
             d.head_buf = &mhead_;
