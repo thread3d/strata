@@ -116,7 +116,11 @@ struct Window::Df2 {
     uint64_t bytes = 0;
     double gpu_ms = 0;
     int64_t rounds = 0, steady = 0;
-    // STRATA_DF2_DUMP=<file> [STRATA_DF2_DUMP_ROUND=n]: the context rows the drafter was given and its answer at round n, for tools/dflash2/check_metal_dump.py
+    // STRATA_DF2_DUMP=<file> [STRATA_DF2_DUMP_ROUND=n]: the context rows the drafter was given and its answer at round n, for tools/dflash2/check_metal_dump.py.
+    // n counts the DECODE rounds from 0 (the first draft round is 0, not 1), and every row must reach the drafter through the
+    // decode path from position 0 - a chunked prompt prefill (--prefill > 1) feeds its rows elsewhere, so the dump refuses with
+    // "the context rows are not 0..s" and writes nothing.  --prefill 1 is the invocation that works.  STRATA_DF2_DUMP_TRACE=1
+    // prints round / dump_next / dump_ok at the write gate, which is how both facts were found.
     std::string dump_path, ldump_path, sdump_path;   // ldump_path: STRATA_DF2_LAYER_DUMP, the block's rows after each layer
     mtl::Buffer ldump, sdump;
     std::string rdump_path;   // STRATA_DF2_RING_DUMP: the ring rows the block's attention reads, and the context rows they came from
@@ -938,6 +942,9 @@ bool Window::df2_draft(int n_new, int64_t pos0, int32_t anchor, int32_t* drafts,
                      d.L, DF2_ROWS, d.ldump_path.c_str());
         d.ldump_path.clear();
     }
+    if (!d.dump_path.empty() && std::getenv("STRATA_DF2_DUMP_TRACE"))
+        std::fprintf(stderr, "strata metal: STRATA_DF2_DUMP trace: round %lld of %d, dump_next %lld, dump_ok %d, s %lld\n",
+                     (long long) d.rounds, d.dump_round, (long long) d.dump_next, d.dump_ok ? 1 : 0, (long long) s);
     if (!d.dump_path.empty() && d.rounds == d.dump_round) { df2_dump_write(s, anchor); d.dump_path.clear(); }
     ++d.rounds;
     (void) t0;
