@@ -35,6 +35,7 @@ template <int NTH>
 static inline void hcf_norm(device const float* R, device const float* w_norm, device float* xn, constant HcfArgs& h, int ntok,
                             ushort tid, ushort sg, ushort lane, threadgroup float* part) {
     constexpr int NV = 256 / NTH, NJ = 10;
+    const ushort sgm = sg32(tid, sg), lnm = lane32(tid, lane);   // the tile's own 32-lane group (the runtime's prologue)
     const int n = int(h.n_embd);
     for (int t = 0; t < ntok; ++t) {
         float v[4][NV][NJ];
@@ -48,8 +49,8 @@ static inline void hcf_norm(device const float* R, device const float* w_norm, d
                     v[c][m][j] = x;
                     ss = fma(x, x, ss);
                 }
-                ss = simd_sum(ss);
-                if (lane == 0) part[c * 8 + int(sg) + (NTH / 32) * m] = ss;
+                ss = sum32(ss);
+                if (lnm == 0) part[c * 8 + int(sgm) + (NTH / 32) * m] = ss;
             }
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -107,9 +108,10 @@ kernel void gemv_hcf(device const uchar* W [[buffer(0)]], device const float* xp
     threadgroup uint last;
     load_tab<F>(tab, tid, SG * 32);
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    const int ks = sg / RS, rs = sg % RS;
-    const int li = lane % LPR;
-    const int lrow0 = (rs * RG + lane / LPR) * NR;
+    const ushort sgm = sg32(tid, sg), lnm = lane32(tid, lane);   // the tile's own 32-lane group (the runtime's prologue)
+    const int ks = sgm / RS, rs = sgm % RS;
+    const int li = lnm % LPR;
+    const int lrow0 = (rs * RG + lnm / LPR) * NR;
     const int row0 = int(tg.x) * RS * RG * NR + lrow0;
     const int U = int(a.n_in) / UNIT;
     const int u0 = ks * U / KS, u1 = (ks + 1) * U / KS;
