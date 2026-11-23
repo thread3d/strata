@@ -20,7 +20,7 @@ namespace ref {
 const char* type_name(int t) {
     switch (t) {
         case F32: return "F32"; case F16: return "F16"; case BF16: return "BF16";
-        case Q4_0: return "Q4_0"; case Q5_0: return "Q5_0"; case Q5_1: return "Q5_1"; case Q8_0: return "Q8_0";
+        case Q4_0: return "Q4_0"; case Q4_1: return "Q4_1"; case Q5_0: return "Q5_0"; case Q5_1: return "Q5_1"; case Q8_0: return "Q8_0";
         case Q3_K: return "Q3_K"; case Q4_K: return "Q4_K"; case Q5_K: return "Q5_K"; case Q6_K: return "Q6_K";
         case IQ2_XXS: return "IQ2_XXS"; case IQ2_XS: return "IQ2_XS"; case IQ2_S: return "IQ2_S";
         case IQ3_XXS: return "IQ3_XXS"; case IQ3_S: return "IQ3_S"; case IQ4_NL: return "IQ4_NL";
@@ -33,7 +33,7 @@ const char* type_name(int t) {
 int block_elems(int t) {
     switch (t) {
         case F32: case F16: case BF16: return 1;
-        case Q4_0: case Q5_0: case Q5_1: case Q8_0: case IQ4_NL: return 32;
+        case Q4_0: case Q4_1: case Q5_0: case Q5_1: case Q8_0: case IQ4_NL: return 32;
         case Q2_0: return 64;
         case TQ2_T: case TQK6: case TQK7: return 128;
         default: return 256;
@@ -43,7 +43,7 @@ int block_elems(int t) {
 int block_bytes(int t) {
     switch (t) {
         case F32: return 4; case F16: case BF16: return 2;
-        case Q4_0: return 18; case Q5_0: return 22; case Q5_1: return 24; case Q8_0: return 34; case IQ4_NL: return 18; case Q2_0: return 18;
+        case Q4_0: return 18; case Q4_1: return 20; case Q5_0: return 22; case Q5_1: return 24; case Q8_0: return 34; case IQ4_NL: return 18; case Q2_0: return 18;
         case Q3_K: return 110; case Q4_K: return 144; case Q5_K: return 176; case Q6_K: return 210;
         case IQ2_XXS: return 66; case IQ2_XS: return 74; case IQ2_S: return 82; case IQ3_XXS: return 98;
         case IQ3_S: return 110; case IQ4_XS: return 136; case IQ1_S: return 50; case IQ1_M: return 56;
