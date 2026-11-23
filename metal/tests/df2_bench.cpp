@@ -163,6 +163,36 @@ int main(int argc, char** argv) {
         if (maxe >= 1e-3 * maxv) return 1;
     }
 
+    // ---- mm (Q8_0) against the CPU: the drafter's other GEMM, which the Q4_0 check does not cover.
+    // Its layout is qs = int8 [rows][K] and sc = half [rows][K / 32].
+    {
+        const int rows = 288, K = 2560, nc = 3;
+        const int R8 = 4, S8 = 8;   // df2_mm_4_8
+        Mat m = make_q8(rows, K);
+        mtl::Buffer x = fbuf((size_t) nc * K), y = cx.alloc((size_t) nc * rows * 4);
+        MmArgs a{(uint32_t) K, (uint32_t) rows, (uint32_t) rows, (uint32_t) K};
+        mtl::Dispatch d; d.p = pipe("df2_mm_4_8", nc);
+        d.args = {mtl::Arg::B(m.qs), mtl::Arg::B(m.sc), mtl::Arg::B(x), mtl::Arg::B(y), mtl::Arg::V(a)};
+        d.grid[0] = (rows + R8 * S8 - 1) / (R8 * S8); d.tg[0] = 32 * S8;
+        cx.run({d});
+        double maxe = 0, maxv = 0;
+        for (int c = 0; c < nc; ++c)
+            for (int r = 0; r < rows; ++r) {
+                double acc = 0;
+                for (int b = 0; b < K / 32; ++b) {
+                    const int8_t* q = (const int8_t*) m.qs.ptr + (size_t) r * K + b * 32;
+                    const float dd = h2f(m.sc.as<uint16_t>()[(size_t) r * (K / 32) + b]);
+                    double ss = 0;
+                    for (int j = 0; j < 32; ++j) ss += (double) q[j] * (double) x.as<float>()[(size_t) c * K + b * 32 + j];
+                    acc += dd * ss;
+                }
+                const double g = y.as<float>()[(size_t) c * rows + r];
+                maxe = std::max(maxe, std::fabs(g - acc)); maxv = std::max(maxv, std::fabs(acc));
+            }
+        std::printf("df2_mm_4_8 (Q8_0) check: max |gpu - cpu| %.3g (max |value| %.3g)%s\n", maxe, maxv, maxe < 1e-3 * maxv ? "  OK" : "  FAIL");
+        if (maxe >= 1e-3 * maxv) return 1;
+    }
+
 
     // ---- fragment-order Q4_0 for df2_mma4: logical codes -> lanes' words
     auto frag_coord = [](int lane, int& fm, int& fn) { const int qid = lane >> 2; fm = (qid & 4) + ((lane >> 1) & 3); fn = (qid & 2) * 2 + (lane & 1) * 2; };
