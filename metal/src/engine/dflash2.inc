@@ -117,7 +117,8 @@ struct Window::Df2 {
     double gpu_ms = 0;
     int64_t rounds = 0, steady = 0;
     // STRATA_DF2_DUMP=<file> [STRATA_DF2_DUMP_ROUND=n]: the context rows the drafter was given and its answer at round n, for tools/dflash2/check_metal_dump.py
-    std::string dump_path;
+    std::string dump_path, ldump_path;   // ldump_path: STRATA_DF2_LAYER_DUMP, the block's rows after each layer
+    mtl::Buffer ldump;
     int dump_round = 3;
     std::vector<float> dump_taps, dump_anchor_emb;
     int64_t dump_next = 0;
@@ -429,6 +430,7 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
     auto act = [&](int n) { Act x; x.n = n; x.b = A(4 * ((size_t) 4 * MAXT * n + (size_t) MAXT * n / 16)); return x; };
     d.A_fn = act(N);
     if (const char* e = std::getenv("STRATA_DF2_DUMP")) { d.dump_path = e; if (const char* r = std::getenv("STRATA_DF2_DUMP_ROUND")) d.dump_round = std::atoi(r); }
+    if (const char* e = std::getenv("STRATA_DF2_LAYER_DUMP")) { d.ldump_path = e; d.ldump = A(4 * (size_t) d.L * (size_t) DF2_ROWS * (size_t) N); }
     if (const char* lm = std::getenv("STRATA_DF2_LOG_MIB")) d.stash_max = std::atoi(lm) / 10; else d.stash_max = 4;   // ~10.6 MiB a lineage
     d.rowlog = A((size_t) DF2_RING * N * 2);
     { const char* fe = std::getenv("STRATA_DF2_FUSE_H"); d.fuse_h = !(fe && fe[0] == '0'); }
@@ -661,6 +663,16 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
         }
         df2_mmn(ds, p + "mlp.down_proj.weight", d.sw, 0, d.I, d.mlp, N, B);
         conv(d.mlp, d.dyn, 320 * 4, base_m + 2 * N * 4, &d.h, d.h);
+        if (d.ldump.handle) {   // STRATA_DF2_LAYER_DUMP: what the block holds after layer l
+            mtl::Dispatch dc;
+            dc.p = P(ldf2_, "df2_copy_flat", {}, "df2_copy_flat");
+            const uint32_t ln = (uint32_t) ((size_t) B * N);
+            const uint32_t loff = (uint32_t) ((size_t) l * B * N);
+            dc.args = {mtl::Arg::B(d.h), mtl::Arg::B(d.ldump), mtl::Arg::V(ln), mtl::Arg::V(loff)};
+            dc.grid[0] = (ln + 255) / 256;
+            dc.tg[0] = 256;
+            push(ds, dc);
+        }
     }
     df2_rms(ds, d.h, d.fn, "norm.weight", B);
     const int ND = d.ndraft;
@@ -844,6 +856,14 @@ bool Window::df2_draft(int n_new, int64_t pos0, int32_t anchor, int32_t* drafts,
     for (int i = 0; i < DF2_DRAFTS; ++i) {
         drafts[i] = i < d.ndraft ? ot[i] : 0;                 // DF-04: past the cap token 0 with probability 0
         if (probs) probs[i] = i < d.ndraft ? d.outbuf.as<float>()[16 + i] : 0.0f;
+    }
+    if (!d.ldump_path.empty() && d.rounds == d.dump_round) {
+        const size_t ln = (size_t) d.L * DF2_ROWS * N;
+        std::FILE* f = std::fopen(d.ldump_path.c_str(), "wb");
+        if (f != nullptr) { std::fwrite(d.ldump.as<float>(), sizeof(float), ln, f); std::fclose(f); }
+        std::fprintf(stderr, "strata metal: STRATA_DF2_LAYER_DUMP: %d layers x %d rows written to %s\n",
+                     d.L, DF2_ROWS, d.ldump_path.c_str());
+        d.ldump_path.clear();
     }
     if (!d.dump_path.empty() && d.rounds == d.dump_round) { df2_dump_write(s, anchor); d.dump_path.clear(); }
     ++d.rounds;

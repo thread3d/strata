@@ -860,3 +860,9 @@ kernel void df2_gather_rows(device const half* log [[buffer(0)]], device half* o
     const uint r = i / a.cols, c = i % a.cols;
     out[i] = log[(uint(pos[r]) % a.slot_mod) * a.cols + c];
 }
+
+// STRATA_DF2_LAYER_DUMP: a flat copy, so a diagnostic can keep the block's rows after each layer.
+kernel void df2_copy_flat(device const float* in [[buffer(0)]], device float* out [[buffer(1)]],
+                          constant uint& n [[buffer(2)]], constant uint& off [[buffer(3)]], uint i [[thread_position_in_grid]]) {
+    if (i < n) out[off + i] = in[i];
+}
