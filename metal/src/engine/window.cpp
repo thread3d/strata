@@ -1635,6 +1635,10 @@ ProcMem proc_mem() {
     if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t) &ti, &cnt) == KERN_SUCCESS) {
         r.footprint = (double) ti.phys_footprint;
         r.rss = (double) ti.resident_size;
+        if (std::getenv("STRATA_MEM_DEBUG"))
+            std::fprintf(stderr, "[mem] footprint %.2f rss %.2f internal %.2f external %.2f compressed %.2f\n",
+                         (double) ti.phys_footprint / 1e9, (double) ti.resident_size / 1e9, (double) ti.internal / 1e9,
+                         (double) ti.external / 1e9, (double) ti.compressed / 1e9);
     }
     return r;
 }
