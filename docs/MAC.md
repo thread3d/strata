@@ -319,7 +319,9 @@ compiles and the kernels dispatch, a 1000-dispatch window replays in 0.7 to 1.4 
 - **`MTLBuffer.gpuAddress`** is Metal 3's (macOS 13), and the engine hands its device pointers to kernels as that address. Before it
   the runtime uses `contents()`, which is the CPU view: on Apple Silicon the two are the same memory, on a Mac with a discrete card
   they are not, so a kernel dereferences the wrong address. The three checks that copy through a device pointer read back 65470,
-  65536 and 65470 wrong values of 65536.
+  65536 and 65470 wrong values of 65536. **Since 2026-11-23 (`310666f47`) the program detects this, prints the reason and exits
+  77 on a macOS without `gpuAddress`, and its ctest entry carries `SKIP_RETURN_CODE 77`: ctest lists it as Skipped rather than
+  failed. The numbers above are what it measured before that guard.**
 - **The residency set** (`MTLResidencySet`, macOS 15) is absent. The runtime then keeps its buffers alive itself and skips the set.
 - **`MTLCompileOptions.mathMode`** is macOS 15's too; the older `fastMathEnabled` flag stands in for it.
 
