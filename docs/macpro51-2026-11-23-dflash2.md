@@ -222,6 +222,22 @@ not the suspect; whether the *right* rows are being tapped (and whether qwen4exp
 right here) is. That needs an oracle for the target model's hidden states, which this machine does
 not have yet.
 
+What the dump says about the drafts themselves (round 3, `s = 8`, anchor `8709`): the seven proposals
+are **tokens 8, 14, 14, 15, 15, 15, 15** with probabilities 0.344, 0.577, 0.947, 0.648, 0.269, 0.344,
+0.445 — while the target's own continuation from that anchor is `96302 17776 78 76`. They are not
+near misses; they are unrelated to the continuation. `vmap` maps the draft vocabulary to the target's
+(identity for the first rows, so those *are* token ids), the anchor and mask embeddings are sane
+(norm 0.25 each, distinct), and the tap wiring was then checked end to end: `taps_enable` fills
+`tap_slot_` with -1 and maps layers 5/15/25/35/45 to slots 0-4, `df2_tap` folds
+`(Σ_c R_c + y·Σ_c g_c)/hc` with `g_c = 2/(1+exp(-inj_c/hc))`, and the injection index is the one that
+pairs with the sublayer output (the toggle happens before the tap). All of that is right, so the
+context the drafter is handed is *internally* correct and only its **provenance** is questionable:
+it is the target model's hidden states, and the target model has no oracle here.
+
+Next, in order: dump the target's `h` at the start of layer 6 and compare it with the tap written for
+layer 5 — they must be the same vector, and if they are not the tap is being taken at the wrong point.
+If they agree, the taps are right and the question moves to qwen4exp's forward itself.
+
 ## What is verified
 
 * `df2_bench`'s Q4_0 check against the CPU: **3.35e-07** on values up to 5.08 in magnitude.
