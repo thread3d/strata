@@ -371,3 +371,22 @@ misses. With the logits measurement (16 of 106299 head rows written) this is no 
 sampled further: a head that ranks only ids 0–15 cannot propose `96302`, so 0 is the expected rate, not a
 low one. The sample is recorded here to close the "0 of 7 is a small sample" objection, not as open
 evidence.
+
+### Item 9: the Q6_K near-tie cannot be quantified with the shipped binaries (2026-11-23)
+
+The claim to check is that Q6_K's 24th token is the 25562/14162 near-tie llama.cpp shows. Measuring it
+needs the logits at that position, and this is what the tree offers:
+
+- the engine actually used here, `build-metal/strata-q36-metal`, takes `--model --prompt --n --text` (the
+  invocation `bench/macpro51/run_matrix.py` uses) and has printed nothing but ids and text;
+- `metal/q36_engine.cpp` *does* print `qwen36: top-5 logits …` with values (line 378), but **no binary in
+  `build-metal` contains that string**, so that engine is not part of this build;
+- the main `strata` binary has `--dump-logits`, but it is the qwen4exp engine and cannot load a
+  Qwen3.6-35B-A3B pack.
+
+So the gap is not measurable as the branch stands: it needs either `metal/q36_engine.cpp`'s engine wired
+into the build, or a `--dump-logits` added to `strata-q36-metal`. Both are small pieces of work, and
+neither was done here. The honest statement therefore stays as it was - *the 24th token is the documented
+25562/14162 near-tie between Q6_K and Q8_0* - with no number attached, and this page does not claim a gap.
+
+Recorded so the next attempt does not begin by looking for a flag that does not exist in this build.
