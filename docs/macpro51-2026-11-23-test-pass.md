@@ -440,3 +440,67 @@ and they match the quick form measured earlier (8 rows 9.456 ms then, 10.225 ms 
 
 It also confirms the run that once looked like a hang is simply long: the process sits in
 `waitUntilCompleted` for most of 78 minutes, `user` time is 82 s.
+
+## Round 16: what the repaired head still cannot do, and what that rules out (2026-11-23)
+
+The head now fills all 106299 rows, so the remaining question is no longer "can the head reach the right
+token" but "why does the drafter rank the target's own tokens so low". Three things were measured; all
+three are negative results, and together they narrow the gap to one link.
+
+**1. The 5-token prompt is not the reason.** Every acceptance figure on this page came from the 5-token
+prompt `3 1 42498 456 11`. The same command with a 24-token prompt (that sequence plus the model's own
+continuation) at `--max-new 8`:
+
+```
+speculation              8 rounds of 8, drafts accepted 0 of 49 (0.000), 1.00 tokens per round
+output  : 639 1320 96302 76 76 78 88 13535
+decode                   8 tokens in 16644.9 ms  ->  0.48 tok/s
+```
+
+0 of 49 again, from a context five times longer, so "the drafter had nothing to go on" is out.
+
+**2. The tap layer is not off by one — the other convention is worse.** HF's `hidden_states[i]` is the
+*input* of decoder layer `i` (the output of layer `i-1`), while the engine taps a layer's *completed
+output*, so `target_layer_ids` `[5, 15, 25, 35, 45]` could be meant as layers `[4, 14, 24, 34, 44]`. A
+temporary `STRATA_DF2_TAP_SHIFT=-1` build (not committed) tested exactly that, and the truth ranks got
+worse on 5 of 7 rows:
+
+| draft row | rank, tap = output of layer l | rank, tap = output of layer l-1 |
+|---|---|---|
+| 0 | 457 | 779 |
+| 1 | 2084 | 9152 |
+| 2 | 2282 | 2887 |
+| 3 | 15620 | 47886 |
+| 4 | 33206 | 68550 |
+| 5 | 91 | 293 |
+| 6 | 10 | 14 |
+
+Acceptance was 0 of 49 in both, and the target's own output was unchanged
+(`1544 76 398 8709 96302 17776 78 76`), which is the expected behaviour: the taps feed the drafter only.
+
+**3. The head is not context-blind.** `tools/dflash2/cmp_dumps.py` (new) compares two dumps. Between the
+two tap sets above, the taps differ by cosine 0.90–0.96 (adjacent layers are this correlated — which is
+why experiment 2 is a weak discriminator), the block's rows by 0.79–0.89, and the head's logits by
+0.84–0.88 **with the argmax changing on 5 of 7 rows** (62/62, 16/12, 12/16, 17/16, 17/17, 11/17, 11/17).
+So the logits do follow their input; the frequent ids that keep winning (`11`, `12`, `16`, `17`, `62`)
+win because they are frequent, not because the head ignores `x`.
+
+**What is left.** The drafter's own arithmetic is verified against the torch port on the same taps (block
+rows cos 0.9992–0.9995, selector walk 7 of 7), its head now covers its whole vocabulary, and its logits
+respond to the context. The one unverified link is the **fold that turns the target's hyper-connection
+streams into the vector the drafter was trained on**: `df2_tap` writes
+`(Σ_c R_c + bo·Σ_c g_c) / hc` with `g_c = 2/(1+exp(-inj_c/hc))`, and nothing on this machine can confirm
+that this is the quantity the community drafter expects — the reference port consumes the engine's own
+taps, so it agrees by construction. Two probes follow from that, in order:
+
+* dump the target's `R'` at the *start of layer 6* and the tap written for layer 5 into the same buffer,
+  and compare them: they must be bitwise the same vector. If they are not, the tap read is racing the
+  layer's writes, which is the defect class this card already demonstrated once in `df2_attn_part` /
+  `df2_attn_merge`.
+* if they are the same, the formula itself is the variable: try the `g`-weighted read
+  `Σ_c g_c (R_c + bo) / Σ_c g_c` and the plain `Σ_c R_c / hc`, and compare truth ranks. Ranks respond to
+  tap changes (experiment 2 moved them by 2–4×), so they are the metric to use, not acceptance.
+
+Not claimed: that any of these is the cause, that acceptance can be made non-zero on this card, and any
+timing as a performance number. The drafter's cost is unchanged at ~0.48 tok/s decode with speculation
+offering nothing.
