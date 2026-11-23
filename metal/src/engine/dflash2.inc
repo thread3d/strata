@@ -647,9 +647,10 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
             const int sp = d.anchor.as<int32_t>()[1];          // (df2_draft wrote s into an[1])
             const size_t rslot = (size_t) (((sp - 1) % DF2_RING + DF2_RING) % DF2_RING) * 8 * 128;
             if (d.sdump.handle && l < 2) {
-                stage(l, 12, d.kring[l], 1024, rslot * 4);     // one ring slot: [8 heads][128]
-                stage(l, 13, d.vring[l], 1024, rslot * 4);
+                stage(l, 12, d.k, (size_t) B * 1024);          // the k projection's rows, before the norm/rope
+                stage(l, 13, d.v, (size_t) B * 1024);          // the v projection's rows
             }
+            (void) rslot;
             stage(l, 14, d.kblk, (size_t) B * 1024);
             stage(l, 15, d.v, (size_t) B * 1024);
         }
