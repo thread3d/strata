@@ -390,3 +390,22 @@ neither was done here. The honest statement therefore stays as it was - *the 24t
 25562/14162 near-tie between Q6_K and Q8_0* - with no number attached, and this page does not claim a gap.
 
 Recorded so the next attempt does not begin by looking for a flag that does not exist in this build.
+
+### Item 12: the installed binaries now match the branch tip (2026-11-23 15:19)
+
+`/usr/local/bin/strata*` were from 2026-11-22 09:54, a day behind `build-metal/`. With the owner's
+approval they were reinstalled from the build tree:
+
+```
+before  6 832 240  Nov 22 09:54  /usr/local/bin/strata
+          525 224  Nov 22 09:54  /usr/local/bin/strata-q36-metal
+        6 183 496  Nov 22 09:54  /usr/local/bin/strata_ds4
+after   6 866 712  Nov 23 15:19  /usr/local/bin/strata
+          525 712  Nov 23 15:19  /usr/local/bin/strata-q36-metal
+        6 183 896  Nov 23 15:19  /usr/local/bin/strata_ds4
+        /usr/local/bin/strata --version  ->  strata 0.1.59-metal
+```
+
+All three timestamps and sizes moved, so the copies are the ones this page's measurements were taken
+with rather than the previous day's. `/usr/local/bin` is owned by `threaded`, so no elevation was needed;
+the binaries themselves stay out of git, which is why this lands as a note rather than a build artefact.
