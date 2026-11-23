@@ -97,8 +97,8 @@ kernel void gr_norm2(device float* R [[buffer(0)]], device const float* bo [[buf
     }
     if (a.apply)
         for (int j = 0; j < NJ; ++j) r[tid + 256 * j] = rv[j];
-    ss = simd_sum(ss);
-    if (lane == 0) part[sg] = ss;
+    ss = sum32(ss);
+    if (lane32(tid, lane) == 0) part[sg32(tid, sg)] = ss;   // the tile's own 32-lane group (the runtime's prologue)
     threadgroup_barrier(mem_flags::mem_threadgroup);
     float tot = 0.0f;
     for (int i = 0; i < 8; ++i) tot += part[i];
