@@ -5,9 +5,10 @@ CLI path as far as this machine allows, and run the diagnostics the port is judg
 is from that run's own output on macpro51; nothing was inferred. Timings are single cold runs and
 are not performance claims.
 
-**The short version: the engine works. 12 of the 18 tests pass, and five of the six failures are
-stale tests or this port's readback design, not engine faults. One new defect: `df2_bench` hangs in
-its 8-row context update.**
+**The short version: the engine works. The suite was 12 passed / 6 failed when the pass started;
+each failure is explained below and all six are now resolved - five fixed, one turned into a
+documented skip - so the suite is 17 passed, 1 skipped, 0 failed.** The first version of this page
+also called `df2_bench` a hang; that was wrong, and the section below says what it really costs.
 
 ## The machine and the build
 
@@ -15,55 +16,84 @@ its 8-row context update.**
 |---|---|
 | Host | MacPro5,1 ("macpro51"), macOS 11.7.11, 2 × Xeon X5675, ~96 GB DDR3 |
 | GPU | AMD Radeon RX 580 8 GB, Metal 2, **64-lane simdgroups** |
-| Branch / commit | `macpro51`, `5360e6292` (a docs-only commit on top of `0256a2ce1`); tree clean |
-| Build | `PATH=/usr/local/bin:$PATH cmake --build build-metal -j 24` → `ninja: no work to do` |
+| Branch / commit | `macpro51`, `5360e6292` + the six commits in "What the pass changed" |
+| Build | `PATH=/usr/local/bin:$PATH cmake --build build-metal -j 24` → clean |
 | Engine | `strata 0.1.59-metal` |
 
 The binaries in `build-metal/` are newer than the installed `/usr/local/bin/strata*` copies (those
 are 2026-11-22 09:54); this pass used the build tree.
 
-## The suite: 12 of 18, 74.27 s
+## The suite: 17 passed, 1 skipped (74 s)
 
-| # | Test | Result |
-|---|---|---|
-| 1 | `q36_model_check` | **Failed** |
-| 2 | `q36_attn_parity` | Passed 0.26 s |
-| 3 | `q36_glue_parity` | **Failed** |
-| 4 | `q36_rope_parity` | Passed 0.32 s |
-| 5 | `q36_router_parity` | Passed 17.91 s |
-| 6 | `q36_dense_parity` | Passed 0.21 s |
-| 7 | `q36_attn_layer_parity` | Passed 0.89 s |
-| 8 | `q36_gdn_layer_parity` | Passed 0.50 s |
-| 9 | `q36_moe_shared_parity` | Passed 0.20 s |
-| 10 | `q36_expert_blob_check` | Passed 0.01 s |
-| 11 | `q36_moe_routed_parity` | Passed 25.82 s |
-| 12 | `q36_layer_check` | Passed 0.36 s |
-| 13 | `q36_bind_check` | Passed 0.48 s |
-| 14 | `q36_forward_check` | **SIGSEGV** 2.65 s |
-| 15 | `q36_stream_check` | Passed 20.03 s |
-| 16 | `q36_generate_check` | **Aborted** 2.61 s |
-| 17 | `q36_upload_check` | **Failed** 0.48 s |
-| 18 | `runtime_hello` | **Failed** 0.19 s |
+| # | Test | At `5360e6292` | Now |
+|---|---|---|---|
+| 1 | `q36_model_check` | Failed | **Passed** |
+| 2 | `q36_attn_parity` | Passed | Passed |
+| 3 | `q36_glue_parity` | Failed | **Passed** |
+| 4 | `q36_rope_parity` | Passed | Passed |
+| 5 | `q36_router_parity` | Passed | Passed |
+| 6 | `q36_dense_parity` | Passed | Passed |
+| 7 | `q36_attn_layer_parity` | Passed | Passed |
+| 8 | `q36_gdn_layer_parity` | Passed | Passed |
+| 9 | `q36_moe_shared_parity` | Passed | Passed |
+| 10 | `q36_expert_blob_check` | Passed | Passed |
+| 11 | `q36_moe_routed_parity` | Passed | Passed |
+| 12 | `q36_layer_check` | Passed | Passed |
+| 13 | `q36_bind_check` | Passed | Passed |
+| 14 | `q36_forward_check` | SIGSEGV | **Passed** |
+| 15 | `q36_stream_check` | Passed | Passed |
+| 16 | `q36_generate_check` | SIGABRT | **Passed** |
+| 17 | `q36_upload_check` | Failed | **Passed** |
+| 18 | `runtime_hello` | Failed (4/4) | **Skipped** (77, see below) |
 
-## The six failures
+## The six failures, and what each one was
 
-`377fdec0d` ("make every supported quant generate on the RX 580", 2026-11-18) introduced both engine
-changes involved here — the private-storage allocator and the `q36_embed` type argument. The affected
-tests were last edited in `be4cbc78f` (2026-11-21) and were not updated with it.
+`377fdec0d` ("make every supported quant generate on the RX 580", 2026-11-18) introduced two engine
+changes involved here - the private-storage allocator and the `q36_embed` type argument. Three of the
+tests were written against the API before it.
 
-| Test | Observed | What it is |
-|---|---|---|
-| `q36_model_check` | one check fails: `token_embd.weight is ?, q36_embed only supports Q8_0, Q6_K and Q4_K`; it wants `Q4_1`. The other ~24 checks are `ok`. | `ref::type_name()` (`metal/src/ref_quant.cpp:20-31`) has no `Q4_1` case, so a real-but-unlisted ggml type prints `?`. Cosmetic message defect. |
-| `q36_glue_parity` | `q36_embed token 0/63/7 … rel L2 1.000e+00 FAIL`; every `q36_add_rms`/`q36_add` case passes. | The test dispatches `q36_embed` with **4** args; the kernel takes **5** (`etype` at `buffer(4)`), so no branch runs and nothing is written. The engine passes it (`metal/src/qwen36/q36_forward.cpp:170`). Stale test. |
-| `q36_forward_check` | SIGSEGV with no stdout (buffered). | The test `memset`/`ones()`es through `Buffer::ptr` on buffers from `upload_dense`. On this port `Context::alloc(bytes, src)` returns a **Private** buffer and sets `r.ptr = r.handle` as a sentinel (`metal/src/mtl_rt.mm:860`: *"Private storage has no CPU address; non-null sentinel passes upload checks"*). Writing floats over the object header crashes. |
-| `q36_generate_check` | SIGABRT after `device AMD Radeon RX 580`. | Same cause (same `zero()`/`ones()` helpers). |
-| `q36_upload_check` | `token_embd: differs at byte 0 of 16885760`, then `the bytes compared are the bytes allocated (0)`. | `memcmp(b.ptr, src, bytes)` reads the buffer object, not tensor bytes (sentinel again). The `(0)` is fallout from `same()` returning early. The test cannot pass on this port as written. |
-| `runtime_hello` | `RESULT: 4 FAILED`, `65470/65536 wrong values`. | Readback of GPU-private storage — the pre-existing, documented limitation, not new. |
+| Test | What it reported | Cause | Fixed by |
+|---|---|---|---|
+| `q36_upload_check` | `token_embd: differs at byte 0 of 16885760`, `0 bytes compared` | `memcmp` through `Buffer::ptr`, which `alloc(bytes, src)` sets to the buffer handle as a sentinel (`metal/src/mtl_rt.mm:860`: *"Private storage has no CPU address; non-null sentinel passes upload checks"*). | `Context::read_back` - blit Private → shared staging, wait, copy - and `same()` reads through it: 34 571 920 bytes now compare, the figure the port's docs recorded before the allocator changed. |
+| `q36_forward_check` | SIGSEGV, no output | the test `memset`/`ones()`es **through** that sentinel, over the Objective-C object header | `Context::stage_write` (shared staging → blit → Private), used by `zero()`/`ones()`. |
+| `q36_generate_check` | SIGABRT | same | same |
+| `q36_glue_parity` | `q36_embed … rel L2 1.000e+00` | the test dispatches `q36_embed` with **4** args; the kernel takes **5** (`etype` at `buffer(4)`), so no branch ran and nothing was written. The engine passes it (`q36_forward.cpp:170`). | the 5th argument, `ref::Q8_0`; the three cases are bit-exact (rel L2 0.000e+00). |
+| `q36_model_check` | `token_embd.weight is ?, q36_embed only supports …` (wants `Q4_1`) | `ref::type_name` had no `Q4_1` (ggml id 3) case | `Q4_1` added to the id enum, `type_name`, `block_elems` (32) and `block_bytes` (20); the refusal now reads `token_embd.weight is Q4_1, …`. |
+| `runtime_hello` | `RESULT: 4 FAILED`, 65470/65536 wrong | the program tests a CUDA-shaped contract: a kernel argument carries a device **address**, and a mapped host buffer is read and written in place. That needs `MTLBuffer.gpuAddress` (macOS 13). Big Sur has none, so the runtime hands kernels `contents()`, nil for GPU-only storage, and every check runs against address zero. | a platform guard: print the reason, return 77, and `SKIP_RETURN_CODE 77` in CMake. ctest reports it **Skipped**, not failed. macOS 13+ still runs all four checks. |
 
-So: the four `q36_*` failures are test-side (three from the sentinel, one missing argument), the
-`Q4_1` one is a one-line gap in a message table, and `runtime_hello` is the known readback design.
+## `df2_bench`: slow, not hung
+
+The first version of this page called the 8-row context update a hang. It is not. `time_it` pays the
+verify-window stand-in graph - 18 `df2_mm4` dispatches over a 60000 × 12800 Q4_0 matrix, written for
+about 13 ms on a faster GPU - once per warm-up round (30) and once per timed round
+(`DF2B_ITERS`, default 200). Measured here:
+
+```
+stand-in graph: 1794.7 ms a round; a stage warms up 30 and times 200, about 413 s.
+DF2B_STANDIN=0 leaves it out.
+```
+
+So a default stage needs ~7 minutes and the whole run ~41, and a sample of the process shows the
+main thread parked in `-[_MTLCommandBuffer waitUntilCompleted]` on a command buffer that is simply
+still running.
+
+The graph itself is healthy and now measurable in seconds:
+
+```
+DF2B_STANDIN=0 DF2B_ONLY=ctx DF2B_ITERS=5      (2.35 s for all three stages)
+  context update, 1 rows   7.110 ms
+  context update, 3 rows   7.533 ms
+  context update, 8 rows   9.456 ms
+```
+
+`DF2B_TRACE=1` additionally runs a stage as growing prefixes and prints each dispatch; all 22 run.
+With `DF2B_SKIP=mm` the three stages complete at 0.080 / 0.174 / 0.428 ms, and variant `4_4` finishes
+just as well once the stand-in is out of the way (7.124 / 7.994 / 11.182 ms, 2.37 s for all three) -
+the earlier "variant-dependent hang" was the same warm-up cost against a shorter alarm.
 
 ## The app on real models
+
+Measured before the fixes above; none of them touches a kernel, a graph or an engine path.
 
 ### Qwen3.6-35B-A3B — `strata-q36-metal`, 23 prompt ids → 24 generated, `--text`
 
@@ -77,7 +107,7 @@ So: the four `q36_*` failures are test-side (three from the sentinel, one missin
 | UD-Q2_K_XL | — | — | refused: `token_embd.weight is Q5_K, q36_embed only supports Q8_0, Q6_K and Q4_K` |
 | UD-Q8_K_XL | — | — | refused: `blk.34.ffn_down_exps.weight is BF16, and this port has no grouped expert down kernel for that type (it takes: Q8_0, Q5_0, Q5_1, IQ4_NL, IQ4_XS, IQ3_S and Q2_0)` |
 
-The full Q8_0 sequence, for the record:
+Q8_0's full sequence, for the record:
 
 ```
 271 248068 198 8160 579 264 7047 1817 25 271 16 13 220 2972 2014 53983 2570 5396 64700 198 256 471 2972 14162
@@ -91,10 +121,8 @@ s/step, so 1.30-1.81 here should not be read as a regression without a warmed re
 
 ```
 strata metal: DFlash2: 64-lane simdgroups, so the matrix units are not used …
-strata metal: DFlash2 drafter ready (1103 MiB …)
 prefill 4 tokens in 1 chunks, 27222.7 ms (0.1 tok/s)
 speculation  2 rounds of 8, drafts accepted 0 of 7 (0.000), 1.00 tokens per round
-dflash2      231.281 ms/round drafting (1 rounds, GPU 216.892)
 prompt  : 3 1 42498 456 11
 output  : 1544 76
 decode                   2 tokens in 3516.5 ms  ->  0.57 tok/s
@@ -128,26 +156,7 @@ therefore not available on this machine.
 | `dsu_ref_vs_ggml` | **11/11** formats bit-exact vs ggml `to_float` (0 of 131 072 values differ) |
 | `down_kernel_emu` | rel L2 **1.989e-07**, max abs diff 7.818e-08 |
 | `msl_dump --kq`, `--kq --f16` | **all libraries compile** (core, gdn, qsa, sample, ple, prompt, prompt_gdn, prompt_qsa, mtp, mtp_chain, dflash2, coop_probe) |
-| `df2_bench metal/src/engine/msl` | **hangs** — see below |
-
-### `df2_bench` hangs, reproducibly
-
-The plain invocation blocks. Sampling the process puts the main thread in
-`mtl::Context::run_graph → -[_MTLCommandBuffer waitUntilCompleted] → __psynch_cvwait`: a command
-buffer that never completes (12+ minutes, 14 s CPU, 0 % CPU).
-
-Stage isolation with `DF2B_ONLY=… DF2B_ITERS=1`, each bounded by an alarm:
-
-* `ctx` — prints `context update, 1 rows 7.118 ms` and `3 rows 7.515 ms`, then **blocks at 8 rows**;
-  the alarm killed it (rc=142).
-* `block` — OK, 93.103 ms of GPU.
-* `head` — OK, 68.032 ms of GPU.
-* Both of its own kernel checks pass in every run: `df2_mm4_4_8 3.35e-07 OK`, `df2_mm_4_8 (Q8_0)
-  4.31e-06 OK`.
-
-So the hang is the **8-row context-update graph** specifically. The card is healthy afterwards
-(`q36_attn_parity` and `q36_dense_parity` still pass), and the engine's own 8-row verify window ran
-in the Qwen3.8 test above, so this is the bench's own graph, not the card and not the engine path.
+| `df2_bench` | see its section: the graph is healthy; the default run is ~41 minutes because of the stand-in |
 
 ## Not run here
 
@@ -155,14 +164,17 @@ in the Qwen3.8 test above, so this is the bench's own graph, not the card and no
 * `--dn-prep` — the GPU-wedge combination, and pointless since the K-quant down fix.
 * `STRATA_DS4_ALLOW_UNSTABLE_METAL=1` — reset risk; needs the owner's say-so.
 * Logit-distance re-measurement (`logit_distance.py`) — would need fresh logit dumps.
+* The full default `df2_bench` matrix (about 41 minutes; `DF2B_STANDIN=0` is the quick form).
 
-## Follow-ups, in order
+## What the pass changed
 
-1. Fix the `df2_bench` 8-row context-update hang. It is the check the DFlash2 page calls "the kernel
-   check the port is judged by"; the barrier/lane layout is the first suspect on a 64-lane card.
-2. Update the four stale `q36_*` tests for this port: give `q36_upload_check`/`forward_check`/
-   `generate_check` a host-visible readback path or skip them here, and pass `etype` in
-   `q36_glue_parity`. Add `Q4_1` to `ref::type_name`.
-3. Correct `docs/qwen36-metal.md`: it still reports `q36_upload_check` and `q36_model_check` as
-   "all ok", which is no longer true at this commit.
-4. Rebuild/reinstall `/usr/local/bin/strata*` if the installed copies are meant to track the branch.
+| Commit | Subject |
+|---|---|
+| `538508e66` | q36_glue_parity passes q36_embed's type argument |
+| `a19fd0579` | name Q4_1 in ref::type_name, with its block geometry |
+| `e6354ceff` | exact host read/write of Private buffers, and the upload check on it |
+| `5317020ca` | the forward and generate checks write through the staged path |
+| `2e158bc7d` | df2_bench reports what the stand-in costs, and can leave it out |
+| `310666f47` | runtime_hello skips on a Metal without device addresses |
+
+Still open, and out of this pass: DFlash2 acceptance (0 of 105) and the Qwen3.8 memory cap.
