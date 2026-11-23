@@ -522,6 +522,7 @@ private:
     double pg_ms_ = 0;
     int64_t pg_tok_ = 0;
 public:
+    bool prompt_gemm_hw() const;   // the matrix units of this device (32-lane simdgroups): the prompt path's precondition
     bool prompt_gemm_on(int64_t n) const;
     bool prompt_gemm_init(std::string& err);
     bool prompt_chunk(const int32_t* tokens, int Tn, int64_t pos0, std::string& err);
@@ -1722,7 +1723,14 @@ bool Window::stream_arena(std::string& err) {
                                                      "resident of 128)" : "");
     }
     const char* epg = std::getenv("STRATA_METAL_PROMPT_GEMM");
-    const bool pg_on = !(epg && std::string(epg) == "0");
+    // the matrix-unit prompt path needs 32-lane simdgroups: on a 64-lane card (an AMD GPU) its matmul2d layout is
+    // the scalarised "other" one, which measured slower AND larger than the window path it replaces (90-token
+    // prompt: 32.1 s / 15.3 GB against 25.3 s / 14.2 GB, identical tokens), so take the window path there.
+    const bool pg_hw = cx_->simd_width() == 32;
+    const bool pg_on = pg_hw && !(epg && std::string(epg) == "0");
+    if (!pg_hw)
+        std::fprintf(stderr, "strata metal stream: %d-lane simdgroups: the matrix-unit prompt path is off (the window path is faster and smaller here)\n",
+                     cx_->simd_width());
     bool minimal = false;   // the arena's least layout (the min slots) is not shrunk further: it goes ahead, filled in steps
     for (int tries = 0;; ++tries) {
         const double planned = budget;
@@ -2908,6 +2916,8 @@ struct Window::PromptGemm {
 
 int Window::prompt_chunk_rows() const { return pg_ ? pg_->MT : 0; }
 
+bool Window::prompt_gemm_hw() const { return cx_ != nullptr && cx_->simd_width() == 32; }
+
 bool Window::prompt_gemm_on(int64_t n) const {
     static const bool on = [] {
         const char* e = std::getenv("STRATA_METAL_PROMPT_GEMM");
@@ -2917,7 +2927,7 @@ bool Window::prompt_gemm_on(int64_t n) const {
         const char* e = std::getenv("STRATA_METAL_PROMPT_GEMM_MIN");
         return e ? (int64_t) std::atoll(e) : (int64_t) 64;
     }();
-    return on && n >= mn && pg_ != nullptr;
+    return on && n >= mn && pg_ != nullptr && prompt_gemm_hw();
 }
 
 bool Window::prompt_gemm_init(std::string& err) {
@@ -3621,8 +3631,8 @@ bool prompt_run_rows(const int64_t* tokens, int64_t n, int64_t pos0,
         const char* e = std::getenv("STRATA_METAL_PROMPT_GEMM");
         const char* em = std::getenv("STRATA_METAL_PROMPT_GEMM_MIN");
         const int64_t mn = em ? std::atoll(em) : 64;
-        if (!(e && std::string(e) == "0") && n >= mn) {
-            if (!g_window->prompt_gemm_init(err)) return false;
+        if (!(e && std::string(e) == "0") && n >= mn && g_window->prompt_gemm_hw()) {
+            if (!g_window->prompt_gemm_init(err)) { err = "metal prompt: " + err; return false; }
             const int C = g_window->prompt_chunk_rows();
             std::vector<int32_t> tk32((size_t) C);
             g_window->prompt_region(true);
