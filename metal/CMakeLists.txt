@@ -143,6 +143,7 @@ add_executable(runtime_hello tests/runtime_hello.cpp)
 target_link_libraries(runtime_hello PRIVATE strata_core_metal)
 enable_testing()
 add_test(NAME runtime_hello COMMAND runtime_hello)
+set_tests_properties(runtime_hello PROPERTIES SKIP_RETURN_CODE 77)   # an Intel Mac's Big Sur has no MTLBuffer.gpuAddress
 
 # The engine: ggml (the native expert formats' type traits and ggml-cpu) from the tree vendored in third_party/strata-ggml (frozen at the
 # commit the PC build pins, 3cf03257).  -DSTRATA_GGML_DIR=<llama.cpp checkout> builds from that checkout instead (an override kept for two releases).

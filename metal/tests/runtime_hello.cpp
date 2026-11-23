@@ -40,6 +40,18 @@ static double now_ms() {
 }
 
 int main() {
+    // What this program tests is the CUDA-shaped contract of strata::gpu on Metal: a kernel argument carries a device
+    // ADDRESS, and a mapped host buffer is read and written in place.  The first half needs MTLBuffer.gpuAddress,
+    // which is macOS 13's; an earlier macOS (Intel Macs run Big Sur) has none, so the runtime hands the kernels
+    // contents(), which is nil for GPU-only storage - every check below would fail for a platform reason, not a
+    // runtime defect.  docs/MAC.md calls Intel Macs unsupported for this port for exactly this reason, so say so
+    // and skip (ctest SKIP_RETURN_CODE 77) instead of reporting four failures that cannot be fixed here.
+    if (!__builtin_available(macOS 13.0, *)) {
+        std::printf("SKIPPED: this macOS has no MTLBuffer.gpuAddress (macOS 13 and later have it), so a Metal kernel "
+                    "cannot be handed a device address: the raw-pointer contract this program checks cannot hold on "
+                    "this machine (docs/MAC.md, \"An Intel Mac\").\n");
+        return 77;
+    }
     std::string err;
     MTL::ComputePipelineState* p_axpy = gpu::metal::pipeline("hello", kSrc, "axpy", err);
     MTL::ComputePipelineState* p_scale = gpu::metal::pipeline("hello", kSrc, "scale", err);
