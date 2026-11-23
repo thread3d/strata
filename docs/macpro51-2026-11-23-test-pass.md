@@ -262,3 +262,29 @@ One more observation, recorded because it may matter beyond the drafter: changin
 
 The instruments this left behind, all env-guarded: `STRATA_DF2_DUMP` (+ `_ROUND`, now known to count from
 0 and to need `--prefill 1`, + `_TRACE`), `STRATA_GEMV_DEBUG`, `STRATA_MEM_DEBUG`, and the reader itself.
+
+### Round 14: the matvec is cleared, the head's own bytes are next
+
+`df2_mm` (the live head path, `dflash2.inc:723`) is not the fault. Its row coverage was read end to end:
+`row0 = (tg.x * SG + sg) * R` with `R=2, SG=8`, and `grid[0] = ceil(rows / (SGN * R))` = `ceil(106299 / 16)`
+= **6644**, i.e. 106 304 rows covered — every row. The instantiated name (`df2_mm_2_8`) matches the host's
+`df2_mm_<R>_<SGN>`, and the kernel's row addressing (`qs + row * a.K`, K-byte flat Q8_0 rows) is what the
+repacked head expects.
+
+The written-row count was also measured under three different launch shapes and did not move:
+
+| setting | rows a threadgroup | non-zero logits of 106299 |
+|---|---|---|
+| `STRATA_DF2_MM` 2,8 (default) | 16 | **16** |
+| `STRATA_DF2_MM` 1,4 | 4 | **16** |
+| `STRATA_METAL_GEMV_NR=2` (window path) | — | **16** |
+
+A count that is invariant under the tile cannot be a property of the launch geometry, and the geometry
+provably covers the rows. So the missing rows are most likely **empty upstream**: the draft head is
+requantised to Q8_0 into `d.hq` / `d.hsc` before this kernel runs (the comment at `dflash2.inc:353` — "the
+head rows of the draft vocabulary requantized to Q8_0 … in df2_mm's layout"), and if that fill stops after
+the first 16 rows then every logit past row 16 is zero, the argmax is confined to ids 0–15, and the
+proposals (and acceptance) follow. That also explains why every tile experiment above returned 16.
+
+**Next probe:** the fill loop and the allocation sizes of `d.hq` / `d.hsc` (`dflash2.inc`, around 353–372),
+printed against `d.nd`. That is the last unmeasured quantity in this chain.
