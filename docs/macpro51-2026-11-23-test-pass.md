@@ -288,3 +288,19 @@ proposals (and acceptance) follow. That also explains why every tile experiment 
 
 **Next probe:** the fill loop and the allocation sizes of `d.hq` / `d.hsc` (`dflash2.inc`, around 353–372),
 printed against `d.nd`. That is the last unmeasured quantity in this chain.
+
+### Item 10: the fp16 MoE kernels run and pass (2026-11-23, `5d7178727`)
+
+The earlier pages call the fp16 MoE path "compile-checked only", so this was re-run on the branch tip
+rather than trusted:
+
+```
+EXPERT_F16=1 expert_parity --gu Q2_0 --dn Q2_0 --ff 512 --embd 2048
+device AMD Radeon RX 580; gate/up Q2_0, down Q2_0, blob 884736 bytes; 1 token(s)
+parity Q2_0/Q2_0 ntok 1 gu 32,2,4 dn 8,2,4: plan ok (10 groups),
+  h rel L2 1.14e-03 max 1.27e-03, y rel L2 8.72e-05 max 1.94e-04  PASS
+```
+
+Both halves pass against the fp16 tolerance (4e-3), and the numbers reproduce the ones recorded on
+2026-11-22 to three digits, so the 64-lane lane fix is exercised on `moe_gu16` / `moe_down16` too and has
+not regressed. `msl_dump --kq --f16` remains the compile check; this is the run.
