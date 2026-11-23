@@ -980,6 +980,9 @@ void Window::gemv(std::vector<mtl::Dispatch>& ds, const gguf::Tensor& t, const A
     const int rpt = (S / K) * (32 / L) * Rr;
     d.grid[0] = (n_out + rpt - 1) / rpt;
     d.tg[0] = S * 32;
+    if (std::getenv("STRATA_GEMV_DEBUG"))
+        std::fprintf(stderr, "gemv %s: n_in %d n_out %d ntok %d tile %d,%d,%d,%d rpt %d grid %u x %u\n", fn.c_str(),
+                     n_in, n_out, ntok, L, Rr, S, K, rpt, d.grid[0], d.tg[0]);
     push(ds, d);
 }
 
