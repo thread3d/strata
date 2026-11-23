@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 using namespace q36fix;
 
@@ -23,16 +24,21 @@ void check(bool ok, const std::string& what) {
     std::printf("  %-96s %s\n", what.c_str(), ok ? "ok" : "FAIL");
     if (!ok) ++g_fail;
 }
-void zero(mtl::Buffer& b) {
-    if (b.ptr != nullptr && b.bytes > 0) std::memset(b.ptr, 0, b.bytes);
+// Writing a tensor's bytes.  The uploaded tensors are Private storage on this port, where Buffer::ptr is a
+// sentinel (mtl_rt.h's device_only), so the bytes go through Context::stage_write; a Shared buffer takes the
+// memcpy path inside it.
+void zero(mtl::Context& cx, mtl::Buffer& b) {
+    if (b.bytes == 0) return;
+    std::vector<uint8_t> z((size_t) b.bytes, 0);
+    cx.stage_write(b, z.data(), 0, b.bytes);
 }
 // A norm's weights, as 1.0.  The fixture fills every tensor with a BYTE PATTERN, which for an F32 1-D tensor is a meaningless
 // float (denormals, 1e38, NaN) - and a norm weight of 1e24 turns a well-formed row into garbage and then into NaN.  The loader
 // tests never multiply, so the pattern was fine there; here it has to be a number.
-void ones(mtl::Buffer& b) {
-    if (b.ptr == nullptr) return;
-    float* v = (float*) b.ptr;
-    for (size_t i = 0; i < b.bytes / 4; ++i) v[i] = 1.0f;
+void ones(mtl::Context& cx, mtl::Buffer& b) {
+    if (b.bytes < 4) return;
+    std::vector<float> v((size_t) (b.bytes / 4), 1.0f);
+    cx.stage_write(b, v.data(), 0, (b.bytes / 4) * 4);
 }
 }  // namespace
 
@@ -48,20 +54,20 @@ int main() {
     strata::qwen36::DeviceModel d;
     if (!strata::qwen36::upload_dense(cx, m, d, err)) { std::printf("upload: %s\n", err.c_str()); return 1; }
 
-    zero(d.output);
-    ones(d.output_norm);
+    zero(cx, d.output);
+    ones(cx, d.output_norm);
     for (strata::qwen36::DeviceLayer& L : d.layers) {
-        ones(L.attn_norm);
-        ones(L.post_norm);
-        ones(L.q_norm);
-        ones(L.k_norm);
-        ones(L.ssm_norm);
+        ones(cx, L.attn_norm);
+        ones(cx, L.post_norm);
+        ones(cx, L.q_norm);
+        ones(cx, L.k_norm);
+        ones(cx, L.ssm_norm);
     }
     for (strata::qwen36::DeviceLayer& L : d.layers)
         for (mtl::Buffer* b : {&L.gate_inp, &L.gate_inp_shexp, &L.gate_shexp, &L.up_shexp, &L.down_shexp, &L.qkv, &L.sgate,
                                &L.ssm_out, &L.conv1d, &L.alpha, &L.beta, &L.ssm_a, &L.dt_bias, &L.q, &L.k, &L.v, &L.o,
                                &L.eh_proj, &L.enorm, &L.hnorm})
-            zero(*b);
+            zero(cx, *b);
 
     strata::qwen36::Forward fw;
     const int cap = 64;
@@ -69,7 +75,7 @@ int main() {
         std::printf("forward_init: %s\n", err.c_str());
         return 1;
     }
-    for (mtl::Buffer& s : fw.slots) zero(s);   // the experts' weights too
+    for (mtl::Buffer& s : fw.slots) zero(cx, s);   // the experts' weights too
 
     const uint32_t token = 3;
     if (!strata::qwen36::forward_token(cx, m, d, fw, token, 0, 1, err)) {
@@ -106,8 +112,8 @@ int main() {
     check(nz == 0, "the logits are zero under a zero output projection (" + std::to_string(nz) + " non-zero)");
 
     std::vector<float> first((const float*) fw.x.ptr, (const float*) fw.x.ptr + m.g.n_embd);
-    for (mtl::Buffer& s : fw.state) zero(s);
-    for (mtl::Buffer& h2 : fw.hist) zero(h2);
+    for (mtl::Buffer& s : fw.state) zero(cx, s);
+    for (mtl::Buffer& h2 : fw.hist) zero(cx, h2);
     if (!strata::qwen36::forward_token(cx, m, d, fw, token, 0, 1, err)) { std::printf("second run: %s\n", err.c_str()); return 1; }
     size_t diff = 0;
     for (int i = 0; i < (int) m.g.n_embd; ++i)
