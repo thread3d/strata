@@ -409,3 +409,34 @@ after   6 866 712  Nov 23 15:19  /usr/local/bin/strata
 All three timestamps and sizes moved, so the copies are the ones this page's measurements were taken
 with rather than the previous day's. `/usr/local/bin` is owned by `threaded`, so no elevation was needed;
 the binaries themselves stay out of git, which is why this lands as a note rather than a build artefact.
+
+### Item 7: the default `df2_bench` completes, in 78 minutes (2026-11-23, `10b49e7ae`)
+
+One complete default run (`DF2B_ITERS=200`, nothing else set), `rc=0`:
+
+```
+real      4679.81        user 82.78   sys 2.26      -> 78.0 minutes wall
+context update, 1 rows     22 dispatches | GPU  7.093 ms | wall  7.418 ms
+context update, 3 rows     22 dispatches | GPU  7.509 ms | wall  7.847 ms
+context update, 8 rows     22 dispatches | GPU 10.225 ms | wall 10.573 ms
+block (8 rows, 5 layers)  102 dispatches | GPU 93.224 ms | wall 93.819 ms
+head + top-16 + selector    5 dispatches | GPU 68.516 ms | wall 68.926 ms
+FULL ROUND, n_new = 1     129 dispatches | GPU 168.861 ms | wall 169.539 ms
+FULL ROUND, n_new = 3     129 dispatches | GPU 169.380 ms | wall 170.029 ms
+FULL ROUND, n_new = 8     129 dispatches | GPU 172.816 ms | wall 173.508 ms
+```
+
+**This supersedes the "about 41 minutes" figure in the item 13 section.** The tool's own estimate
+(`stand-in graph: 1777.4 ms a round … about 409 s` a stage) is a *floor*, not the stage time: eight
+stages at that rate would be ~55 minutes, and the measured run took 78. So the printed estimate
+understates the default run by roughly a third on this card, and the number to quote is **78 minutes**.
+
+What the run does establish, and why the estimate misses it: every stage's own graph is milliseconds
+(7–173 ms), while the wall time is dominated by the 230 stand-in rounds of 1.78 s each — i.e. ~410 s of
+stand-in per stage, which is where the ~55 minutes comes from, plus the per-round host gap and the
+per-stage warm-up beyond the counted rounds. The graph numbers above are the useful output of the run,
+and they match the quick form measured earlier (8 rows 9.456 ms then, 10.225 ms now; `block` 93.1 then,
+93.2 now; `head` 68.0 then, 68.5 now), so the two paths agree.
+
+It also confirms the run that once looked like a hang is simply long: the process sits in
+`waitUntilCompleted` for most of 78 minutes, `user` time is 82 s.
