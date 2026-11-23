@@ -176,9 +176,18 @@ NaN values, that row poisons the hyper-connection bias `bo_` and `inj_` that the
 reads, and from there the whole decode is NaN. That is also why the MoE parity and the dequantiser
 both pass while the model cannot produce a token.
 
-The next thing to inspect is therefore the dense arena's load (`NativeDense` / the dense repack's
-offset arithmetic): what offset it assigns each tensor, and why the bytes at that offset for
-`token_embd.weight` are not the pack's.
+The sharpest clue: **the offset the engine uses lands inside another tensor.** The file's 1,223
+tensors have `token_embd.weight` at 528,515,072 (relative to the data section), and nothing sits at
+4,037,634,048 — it falls about 3 MB *inside* `blk.43.attn_output.weight` (4,034,641,920 + 12,902,592).
+The bytes the window reads there match neither the file at that offset nor at that offset plus the
+data base, so the dense buffer is not a straight copy of the file into the pack's own layout either.
+
+`src/core/native_dense.cpp` is the CUDA path (`cudaMalloc` + `cudaMemcpy` per tensor, with shape
+checks against the canonical table), so the Metal window's fill is a different code path — that is
+the file to read next: how the Metal window fills its 4.38 GB dense buffer and where it gets each
+tensor's source offset and length. Two candidate mistakes, both cheap to confirm once the code is in
+view: the destination offset used as the source offset, or a per-type row-size that disagrees with the
+file (which would shift every payload after the first tensor of that type).
 
 ### Where the NaN shows up stage by stage (a per-stage probe)
 
