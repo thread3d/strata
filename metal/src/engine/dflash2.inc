@@ -117,8 +117,8 @@ struct Window::Df2 {
     double gpu_ms = 0;
     int64_t rounds = 0, steady = 0;
     // STRATA_DF2_DUMP=<file> [STRATA_DF2_DUMP_ROUND=n]: the context rows the drafter was given and its answer at round n, for tools/dflash2/check_metal_dump.py
-    std::string dump_path, ldump_path;   // ldump_path: STRATA_DF2_LAYER_DUMP, the block's rows after each layer
-    mtl::Buffer ldump;
+    std::string dump_path, ldump_path, sdump_path;   // ldump_path: STRATA_DF2_LAYER_DUMP, the block's rows after each layer
+    mtl::Buffer ldump, sdump;
     int dump_round = 3;
     std::vector<float> dump_taps, dump_anchor_emb;
     int64_t dump_next = 0;
@@ -431,6 +431,7 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
     d.A_fn = act(N);
     if (const char* e = std::getenv("STRATA_DF2_DUMP")) { d.dump_path = e; if (const char* r = std::getenv("STRATA_DF2_DUMP_ROUND")) d.dump_round = std::atoi(r); }
     if (const char* e = std::getenv("STRATA_DF2_LAYER_DUMP")) { d.ldump_path = e; d.ldump = A(4 * (size_t) d.L * (size_t) DF2_ROWS * (size_t) N); }
+    if (const char* e = std::getenv("STRATA_DF2_STAGE_DUMP")) { d.sdump_path = e; d.sdump = A(4 * (size_t) 32 * (size_t) DF2_ROWS * (size_t) d.I); }
     if (const char* lm = std::getenv("STRATA_DF2_LOG_MIB")) d.stash_max = std::atoi(lm) / 10; else d.stash_max = 4;   // ~10.6 MiB a lineage
     d.rowlog = A((size_t) DF2_RING * N * 2);
     { const char* fe = std::getenv("STRATA_DF2_FUSE_H"); d.fuse_h = !(fe && fe[0] == '0'); }
@@ -604,12 +605,26 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
         dd.tg[0] = 256;
         push(ds, dd);
     };
+    auto stage = [&](int l, int k, const mtl::Buffer& b, size_t n) {   // STRATA_DF2_STAGE_DUMP: the layer's chain, slot by slot
+        if (!d.sdump.handle || l >= 2) return;
+        mtl::Dispatch dc;
+        dc.p = P(ldf2_, "df2_copy_flat", {}, "df2_copy_flat");
+        const uint32_t sn = (uint32_t) n;
+        const uint32_t soff = (uint32_t) ((size_t) (l * 16 + k) * (size_t) DF2_ROWS * (size_t) d.I);
+        dc.args = {mtl::Arg::B(b), mtl::Arg::B(d.sdump), mtl::Arg::V(sn), mtl::Arg::V(soff)};
+        dc.barrier = true;   // the copy must read what the stage before it wrote, not a later overwrite of the same buffer
+        dc.grid[0] = (sn + 255) / 256;
+        dc.tg[0] = 256;
+        push(ds, dc);
+    };
     for (int l = 0; l < d.L; ++l) {
         const std::string p = "layers." + std::to_string(l) + ".";
         const size_t base_a = d.ten.at(p + "attention_conv.base_kernel").offset, base_m = d.ten.at(p + "mlp_conv.base_kernel").offset;
         df2_rms(ds, d.h, d.xn, (p + "input_layernorm.weight").c_str(), B);
+        stage(l, 0, d.xn, (size_t) B * N);
         df2_mmn(ds, p + "attention_conv.kernel_projection.weight", d.xn, 0, N, d.dyn, 640, B);
         conv(d.xn, d.dyn, 0, base_a, nullptr, d.xc);
+        stage(l, 1, d.xc, (size_t) B * N);
         df2_mmn(ds, p + "self_attn.q_proj.weight", d.xc, 0, N, d.q, 4096, B);
         nb_ = true;
         df2_mmn(ds, p + "self_attn.k_proj.weight", d.xc, 0, N, d.k, 1024, B, true);
@@ -643,12 +658,18 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
             am.grid[0] = 8 * 32; am.tg[0] = 128;
             push(ds, am);
         }
+        stage(l, 2, d.ao, (size_t) B * 4096);
         df2_mmn(ds, p + "self_attn.o_proj.weight", d.ao, 0, 4096, d.o, N, B);
+        stage(l, 3, d.o, (size_t) B * N);
         conv(d.o, d.dyn, 320 * 4, base_a + 2 * N * 4, &d.h, d.h);
+        stage(l, 4, d.h, (size_t) B * N);
         df2_rms(ds, d.h, d.xn, (p + "post_attention_layernorm.weight").c_str(), B);
+        stage(l, 5, d.xn, (size_t) B * N);
         df2_mmn(ds, p + "mlp_conv.kernel_projection.weight", d.xn, 0, N, d.dyn, 640, B);
         conv(d.xn, d.dyn, 0, base_m, nullptr, d.xc);
+        stage(l, 6, d.xc, (size_t) B * N);
         df2_mmn(ds, p + "mlp.gate_proj.weight", d.xc, 0, N, d.gate, d.I, B);
+        stage(l, 7, d.gate, (size_t) B * d.I);
         nb_ = true;
         df2_mmn(ds, p + "mlp.up_proj.weight", d.xc, 0, N, d.up, d.I, B, true);
         {
@@ -661,7 +682,10 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
             sd.tg[0] = 256;
             push(ds, sd);
         }
+        stage(l, 8, d.up, (size_t) B * d.I);
+        stage(l, 9, d.sw, (size_t) B * d.I);
         df2_mmn(ds, p + "mlp.down_proj.weight", d.sw, 0, d.I, d.mlp, N, B);
+        stage(l, 10, d.mlp, (size_t) B * N);
         conv(d.mlp, d.dyn, 320 * 4, base_m + 2 * N * 4, &d.h, d.h);
         if (d.ldump.handle) {   // STRATA_DF2_LAYER_DUMP: what the block holds after layer l
             mtl::Dispatch dc;
@@ -669,6 +693,7 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
             const uint32_t ln = (uint32_t) ((size_t) B * N);
             const uint32_t loff = (uint32_t) ((size_t) l * B * N);
             dc.args = {mtl::Arg::B(d.h), mtl::Arg::B(d.ldump), mtl::Arg::V(ln), mtl::Arg::V(loff)};
+            dc.barrier = true;
             dc.grid[0] = (ln + 255) / 256;
             dc.tg[0] = 256;
             push(ds, dc);
@@ -856,6 +881,13 @@ bool Window::df2_draft(int n_new, int64_t pos0, int32_t anchor, int32_t* drafts,
     for (int i = 0; i < DF2_DRAFTS; ++i) {
         drafts[i] = i < d.ndraft ? ot[i] : 0;                 // DF-04: past the cap token 0 with probability 0
         if (probs) probs[i] = i < d.ndraft ? d.outbuf.as<float>()[16 + i] : 0.0f;
+    }
+    if (!d.sdump_path.empty() && d.rounds == d.dump_round) {
+        const size_t sn = (size_t) 32 * DF2_ROWS * (size_t) d.I;
+        std::FILE* f = std::fopen(d.sdump_path.c_str(), "wb");
+        if (f != nullptr) { std::fwrite(d.sdump.as<float>(), sizeof(float), sn, f); std::fclose(f); }
+        std::fprintf(stderr, "strata metal: STRATA_DF2_STAGE_DUMP: layers 0-1 of %d stages written to %s\n", d.L, d.sdump_path.c_str());
+        d.sdump_path.clear();
     }
     if (!d.ldump_path.empty() && d.rounds == d.dump_round) {
         const size_t ln = (size_t) d.L * DF2_ROWS * N;
