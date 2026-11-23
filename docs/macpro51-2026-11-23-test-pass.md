@@ -233,3 +233,32 @@ Established before this pass: the drafter's forward agrees with the torch port (
 That one experiment is bounded (a small probe and one run), and it was not run here. Acceptance stays
 **0**, and this page does not claim otherwise: the drafter is faithful, its proposals on this
 context are not, and the context is the only term left unverified.
+
+## Update: the acceptance question moved to the draft head (2026-11-23, after `176a98e58`)
+
+The section above ends by naming the tap provenance as the experiment to run. The dump reader
+(`tools/dflash2/read_engine_dump.py`, `0f9e54bf0`) makes that no longer the first thing to do, and this
+records why so the next reader does not start where this one did.
+
+- **The taps are real data.** A real round's dump: 64 000 tap values, **0 zero, 0 NaN**, RMS 0.2883, per
+  slot RMS 0.17–0.45, block rows RMS 3.50, selector hidden RMS 3.13. "The context is empty" is not the
+  fault.
+- **The drafter's head is the fault.** Per row: `max 10.6077 at 12, mean 0.0010, sd 0.0825, and exactly
+  **16 of 106299** entries above 1e-6` — on every row. Only the first 16 of the head's 106 299 rows are
+  written, so the top-16 is drawn from ids 0–15 and the proposals can only be those ids
+  (`[10, 2, 12, 15, 11, 15, 11]` on that round). **Acceptance is 0 by construction**, and no amount of
+  context correctness can change it while this holds. It also explains why "the drafter agrees with the
+  torch reference" settled nothing: both read the same 16 written rows and ignore the other 106 283.
+- **Ruled out as the cause** (each with a measurement, not an argument): the tile
+  (`STRATA_METAL_GEMV_NR=2`, `rpt` 8 → 16, still 16 rows); `Window::gemv`
+  (`STRATA_GEMV_DEBUG=1` over a full round: 1625 dispatches, unique `n_out` 640 / 2560 / 6144 / 10240 /
+  12288 / 248320 — the 106 299-row head never appears); and the `df2_mma8_2_4` / `gemv` head branches in
+  `dflash2.inc` (a probe at both never fired).
+- **So the live head path is `df2_mm`** (`dflash2.inc:723`), and its grid is where the 16 rows come from.
+  That is the next measurement, and it is the reason this page no longer points at the taps first.
+
+One more observation, recorded because it may matter beyond the drafter: changing the tile moved the
+*target's* output (`1544 76` → `98282 6084`), which a correctly tiled memory-bound GEMM should not do.
+
+The instruments this left behind, all env-guarded: `STRATA_DF2_DUMP` (+ `_ROUND`, now known to count from
+0 and to need `--prefill 1`, + `_TRACE`), `STRATA_GEMV_DEBUG`, `STRATA_MEM_DEBUG`, and the reader itself.
