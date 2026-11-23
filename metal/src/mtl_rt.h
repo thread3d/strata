@@ -19,6 +19,8 @@ struct Buffer {
     void* handle = nullptr;   // id<MTLBuffer> (retained); the first chunk of a chunked buffer
     void* ptr = nullptr;      // CPU address (shared storage); may point to vm_allocate'd host memory
     size_t bytes = 0;
+    bool device_only = false; // Private storage: `ptr` is a sentinel (the handle), not a CPU address -
+                              // use Context::read_back / stage_write to move bytes to and from the host
     // a buffer longer than maxBufferLength: overlapping chunks every `stride` bytes (see Context::wrap)
     std::shared_ptr<std::vector<void*>> chunks;
     size_t stride = 0;
@@ -122,6 +124,12 @@ public:
     void free(Buffer& b);
     // blit_copy: copy bytes from src to dst on the GPU (works around CPU->GPU invisibility on AMD cards)
     void blit_copy(Buffer& dst, const Buffer& src);
+    // Host access to a buffer's bytes, whatever its storage is.  A Shared buffer is a memcpy; a Private one
+    // (device_only) is a shared staging buffer plus a blit on the context's queue and a wait, because this
+    // card cannot expose GPU storage to the CPU (see alloc's note).  Both return false on a chunked buffer
+    // or a range outside it; both are exact, not best-effort.
+    bool read_back(const Buffer& b, void* dst, size_t off, size_t bytes);
+    bool stage_write(const Buffer& b, const void* src, size_t off, size_t bytes);
 
     // Encodes `ds` into ONE compute encoder (serial or concurrent dispatch type) and ONE command buffer, `reps`
     // times over; commits and waits.  Returns the GPU time (GPUEndTime - GPUStartTime) in seconds.

@@ -859,6 +859,7 @@ Buffer Context::alloc(size_t bytes, const void* src) {
         r.handle = (__bridge_retained void*)b;
         r.ptr = r.handle;   // Private storage has no CPU address; non-null sentinel passes upload checks
         r.bytes = bytes;
+        r.device_only = true;
         return r;
     } else {
         id<MTLBuffer> b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
@@ -903,6 +904,7 @@ Buffer Context::alloc_private(size_t bytes) {
     r.handle = (__bridge_retained void*)b;
     r.ptr = [b contents];
     r.bytes = bytes;
+    r.device_only = true;
     return r;
 #endif
 }
@@ -922,6 +924,65 @@ void Context::blit_copy(Buffer& dst, const Buffer& src) {
             std::exit(5);
         }
     }
+}
+
+bool Context::read_back(const Buffer& b, void* dst, size_t off, size_t bytes) {
+    if (bytes == 0) return true;
+    if (dst == nullptr || off > b.bytes || bytes > b.bytes - off) return false;
+    if (!b.device_only) {   // shared storage: the CPU address is the bytes
+        if (b.ptr == nullptr || b.chunks) return false;
+        std::memcpy(dst, (const uint8_t*) b.ptr + off, bytes);
+        return true;
+    }
+    if (b.handle == nullptr || b.chunks) return false;   // no single handle to blit from
+    @autoreleasepool {
+        id<MTLBuffer> staging = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        if (!staging) {
+            std::fprintf(stderr, "mtl: read_back %zu: no staging buffer\n", bytes);
+            return false;
+        }
+        id<MTLCommandBuffer> cb = [impl_->q commandBuffer];
+        id<MTLBlitCommandEncoder> enc = [cb blitCommandEncoder];
+        [enc copyFromBuffer:(__bridge id<MTLBuffer>) b.handle sourceOffset:off toBuffer:staging destinationOffset:0 size:bytes];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        if (cb.status != MTLCommandBufferStatusCompleted) {
+            std::fprintf(stderr, "mtl: read_back blit failed: %s\n", [[cb.error localizedDescription] UTF8String]);
+            return false;
+        }
+        std::memcpy(dst, [staging contents], bytes);
+    }
+    return true;
+}
+
+bool Context::stage_write(const Buffer& b, const void* src, size_t off, size_t bytes) {
+    if (bytes == 0) return true;
+    if (src == nullptr || off > b.bytes || bytes > b.bytes - off) return false;
+    if (!b.device_only) {
+        if (b.ptr == nullptr || b.chunks) return false;
+        std::memcpy((uint8_t*) b.ptr + off, src, bytes);
+        return true;
+    }
+    if (b.handle == nullptr || b.chunks) return false;
+    @autoreleasepool {
+        id<MTLBuffer> staging = [impl_->dev newBufferWithBytes:src length:bytes options:MTLResourceStorageModeShared];
+        if (!staging) {
+            std::fprintf(stderr, "mtl: stage_write %zu: no staging buffer\n", bytes);
+            return false;
+        }
+        id<MTLCommandBuffer> cb = [impl_->q commandBuffer];
+        id<MTLBlitCommandEncoder> enc = [cb blitCommandEncoder];
+        [enc copyFromBuffer:staging sourceOffset:0 toBuffer:(__bridge id<MTLBuffer>) b.handle destinationOffset:off size:bytes];
+        [enc endEncoding];
+        [cb commit];
+        [cb waitUntilCompleted];
+        if (cb.status != MTLCommandBufferStatusCompleted) {
+            std::fprintf(stderr, "mtl: stage_write blit failed: %s\n", [[cb.error localizedDescription] UTF8String]);
+            return false;
+        }
+    }
+    return true;
 }
 
 Buffer Context::wrap(void* p, size_t bytes, size_t max_span) {

@@ -28,7 +28,7 @@ void check(bool ok, const std::string& what) {
 }
 
 /// Compares one uploaded buffer with the tensor it came from: the same bytes, the same length.
-bool same(const strata::qwen36::Model& m, const strata::qwen36::TensorRef& r, const mtl::Buffer& b,
+bool same(mtl::Context& cx, const strata::qwen36::Model& m, const strata::qwen36::TensorRef& r, const mtl::Buffer& b,
           const char* what, size_t& compared, std::string& why) {
     if (!r.ok()) return true;   // a tensor the layer does not have
     if (b.ptr == nullptr) {
@@ -41,9 +41,16 @@ bool same(const strata::qwen36::Model& m, const strata::qwen36::TensorRef& r, co
         return false;
     }
     const uint8_t* src = r.data(*m.file);
-    if (std::memcmp(b.ptr, src, (size_t) bytes) != 0) {
+    // The device copy is Private storage on this port (mtl_rt.mm's alloc): b.ptr is a sentinel there, so the
+    // bytes come back through the staged read, which is what a kernel sees.
+    std::vector<uint8_t> got((size_t) bytes);
+    if (!cx.read_back(b, got.data(), 0, (size_t) bytes)) {
+        why = std::string(what) + ": the device buffer could not be read back";
+        return false;
+    }
+    if (std::memcmp(got.data(), src, (size_t) bytes) != 0) {
         size_t at = 0;
-        while (at < (size_t) bytes && ((const uint8_t*) b.ptr)[at] == src[at]) ++at;
+        while (at < (size_t) bytes && got[at] == src[at]) ++at;
         why = std::string(what) + ": differs at byte " + std::to_string(at) + " of " + std::to_string(bytes);
         return false;
     }
@@ -93,34 +100,34 @@ int main() {
     // every buffer against its tensor, byte for byte
     size_t compared = 0;
     std::string why;
-    bool all = same(m, m.embed, d.embed, "token_embd", compared, why) && same(m, m.output, d.output, "output", compared, why) &&
-               same(m, m.output_norm, d.output_norm, "output_norm", compared, why);
+    bool all = same(cx, m, m.embed, d.embed, "token_embd", compared, why) && same(cx, m, m.output, d.output, "output", compared, why) &&
+               same(cx, m, m.output_norm, d.output_norm, "output_norm", compared, why);
     for (size_t i = 0; i < m.layers.size() && all; ++i) {
         const strata::qwen36::Layer& L = m.layers[i];
         const strata::qwen36::DeviceLayer& D = d.layers[i];
         const std::string p = "blk." + std::to_string(i) + ".";
-        all = same(m, L.gate_inp, D.gate_inp, (p + "ffn_gate_inp").c_str(), compared, why) &&
-              same(m, L.gate_inp_shexp, D.gate_inp_shexp, (p + "ffn_gate_inp_shexp").c_str(), compared, why) &&
-              same(m, L.gate_shexp, D.gate_shexp, (p + "ffn_gate_shexp").c_str(), compared, why) &&
-              same(m, L.up_shexp, D.up_shexp, (p + "ffn_up_shexp").c_str(), compared, why) &&
-              same(m, L.down_shexp, D.down_shexp, (p + "ffn_down_shexp").c_str(), compared, why) &&
-              same(m, L.attn_norm, D.attn_norm, (p + "attn_norm").c_str(), compared, why) &&
-              same(m, L.post_norm, D.post_norm, (p + "post_attention_norm").c_str(), compared, why) &&
-              same(m, L.qkv, D.qkv, (p + "attn_qkv").c_str(), compared, why) && same(m, L.sgate, D.sgate, (p + "attn_gate").c_str(), compared, why) &&
-              same(m, L.ssm_out, D.ssm_out, (p + "ssm_out").c_str(), compared, why) &&
-              same(m, L.conv1d, D.conv1d, (p + "ssm_conv1d").c_str(), compared, why) &&
-              same(m, L.alpha, D.alpha, (p + "ssm_alpha").c_str(), compared, why) &&
-              same(m, L.beta, D.beta, (p + "ssm_beta").c_str(), compared, why) && same(m, L.ssm_a, D.ssm_a, (p + "ssm_a").c_str(), compared, why) &&
-              same(m, L.dt_bias, D.dt_bias, (p + "ssm_dt.bias").c_str(), compared, why) &&
-              same(m, L.ssm_norm, D.ssm_norm, (p + "ssm_norm").c_str(), compared, why) &&
-              same(m, L.q, D.q, (p + "attn_q").c_str(), compared, why) && same(m, L.k, D.k, (p + "attn_k").c_str(), compared, why) &&
-              same(m, L.v, D.v, (p + "attn_v").c_str(), compared, why) && same(m, L.o, D.o, (p + "attn_output").c_str(), compared, why) &&
-              same(m, L.q_norm, D.q_norm, (p + "attn_q_norm").c_str(), compared, why) &&
-              same(m, L.k_norm, D.k_norm, (p + "attn_k_norm").c_str(), compared, why) &&
-              same(m, L.eh_proj, D.eh_proj, (p + "nextn.eh_proj").c_str(), compared, why) &&
-              same(m, L.enorm, D.enorm, (p + "nextn.enorm").c_str(), compared, why) &&
-              same(m, L.hnorm, D.hnorm, (p + "nextn.hnorm").c_str(), compared, why) &&
-              same(m, L.shared_head_norm, D.shared_head_norm, (p + "nextn.shared_head_norm").c_str(), compared, why);
+        all = same(cx, m, L.gate_inp, D.gate_inp, (p + "ffn_gate_inp").c_str(), compared, why) &&
+              same(cx, m, L.gate_inp_shexp, D.gate_inp_shexp, (p + "ffn_gate_inp_shexp").c_str(), compared, why) &&
+              same(cx, m, L.gate_shexp, D.gate_shexp, (p + "ffn_gate_shexp").c_str(), compared, why) &&
+              same(cx, m, L.up_shexp, D.up_shexp, (p + "ffn_up_shexp").c_str(), compared, why) &&
+              same(cx, m, L.down_shexp, D.down_shexp, (p + "ffn_down_shexp").c_str(), compared, why) &&
+              same(cx, m, L.attn_norm, D.attn_norm, (p + "attn_norm").c_str(), compared, why) &&
+              same(cx, m, L.post_norm, D.post_norm, (p + "post_attention_norm").c_str(), compared, why) &&
+              same(cx, m, L.qkv, D.qkv, (p + "attn_qkv").c_str(), compared, why) && same(cx, m, L.sgate, D.sgate, (p + "attn_gate").c_str(), compared, why) &&
+              same(cx, m, L.ssm_out, D.ssm_out, (p + "ssm_out").c_str(), compared, why) &&
+              same(cx, m, L.conv1d, D.conv1d, (p + "ssm_conv1d").c_str(), compared, why) &&
+              same(cx, m, L.alpha, D.alpha, (p + "ssm_alpha").c_str(), compared, why) &&
+              same(cx, m, L.beta, D.beta, (p + "ssm_beta").c_str(), compared, why) && same(cx, m, L.ssm_a, D.ssm_a, (p + "ssm_a").c_str(), compared, why) &&
+              same(cx, m, L.dt_bias, D.dt_bias, (p + "ssm_dt.bias").c_str(), compared, why) &&
+              same(cx, m, L.ssm_norm, D.ssm_norm, (p + "ssm_norm").c_str(), compared, why) &&
+              same(cx, m, L.q, D.q, (p + "attn_q").c_str(), compared, why) && same(cx, m, L.k, D.k, (p + "attn_k").c_str(), compared, why) &&
+              same(cx, m, L.v, D.v, (p + "attn_v").c_str(), compared, why) && same(cx, m, L.o, D.o, (p + "attn_output").c_str(), compared, why) &&
+              same(cx, m, L.q_norm, D.q_norm, (p + "attn_q_norm").c_str(), compared, why) &&
+              same(cx, m, L.k_norm, D.k_norm, (p + "attn_k_norm").c_str(), compared, why) &&
+              same(cx, m, L.eh_proj, D.eh_proj, (p + "nextn.eh_proj").c_str(), compared, why) &&
+              same(cx, m, L.enorm, D.enorm, (p + "nextn.enorm").c_str(), compared, why) &&
+              same(cx, m, L.hnorm, D.hnorm, (p + "nextn.hnorm").c_str(), compared, why) &&
+              same(cx, m, L.shared_head_norm, D.shared_head_norm, (p + "nextn.shared_head_norm").c_str(), compared, why);
         if (!all) break;
     }
     check(all, "every dense buffer holds exactly its tensor's bytes" + (all ? std::string() : ": " + why));
