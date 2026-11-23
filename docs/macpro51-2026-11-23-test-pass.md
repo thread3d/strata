@@ -563,3 +563,72 @@ fold and the layer indexing by construction rather than by rank.
 Not claimed: acceptance, a speculative speedup, or that the taps are wrong — only that no convention
 reachable on this machine changes the outcome, and that the port now matches its reference everywhere it
 can be checked.
+
+## Round 18: the taps are reproducible, and the matrix-unit prompt path is gated off on this card (2026-11-23)
+
+### 1. Item 3's last mechanical suspect is retired: the taps are bit-reproducible
+
+Two runs of the documented Qwen3.8 `UD-IQ1_M` dflash2 command (`--max-new 2 --prefill 1`, dump round 0),
+separated by a **reboot** (so cold page cache and different scheduling), compared with
+`tools/dflash2/cmp_dumps.py`: **cos 1.000000 on all 5 tap rows, all 8 block rows and all 7 logits rows,
+|d| rms 0.0000, identical argmax on every row.** A `df2_tap` read racing the layer's producers would not
+reproduce bit for bit across a reboot, so the tap kernel reads settled data. That was the second of the
+three probes Round 17 listed; it is now closed, and the tap content question is left to the other two.
+
+### 2. Item 6: the 4.34 GB matrix-unit prompt buffers are real, allocated up front, and a loss on this card
+
+The engine names the allocation itself, so this no longer needs `vmmap` archaeology:
+
+```
+strata metal: prompts on the matrix units in chunks of 4096 (experts v2, QSA v1, matmul2d layout other;
+              4.34 GB of buffers, in the expert arena while a prompt runs)
+strata metal stream: the arena is small: the prompt's 4.34 GB of buffers are their own allocation,
+                     not a region of its slots
+```
+
+It is `PromptGemm` (`metal/src/engine/window.cpp:2869`+), whose buffers `prompt_gemm_init` allocates. Two
+things were **not** what the earlier page assumed:
+
+- **The path is not dead on this card.** `prompt_gemm_on()` looked only at `STRATA_METAL_PROMPT_GEMM` and
+  `n >= 64`, so a 90-token prompt really does run it (prefill 32.1 s, 2.80 tok/s). Its "matmul2d layout
+  other" is the scalarised layout of the matrix units, and it works. Gating it off therefore needed a
+  measurement, not the assumption that a 64-lane card cannot use it.
+- **On this card it costs both time and memory.** Same 90-token prompt, identical output `4960 78`:
+
+| | prefill 90 tokens | footprint after fill | expert arena |
+|---|---|---|---|
+| PromptGemm on (old default) | 32.10 s (2.80 tok/s) | 15.3 GB | 2.02 GB, 1152 slots |
+| `STRATA_METAL_PROMPT_GEMM=0` (window path) | 25.30 s (3.56 tok/s) | 14.2 GB | 1.00 GB, 637 slots |
+
+So the path now requires the same 32-lane simdgroup the drafter already requires
+(`df2_bind`): `prompt_gemm_hw()` is `cx_->simd_width() == 32`, and both the load-time init in
+`stream_arena` and the on-demand selection in `prompt_run_rows` consult it.
+
+**The first attempt crashed, and that is the useful part of the record.** Gating only the load-time init
+left `prompt_run_rows` with its own env-only branch: for `n >= 64` it called `prompt_gemm_init` lazily with
+no headroom left and died with **SIGSEGV at address 0x21 inside `prompt_run_rows`**. A gate that covers only
+the allocation is not a gate. With both sites consulting the same predicate, the same 90-token prompt takes
+the window path:
+
+```
+64-lane simdgroups: the matrix-unit prompt path is off (the window path is faster and smaller here)
+expert arena 1.00 GB, 637 slots ... resident footprint after the fill: the process holds 14.2 GB
+prefill                  90 tokens in 26357.2 ms  ->  3.41 tok/s
+output  : 4960 78
+```
+
+26.36 s against the 25.30 s `PROMPT_GEMM=0` control (the 4% is run-to-run spread on this machine), the same
+tokens, 14.2 GB, and no crash. Net on this card: **~18% faster prompt prefill and 1.1 GB less resident
+memory**, on buffers that until now were allocated at load and — for every prompt under 64 rows, which is
+every draft run on this page — never touched.
+
+What this does **not** do: grow the expert arena. The arena went from 2.02 GB to 1.00 GB in the measured
+runs, because the planner's slot reservation and the footprint feedback move together; the 4.34 GB were
+partly arena-funded, so the win shows up as resident memory and prefill time, not as a bigger arena. Making
+the arena take the freed bytes is a separate change to the planner, and it is not attempted here.
+
+One stale message found on the way, recorded not fixed: for a native IQ pack without `--spec`, the engine
+still prints that the alternative source "`--draft dflash2` with an external `--draft-model`, is CUDA/HIP
+only and is not built for this backend" (`src/program/generate.cpp:4818`). It is false on this branch — the
+same command with those flags runs the drafter here — and it is the kind of line that sends the next reader
+down the wrong path.
