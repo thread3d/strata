@@ -178,3 +178,58 @@ therefore not available on this machine.
 | `310666f47` | runtime_hello skips on a Metal without device addresses |
 
 Still open, and out of this pass: DFlash2 acceptance (0 of 105) and the Qwen3.8 memory cap.
+
+## The two out-of-scope issues, researched: what the evidence now says (2026-11-23, after `acefc3bd8`)
+
+### 1. Qwen3.8 over the cap: not a double count, and where the 13.2 GB is
+
+The report was "the process holds 13.0 GB (15.3 GB resident), planned 15.8 GB, cap 8.6 GB - OVER THE
+CAP", with a 1.0-2.0 GB expert arena and a ~1.3% hit rate. Two explanations were worth testing: the
+budget double counts memory, or it charges clean file pages that this 96 GB machine could reclaim.
+
+`STRATA_MEM_DEBUG=1` prints the components behind `TASK_VM_INFO`:
+
+```
+[mem] footprint 13.23 rss 13.26 internal 13.23 external 0.03 compressed 0.00
+strata metal stream: 4.61 GB allocated before the arena (the process holds 13.23 GB, 13.26 GB resident)
+strata metal stream: expert arena 2.02 GB, 1152 slots in 2 size classes
+```
+
+So: **13.23 GB is anonymous, 0.03 GB is file-backed.** No file cache is being charged, and nothing is
+counted twice — the engine's comment that `phys_footprint` is anonymous memory is correct. A `vmmap
+-summary` of the live process agrees with the engine's own number (physical footprint 14.3 GB at the
+later phase, `IOAccelerator` 15.1 GB size / 14.9 GB resident), and it shows the anonymous total is
+spread over the Metal allocations, the 2.34 GB native dense set, the prompt path's own buffers and the
+arena.
+
+The 8.6 GB figure it is compared against is `MTLDevice.recommendedMaxWorkingSetSize` — the driver's
+recommendation for an 8 GB card under macOS 11 — so the run is genuinely over the card's working set,
+and the arena is clamped to its floor. The avoidable terms, in descending size, are the prompt path's
+~4.34 GB of matrix-unit buffers (a path `df2_bind` already gates off on this 64-lane card), the
+2.34 GB native dense set (needed) and the arena itself. **Freeing the prompt buffers is the one change
+that would move the arena from 1.0 GB to ~5 GB; it is not done here**, because the prompt path is
+shared with the CUDA/HIP builds and needs its own measurement.
+
+### 2. DFlash2 acceptance: what is ruled out, and the experiment that remains
+
+Established before this pass: the drafter's forward agrees with the torch port (block rows cos
+0.9992-0.9995, selector walk 7 of 7, `check_metal_dump.py` ok), and the proposals are target ids
+`8/14/14/15/15/15/15` against a target continuation of `96302 17776 78 76`. Re-checked here:
+
+- The mapping order looked like the prime suspect, and it is **not** a bug. `df2_topk_merge` applies the
+  draft-vocabulary map before `df2_select` uses those ids as codebook indices (`succ_cb + t * rank`,
+  `pred_cb + prev * rank`, `prev = out_tok[i]`), while the torch reference walks on unmapped `cand`
+  ids. The reason is the tables: the drafter's codebooks are `candidate_selector.predecessor_codebook`
+  `[248320, 256]` and the successor table likewise, i.e. **target**-vocabulary rows, while the engine's
+  Q8_0 draft head has 106299 rows. The map has to be applied before the selector indexes those tables;
+  the reference only skips it because it walks the full 248320-row head. So the early map is correct
+  and the walk genuinely matches the reference.
+
+- What the dump cannot settle is provenance: the engine and the reference receive the same taps, so
+  agreement on them says the drafter is faithful, not that the context is right. The next experiment
+  is still the one the page names: dump the target's `h` at the start of layer 6 and compare it with
+  the tap written for layer 5; they must be the same vector.
+
+That one experiment is bounded (a small probe and one run), and it was not run here. Acceptance stays
+**0**, and this page does not claim otherwise: the drafter is faithful, its proposals on this
+context are not, and the context is the only term left unverified.
