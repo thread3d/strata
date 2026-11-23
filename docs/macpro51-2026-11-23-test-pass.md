@@ -326,3 +326,30 @@ For this machine the useful forms are:
 | one stage only | add `DF2B_ONLY=ctx` (or `block`, `head`) |
 | where a stage stops | add `DF2B_TRACE=1`, which runs the stage as growing prefixes and prints every dispatch |
 | the full matrix | leave the defaults and give it ~41 minutes |
+
+### Item 5: where the 13.2 GB is, phase by phase
+
+Three measurements of the same workload (Qwen3.8 `UD-IQ1_M` + DFlash2), each with the number it came
+from, so the table can be checked rather than believed:
+
+| phase | what is held | measured |
+|---|---|---|
+| after the dense load (arena + native set) | `mtl: arena 4.38 GB as 2 overlapped buffers`, `302 canonical tensors skipped: served natively` (2.34 GB) | `vmmap -summary`: physical footprint **9.4 GB**, `IOAccelerator` **6.8 GB** |
+| at planning, before the expert arena | 4.61 GB of Metal allocations + native dense + prompt buffers | `[mem] footprint 13.23 rss 13.26 internal 13.23 external 0.03 compressed 0.00` |
+| after the arena fill | the above + `arena 2.02 GB, 1152 slots` | `[mem] footprint 12.97 rss 15.31 internal 15.27`; `vmmap`: footprint 14.3 GB, `IOAccelerator` 15.1 GB size / 14.9 GB resident, total resident 17.8 GB |
+
+What the table settles:
+
+- **`external` is 0.03–0.04 GB** in both `[mem]` samples: the 39.2 GB of mapped pack, the 320 M-row PLE
+  table and every other clean file page are *not* charged. The 13.2 GB is anonymous, so there is no
+  double count and no file cache being counted against the arena.
+- **`IOAccelerator` is the volume**: 6.8 GB after the dense load, 14.9 GB resident once the arena and the
+  prompt buffers exist. That is the driver's accounting of the buffers this process owns, not a leak of
+  the engine's own ledger (`cx_->allocated()` is 4.61 GB at planning) — the gap between the two is the
+  native dense set, the prompt path's own buffers and the arena, all of which the engine allocates
+  deliberately.
+- **The 8.6 GB it is compared with** is `recommendedMaxWorkingSetSize` for an 8 GB card under macOS 11,
+  so the clamp is real, and the arena floor of 1.0–2.0 GB follows from it.
+
+The avoidable term remains the prompt path's ~4.34 GB of matrix-unit buffers (item 6), which this
+64-lane card cannot use at all.
