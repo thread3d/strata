@@ -122,11 +122,20 @@ So the sampler is right to leave its sentinel (`0x7fffffff` is `sample.metal`'s 
 and its argmax skips NaN): the model's own output for that window is NaN. An earlier reading that
 called this a *readback* fault was wrong — the verifier reports faithfully what the sampler wrote.
 
-That window is `T = 1` because the first speculative round has no drafts to widen it, and the
-merge switch (`STRATA_ADMIT_MERGE_FIRST=1`) only applies to batch admission, so a CLI run cannot
-avoid it. Whether the NaN is the 1-row forward itself or a NaN the prompt pass leaves behind is
-not decided yet; the run is also far over the memory cap here (15.3 GB against 8.6 GB), and the MoE
-read every expert from the SSD with a 0.0 hit rate, so a starved expert path is a candidate.
+That window is `T = 1` because the first speculative round has no drafts to widen it. Two further
+runs narrow it down:
+
+* `STRATA_ADMIT_MERGE_FIRST=1` does not help — the merge path applies only to batch admission, so
+  the first window stays at one row in a CLI run;
+* a **single-token prompt** (`--tokens 11`, so no prefill chunk runs at all) fails the same way, so
+  the prompt pass is not the source: the NaN is produced by the one-row window's own forward.
+
+Because the first window is forced to one row on this path, **this port cannot produce a first token
+for a native pack at all**, with any drafter — which is the deeper reason Qwen3.8 has never run here
+(the missing MTP layer was the other). That makes it an engine defect ahead of DFlash2, not part of
+this port's work; the next thing to fix is the `T = 1` verify forward. The run is also far over its
+memory cap (15.3 GB against 8.6 GB) with a 0.0 expert-cache hit rate, which was not ruled out as a
+contributor (the single-token run has the same pressure).
 
 Two smaller things seen and not fixed:
 
