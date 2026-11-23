@@ -357,7 +357,7 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
                 std::vector<uint8_t> blk(nb * 34);
                 for (uint64_t i = k; i < nrow; i += nth) {
                     const uint64_t tok = vocab.empty() ? i : (uint64_t) vocab[i];
-                    ref::dequant(out_t.type, (const uint8_t*) W_.ptr + out_t.offset + tok * rb, tmpf.data(), N);
+                    ref::dequant(out_t.type, (const uint8_t*) cx_->host_ptr(W_, out_t.offset + tok * rb), tmpf.data(), N);
                     ref::quantize_q8_0(tmpf.data(), N, blk.data());
                     if (d.wide) {   // flat Q8_0 (df2_mm): int8 [row][K] and half scales [row][K / 32]
                         int8_t* q = (int8_t*) (d.hq.as<uint8_t>() + i * (uint64_t) N);
@@ -391,7 +391,7 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
             const size_t rb = ref::row_bytes(out_t.type, N);
             d.own_head = A(vocab.size() * rb + 4096);
             for (size_t i = 0; i < vocab.size(); ++i)
-                std::memcpy(d.own_head.as<uint8_t>() + i * rb, (const uint8_t*) W_.ptr + out_t.offset + (size_t) vocab[i] * rb, rb);
+                std::memcpy(d.own_head.as<uint8_t>() + i * rb, (const uint8_t*) cx_->host_ptr(W_, out_t.offset + (size_t) vocab[i] * rb), rb);
             d.head_buf = &d.own_head;
             d.head_t = out_t;
             d.head_t.offset = 0;
@@ -408,7 +408,7 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
         const gguf::Tensor& te = T("token_embd.weight");
         const size_t rb = ref::row_bytes(te.type, N);
         d.mask_emb.resize(N);
-        ref::dequant(te.type, (const uint8_t*) W_.ptr + te.offset + (size_t) d.mask_token * rb, d.mask_emb.data(), N);
+        ref::dequant(te.type, (const uint8_t*) cx_->host_ptr(W_, te.offset + (size_t) d.mask_token * rb), d.mask_emb.data(), N);
     }
     // ---- buffers
     for (int l = 0; l < d.L; ++l) { d.kring[l] = A((size_t) DF2_RING * 8 * 128 * 4); d.vring[l] = A((size_t) DF2_RING * 8 * 128 * 4); }
@@ -811,7 +811,7 @@ bool Window::df2_draft(int n_new, int64_t pos0, int32_t anchor, int32_t* drafts,
         const gguf::Tensor& te = T("token_embd.weight");
         const size_t rb = ref::row_bytes(te.type, N);
         if (const float* img = nullptr) (void) img;
-        ref::dequant(te.type, (const uint8_t*) W_.ptr + te.offset + (size_t) anchor * rb, h, N);
+        ref::dequant(te.type, (const uint8_t*) cx_->host_ptr(W_, te.offset + (size_t) anchor * rb), h, N);
         for (int i = 1; i < DF2_ROWS; ++i) std::memcpy(h + (size_t) i * N, d.mask_emb.data(), (size_t) N * 4);
     }
     if (!d.dump_path.empty()) {

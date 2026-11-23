@@ -633,7 +633,7 @@ private:
     mtl::Arg kw_arg() { return plekw_own_ ? mtl::Arg::B(plekw_) : mtl::Arg::B(W_, T("blk.1.ple_conv1d.weight").offset); }
     const uint16_t* kw_host() {
         return plekw_own_ ? plekw_.as<uint16_t>()
-                          : (const uint16_t*) ((const uint8_t*) W_.ptr + T("blk.1.ple_conv1d.weight").offset);
+                          : (const uint16_t*) ((const uint8_t*) cx_->host_ptr(W_, T("blk.1.ple_conv1d.weight").offset));
     }
     bool mrope_on() const { return g_mrope_host != nullptr; }
     void mrope_sync(int64_t c0, int64_t n) {
@@ -925,7 +925,7 @@ bool Window::init(const strata::core::ModelGeometry& g, strata::core::SessionSta
         const gguf::Tensor& k = T("blk.1.ple_conv1d.weight");
         const size_t ne = k.bytes / 4;
         plekw_ = cx_->alloc((ne * 2 + 4095) / 4096 * 4096);
-        const float* src = (const float*) ((const uint8_t*) W_.ptr + k.offset);
+        const float* src = (const float*) ((const uint8_t*) cx_->host_ptr(W_, k.offset));
         uint16_t* dst = plekw_.as<uint16_t>();
         for (size_t i = 0; i < ne; ++i) dst[i] = ref::f32_to_f16(src[i]);
         plekw_own_ = true;
@@ -1362,9 +1362,9 @@ void gnorm(const float* x, const float* w, float* y, int n_embd, int hc, float e
 void Window::ple_cpu(int Tn) {
     using namespace strata::kernels;
     const int hc_dim = NG_HC_DIM;
-    const float* nkey = (const float*) ((const uint8_t*) W_.ptr + T("blk.1.ple_norm_key.weight").offset);
-    const float* nqry = (const float*) ((const uint8_t*) W_.ptr + T("blk.1.ple_norm_query.weight").offset);
-    const float* nconv = (const float*) ((const uint8_t*) W_.ptr + T("blk.1.ple_norm_conv.weight").offset);
+    const float* nkey = (const float*) ((const uint8_t*) cx_->host_ptr(W_, T("blk.1.ple_norm_key.weight").offset));
+    const float* nqry = (const float*) ((const uint8_t*) cx_->host_ptr(W_, T("blk.1.ple_norm_query.weight").offset));
+    const float* nconv = (const float*) ((const uint8_t*) cx_->host_ptr(W_, T("blk.1.ple_norm_conv.weight").offset));
     const uint16_t* kw = kw_host();
     std::vector<float> key(hc_dim), query(hc_dim), gated(hc_dim), norm(hc_dim), hist = ple_hist_;
     for (int t = 0; t < Tn; ++t) {
@@ -1423,7 +1423,7 @@ bool Window::run(int Tn, const int32_t* tokens, int64_t pos0, bool head, int32_t
         }
         float* r = R_.as<float>() + (size_t) t * HC * N;
         if (const float* img = img_row(pos0 + t)) std::memcpy(r, img, (size_t) N * 4);
-        else ref::dequant(te.type, (const uint8_t*) W_.ptr + te.offset + (size_t) tokens[t] * rb, r, N);
+        else ref::dequant(te.type, (const uint8_t*) cx_->host_ptr(W_, te.offset + (size_t) tokens[t] * rb), r, N);
         for (int c = 1; c < HC; ++c) std::memcpy(r + (size_t) c * N, r, (size_t) N * 4);
     }
     // ---- the PLE rows (the table read is the shared host code's), projected on the GPU
@@ -2453,7 +2453,7 @@ bool Window::mtp_load(const std::string& gguf_path, int max_t, std::string& err)
             const size_t rb = ref::row_bytes(h.type, N);
             mhead_ = A(dvocab_.size() * rb + 4096);
             for (size_t i = 0; i < dvocab_.size(); ++i)
-                std::memcpy(mhead_.as<uint8_t>() + i * rb, (const uint8_t*) W_.ptr + h.offset + (size_t) dvocab_[i] * rb, rb);
+                std::memcpy(mhead_.as<uint8_t>() + i * rb, (const uint8_t*) cx_->host_ptr(W_, h.offset + (size_t) dvocab_[i] * rb), rb);
             mhead_t_ = h;
             mhead_t_.offset = 0;
             mhead_t_.shape = {(uint64_t) N, (uint64_t) dvocab_.size()};
@@ -2493,7 +2493,7 @@ bool Window::mtp_load(const std::string& gguf_path, int max_t, std::string& err)
                 d.tg[0] = 256;
                 push(ds, d);
                 cx_->run_graph(ds);
-                ref::dequant(te.type, (const uint8_t*) W_.ptr + te.offset + (size_t) probe[k] * rb, ref_row.data(), N);
+                ref::dequant(te.type, (const uint8_t*) cx_->host_ptr(W_, te.offset + (size_t) probe[k] * rb), ref_row.data(), N);
                 for (int i = 0; i < N; ++i) worst = std::max(worst, (double) std::fabs(ref_row[i] - memb_.as<float>()[i]));
             }
             std::fprintf(stderr, "strata metal: MTP draft round in one command buffer (embedding type %d on the GPU: max "
@@ -2552,7 +2552,7 @@ void Window::mtp_encode(std::vector<mtl::Dispatch>& ds, const mtl::Buffer& srcR,
     const size_t rb = ref::row_bytes(te.type, N);
     if (tokens)
         for (int i = 0; i < n; ++i)
-            ref::dequant(te.type, (const uint8_t*) W_.ptr + te.offset + (size_t) tokens[i] * rb,
+            ref::dequant(te.type, (const uint8_t*) cx_->host_ptr(W_, te.offset + (size_t) tokens[i] * rb),
                          (membp_ ? *membp_ : memb_).as<float>() + (size_t) (erow + i) * N, N);
     const std::string L = "mtp.layers.0.";
     auto rms = [&](const mtl::Buffer& x, size_t xo, const std::string& w, mtl::Buffer& y, int width, int rows) {
@@ -3031,7 +3031,7 @@ bool Window::prompt_chunk(const int32_t* tokens, int Tn, int64_t pos0, std::stri
         for (int t = 0; t < T; ++t) {
             float* r = p.R.as<float>() + (size_t) t * HC * N;
             if (const float* img = img_row(pos0 + t)) std::memcpy(r, img, (size_t) N * 4);
-            else ref::dequant(te.type, (const uint8_t*) W_.ptr + te.offset + (size_t) tokens[t] * rb, r, N);
+            else ref::dequant(te.type, (const uint8_t*) cx_->host_ptr(W_, te.offset + (size_t) tokens[t] * rb), r, N);
             for (int c = 1; c < HC; ++c) std::memcpy(r + (size_t) c * N, r, (size_t) N * 4);
         }
     }

@@ -206,7 +206,7 @@ bool Window::pc_host_rows(const int64_t* tokens, int nT, int64_t pos0, const int
     out.emb.resize((size_t) nT * N);
     for (int t = 0; t < nT; ++t)
         if (img_row(pos0 + t) == nullptr)
-            ref::dequant(te.type, (const uint8_t*) W_.ptr + te.offset + (size_t) tokens[t] * rb, out.emb.data() + (size_t) t * N, N);
+            ref::dequant(te.type, (const uint8_t*) cx_->host_ptr(W_, te.offset + (size_t) tokens[t] * rb), out.emb.data() + (size_t) t * N, N);
     out.ms_emb = now_ms() - t0;
     if (ple_on_) {
         strata::core::SessionState& ss = *ss_;
