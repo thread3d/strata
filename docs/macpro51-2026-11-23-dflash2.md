@@ -142,7 +142,45 @@ has no such check at all; and `T_IQ1_S` / `T_IQ1_M` exist in `quant.metal` but h
 `DN_SET` instantiations in `moe.metal`, so a pack whose experts really are IQ1 would find no kernel
 (this pack's are not).
 
-### Where the NaN actually starts (a per-stage probe)
+### The root cause: the dense arena does not hold the file's bytes
+
+Chasing the last row's 1024 NaN values to their source ends outside the kernels: the engine's
+**token embedding is not the one in the pack**.
+
+The dequantiser is not at fault. `dsu_ref_vs_ggml` compared `ref::dequant` against ggml's `to_float`
+for IQ4_XS, IQ3_S and IQ4_NL (the three types these packs use for their embeddings, and the only
+ones that check had never covered) and all three match **bit for bit**, 0 of 131,072 values
+differing. The converter is not at fault either: the same scan of `token_embd.weight`'s fp16 scales
+in the pack reads **0 of 2,483,200 blocks non-finite** (once the file's `general.alignment` of 16384
+is honoured; with the wrong alignment the same scan reports a meaningless ~2%).
+
+But the **engine's** own copy of that table does not match. Its tensor table says the embedding sits
+at arena offset 4,037,634,048 (type 23 = IQ4_XS, 337,715,200 bytes = 248,320 x 1,360, so the sizes
+agree), yet the bytes there are not the file's:
+
+```
+file  at token_embd:  21 80 0f cf da 4c c8 f0 ...
+arena at that offset: 1a d2 9c 4b 74 69 55 58 ...
+file  row 456:        59 00 f0 f1 c0 01 50 88 ...
+arena row 456:        09 2a 67 f0 cf 53 ec 11 ...
+```
+
+A scan of the arena's own table finds **45,247 of 248,320 rows carrying an "Inf/NaN" fp16 scale
+(49,380 of 2,483,200 blocks — 1.99%)**, which is what random bytes look like: 1.99% is about the
+rate at which arbitrary 16-bit patterns have an all-ones exponent. The file's own table has none.
+
+So the native dense path fills its 4.38 GB arena with something that is **not** the tensor the pack
+holds at that offset — the offsets and sizes the loader assigns do not line up with the file. Every
+downstream symptom follows: token 456 (the last row of the first prompt window) dequantises to 1024
+NaN values, that row poisons the hyper-connection bias `bo_` and `inj_` that the *next* window
+reads, and from there the whole decode is NaN. That is also why the MoE parity and the dequantiser
+both pass while the model cannot produce a token.
+
+The next thing to inspect is therefore the dense arena's load (`NativeDense` / the dense repack's
+offset arithmetic): what offset it assigns each tensor, and why the bytes at that offset for
+`token_embd.weight` are not the pack's.
+
+### Where the NaN shows up stage by stage (a per-stage probe)
 
 `STRATA_NAN_PROBE` (a `gr_nan` kernel dispatched after each stage, reading the stage's own buffer -
 the patch is in the workspace as `nan-probe.patch`, not committed) reports how many of a stage's
