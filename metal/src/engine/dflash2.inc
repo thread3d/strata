@@ -119,6 +119,9 @@ struct Window::Df2 {
     // STRATA_DF2_DUMP=<file> [STRATA_DF2_DUMP_ROUND=n]: the context rows the drafter was given and its answer at round n, for tools/dflash2/check_metal_dump.py
     std::string dump_path, ldump_path, sdump_path;   // ldump_path: STRATA_DF2_LAYER_DUMP, the block's rows after each layer
     mtl::Buffer ldump, sdump;
+    std::string rdump_path;   // STRATA_DF2_RING_DUMP: the ring rows the block's attention reads, and the context rows they came from
+    int ctx_rows = 0;         // hctx / kc / vc hold the context rows at positions ctx_pos0 .. ctx_pos0 + ctx_rows
+    int64_t ctx_pos0 = 0;
     int dump_round = 3;
     std::vector<float> dump_taps, dump_anchor_emb;
     int64_t dump_next = 0;
@@ -432,6 +435,7 @@ bool Window::df2_bind(const std::string& vocab_file, std::string& err) {
     if (const char* e = std::getenv("STRATA_DF2_DUMP")) { d.dump_path = e; if (const char* r = std::getenv("STRATA_DF2_DUMP_ROUND")) d.dump_round = std::atoi(r); }
     if (const char* e = std::getenv("STRATA_DF2_LAYER_DUMP")) { d.ldump_path = e; d.ldump = A(4 * (size_t) d.L * (size_t) DF2_ROWS * (size_t) N); }
     if (const char* e = std::getenv("STRATA_DF2_STAGE_DUMP")) { d.sdump_path = e; d.sdump = A(4 * (size_t) 32 * (size_t) DF2_ROWS * (size_t) d.I); }
+    if (const char* e = std::getenv("STRATA_DF2_RING_DUMP")) d.rdump_path = e;
     if (const char* lm = std::getenv("STRATA_DF2_LOG_MIB")) d.stash_max = std::atoi(lm) / 10; else d.stash_max = 4;   // ~10.6 MiB a lineage
     d.rowlog = A((size_t) DF2_RING * N * 2);
     { const char* fe = std::getenv("STRATA_DF2_FUSE_H"); d.fuse_h = !(fe && fe[0] == '0'); }
@@ -648,7 +652,6 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
             const size_t rslot = (size_t) (((sp - 1) % DF2_RING + DF2_RING) % DF2_RING) * 8 * 128;
             if (d.sdump.handle && l < 2) {
                 stage(l, 12, d.qn, (size_t) B * 4096);         // the query rows after q_norm + rope
-                stage(l, 13, d.v, (size_t) B * 1024);          // the v projection's rows
             }
             (void) rslot;
             stage(l, 14, d.kblk, (size_t) B * 1024);
@@ -668,6 +671,7 @@ void Window::df2_block_list(std::vector<mtl::Dispatch>& ds) {
             am.grid[0] = 8 * 32; am.tg[0] = 128;
             push(ds, am);
         }
+        if (d.sdump.handle && l < 2) stage(l, 13, d.part, (size_t) 8 * 32 * 130);   // chunk 0 after the merge
         stage(l, 2, d.ao, (size_t) B * 4096);
         df2_mmn(ds, p + "self_attn.o_proj.weight", d.ao, 0, 4096, d.o, N, B);
         stage(l, 3, d.o, (size_t) B * N);
@@ -792,6 +796,7 @@ bool Window::df2_context(const mtl::Buffer& taps, size_t taps_off, int64_t n, in
             df2_rope_rows(pos + g0, m, d.theta, d.rtctx.as<float>() + (size_t) g0 * 128);
             df2_ctx_list(ds, taps, taps_off + (size_t) (b0 + g0) * row_bytes, m, d.ctxpos, (size_t) g0 * 4, d.rtctx, (size_t) g0 * 128 * 4);
         }
+        { const int g0l = (nb - 1) / 8 * 8; d.ctx_rows = nb - g0l; d.ctx_pos0 = pos0 + b0 + g0l; }
         const double tg0 = now_ms();
         cx_->run_graph(ds);
         static const bool st2 = std::getenv("STRATA_DF2_STATS") != nullptr;
@@ -891,6 +896,32 @@ bool Window::df2_draft(int n_new, int64_t pos0, int32_t anchor, int32_t* drafts,
     for (int i = 0; i < DF2_DRAFTS; ++i) {
         drafts[i] = i < d.ndraft ? ot[i] : 0;                 // DF-04: past the cap token 0 with probability 0
         if (probs) probs[i] = i < d.ndraft ? d.outbuf.as<float>()[16 + i] : 0.0f;
+    }
+    if (!d.rdump_path.empty() && d.rounds == d.dump_round) {   // STRATA_DF2_RING_DUMP: the context K/V the block's attention reads, layer by layer
+        const int64_t lo64 = std::max<int64_t>(std::max<int64_t>(0, s - (d.window - 1)), d.floor);
+        const int nrows = (int) std::min<int64_t>(s - lo64, 256);
+        const int32_t hdr[12] = {0x32524644, 1, (int32_t) s, (int32_t) lo64, d.L, d.NKV, 128, nrows, d.ctx_rows, (int32_t) d.ctx_pos0, N, 0};
+        std::FILE* f = std::fopen(d.rdump_path.c_str(), "wb");
+        if (f != nullptr) {
+            std::fwrite(hdr, 4, 12, f);
+            if (d.ctx_rows > 0) {
+                std::fwrite(d.hctx.as<float>(), 4, (size_t) d.ctx_rows * N, f);
+                std::fwrite(d.kc.as<float>(), 4, (size_t) d.ctx_rows * 1024, f);
+                std::fwrite(d.vc.as<float>(), 4, (size_t) d.ctx_rows * 1024, f);
+            }
+            for (int l = 0; l < d.L; ++l)
+                for (int which = 0; which < 2; ++which) {
+                    const float* base = (which ? d.vring[l] : d.kring[l]).as<float>();
+                    for (int i = 0; i < nrows; ++i) {
+                        const size_t slot = (size_t) (((lo64 + i) % DF2_RING + DF2_RING) % DF2_RING);
+                        std::fwrite(base + slot * 8 * 128, 4, 1024, f);
+                    }
+                }
+            std::fclose(f);
+            std::fprintf(stderr, "strata metal: STRATA_DF2_RING_DUMP: %d context rows %lld..%lld, %d layers, written to %s\n",
+                         nrows, (long long) lo64, (long long) s, d.L, d.rdump_path.c_str());
+        }
+        d.rdump_path.clear();
     }
     if (!d.sdump_path.empty() && d.rounds == d.dump_round) {
         const size_t sn = (size_t) 32 * DF2_ROWS * (size_t) d.I;
