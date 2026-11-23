@@ -108,10 +108,25 @@ a wild address; it now stops with
 strata generate: dflash2: the anchor token 2147483647 is outside the vocabulary (248320 rows)
 ```
 
-The fault is **upstream of the drafter**: `ver.run(…, outv.data(), …)` is expected to fill the
-window's tokens, and the value that arrives is garbage. This port is already known to mis-read
-device-written buffers (the workspace notes record `runtime_hello` failing all four readback
-checks), and that is the first place to look.
+The fault is **upstream of the drafter, and it is now located precisely**: the first verify window
+(`T = 1`, its one input token correct — `window: 11`) produces an all-NaN forward pass. Traced in
+that order:
+
+```
+predraft: p=4 T=1 a=0 outv: 2147483647 | window: 11
+predraft-logits: copy=1 nan=248320 min=1e+30 max=-1e+30     # every logit of the window is NaN
+df2 taps: 12800 values, nan 12800                           # ... and so is the whole forward: the taps dflash2 reads
+```
+
+So the sampler is right to leave its sentinel (`0x7fffffff` is `sample.metal`'s "no candidate" value,
+and its argmax skips NaN): the model's own output for that window is NaN. An earlier reading that
+called this a *readback* fault was wrong — the verifier reports faithfully what the sampler wrote.
+
+That window is `T = 1` because the first speculative round has no drafts to widen it, and the
+merge switch (`STRATA_ADMIT_MERGE_FIRST=1`) only applies to batch admission, so a CLI run cannot
+avoid it. Whether the NaN is the 1-row forward itself or a NaN the prompt pass leaves behind is
+not decided yet; the run is also far over the memory cap here (15.3 GB against 8.6 GB), and the MoE
+read every expert from the SSD with a 0.0 hit rate, so a starved expert path is a candidate.
 
 Two smaller things seen and not fixed:
 
