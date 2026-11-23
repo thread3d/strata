@@ -142,6 +142,35 @@ has no such check at all; and `T_IQ1_S` / `T_IQ1_M` exist in `quant.metal` but h
 `DN_SET` instantiations in `moe.metal`, so a pack whose experts really are IQ1 would find no kernel
 (this pack's are not).
 
+### Where the NaN actually starts (a per-stage probe)
+
+`STRATA_NAN_PROBE` (a `gr_nan` kernel dispatched after each stage, reading the stage's own buffer -
+the patch is in the workspace as `nan-probe.patch`, not committed) reports how many of a stage's
+values are non-finite. The first window of this run is **4 rows** (the draft is asked for one row;
+the verify window is four), and the answer is:
+
+```
+embeddings     0/10240
+hc bias bo     0/20480      inj[0] 0/32   inj[1] 0/32
+L0 entry    1024/40960   first at 31232        <- 31232 = 3 * 10240 + 512
+L0 after attn 10240/40960 first at 30720        <- 30720 = 3 * 10240
+layer 0 .. 47 10240/40960 (each, first at 30720)
+```
+
+Reading that against a row width of `HC * N = 4 * 2560 = 10240`: **rows 0, 1 and 2 of the window are
+clean at every stage; only the last row goes non-finite.** At layer 0's entry it holds 1024 NaN
+values starting 512 floats into the row; once layer 0's attention half has run, that whole row is
+NaN and every later layer keeps only that row broken.
+
+So this is not "the forward is broken" - it is **the last row of the verify window**, whose state is
+bad before the first layer runs. The PLE block's inputs (history, value, conv weights) probe clean;
+its `qn` buffer reads NaN but its consumers are finite, which is a probe-ordering artefact, not a
+finding worth chasing.
+
+The next thing to look at is therefore how the window writes that last row's residual before layer 0
+- the embedding broadcast and the hyper-connection bias for row `Tn - 1` - and why exactly floats
+512..1536 of its 10240 are the ones that arrive non-finite.
+
 Earlier narrower readings (kept for the record):
 
 * `STRATA_ADMIT_MERGE_FIRST=1` does not widen the first window in a CLI run (the merge path is for
