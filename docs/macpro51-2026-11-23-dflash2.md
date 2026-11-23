@@ -122,20 +122,37 @@ So the sampler is right to leave its sentinel (`0x7fffffff` is `sample.metal`'s 
 and its argmax skips NaN): the model's own output for that window is NaN. An earlier reading that
 called this a *readback* fault was wrong — the verifier reports faithfully what the sampler wrote.
 
-That window is `T = 1` because the first speculative round has no drafts to widen it. Two further
-runs narrow it down:
+The window is `T = 1` because the first speculative round has no drafts to widen it. Further runs
+show it is **not** the single row:
 
-* `STRATA_ADMIT_MERGE_FIRST=1` does not help — the merge path applies only to batch admission, so
-  the first window stays at one row in a CLI run;
-* a **single-token prompt** (`--tokens 11`, so no prefill chunk runs at all) fails the same way, so
-  the prompt pass is not the source: the NaN is produced by the one-row window's own forward.
+* the forward really executes — 1194 dispatches, 1257 ms of GPU for that window (`--spec 8`), so it
+  is a numeric failure, not a skipped dispatch;
+* padding the first window to **two** rows (a diagnostic, row 0 is unaffected by row 1) still gives
+  all-NaN taps and logits, so the one-row path is not the culprit;
+* the pack's experts are not the problem either: `native_experts.txt` (parsed, not guessed) says
+  layer 0 is gate/up type 16 (**IQ2_XXS**) and down type 42 (**Q2_0**), with IQ2_S / IQ4_NL on other
+  layers — and `expert_parity --gu IQ2_XXS --dn Q2_0 --embd 2560 --ff 7680` **passes** on this card:
+  `h rel L2 1.46e-07, y rel L2 1.83e-07`.
 
-Because the first window is forced to one row on this path, **this port cannot produce a first token
-for a native pack at all**, with any drafter — which is the deeper reason Qwen3.8 has never run here
-(the missing MTP layer was the other). That makes it an engine defect ahead of DFlash2, not part of
-this port's work; the next thing to fix is the `T = 1` verify forward. The run is also far over its
-memory cap (15.3 GB against 8.6 GB) with a 0.0 expert-cache hit rate, which was not ruled out as a
-contributor (the single-token run has the same pressure).
+So the NaN is in the model's own forward (the `qwen4exp` pieces this family adds — hyper-connections,
+PLE, QSA), not in the experts and not in any DFlash2 code. Two further notes from the dig: the
+engine's non-finite guard (`nonfinite_hit`, issue #879) cannot fire on this port because
+`logits_nonfinite_rows` is a `missing()` stub in `metal/src/engine/stubs.cpp:244`, and the CLI loop
+has no such check at all; and `T_IQ1_S` / `T_IQ1_M` exist in `quant.metal` but have no `GU_SET` /
+`DN_SET` instantiations in `moe.metal`, so a pack whose experts really are IQ1 would find no kernel
+(this pack's are not).
+
+Earlier narrower readings (kept for the record):
+
+* `STRATA_ADMIT_MERGE_FIRST=1` does not widen the first window in a CLI run (the merge path is for
+  batch admission);
+* a **single-token prompt** (`--tokens 11`, no prefill chunk at all) fails identically, so the
+  prompt pass is not the source.
+
+The run is also far over its memory cap (15.3 GB against 8.6 GB) with a 0.0 expert-cache hit rate,
+which is not ruled out as a contributor. Next step: bisect the `qwen4exp` forward itself (the layer
+dump that would do it, `--dump-layers`, disables the device residency table, which `--spec` requires,
+so it needs either a `--batch`/serve run or a separate probe).
 
 Two smaller things seen and not fixed:
 
