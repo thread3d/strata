@@ -127,7 +127,8 @@ void embed_case(mtl::Context& cx, int n_embd, uint32_t token, int vocab) {
     mtl::Pipeline p = cx.pipeline(cx.compile({"../src/qwen36/msl/q36_glue.metal"}, "", false), "q36_embed");
     mtl::Dispatch d;
     d.p = &p;
-    d.args = {mtl::Arg::B(bt), mtl::Arg::B(bx), mtl::Arg::V((unsigned) n_embd), mtl::Arg::V(token)};
+    d.args = {mtl::Arg::B(bt), mtl::Arg::B(bx), mtl::Arg::V((unsigned) n_embd), mtl::Arg::V(token),
+                mtl::Arg::V((unsigned) ref::Q8_0)};   // the kernel's 5th argument: the table's type
     d.tg[0] = 64;
     d.grid[0] = (uint32_t) ((n_embd + 63) / 64);
     cx.run({d});
