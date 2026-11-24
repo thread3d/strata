@@ -813,9 +813,10 @@ patch applied to the completed layer output. The plain mean is the *pre-sublayer
 `6ab61461b` reverts `c1438b0a5`, and the reverted build reproduces the pre-change dump bit for bit, which is
 the regression check that the revert restored the exact old arithmetic.
 
-**And this inverts Round 21's remark about the two CUDA kernels.** On this evidence `tap_gr_kernel` (the
-decode path, with the `bo` term) is the correct one, and `tap_rows_kernel` (the prefill path, plain mean of
-`R`) is the one that omits a sublayer — the opposite of what Round 21 said. That matters beyond the drafter:
+**And this inverts Round 21's remark about the two CUDA kernels — but only half of that survives Round 24.**
+`tap_gr_kernel` (decode, with the `bo` term) is the correct one *at the decode instant*; `tap_rows_kernel`
+(prefill) is also correct, because the prefill path calls `gr_write` — which is that same fold — before it
+taps. **Round 24 corrects this section: there is no prefill defect, and no fix was made.**
 if CUDA's prefill writes taps that way, the rows a prompt contributes are tapped one sublayer early. It is
 recorded here as a found defect for whoever can run CUDA/HIP, not fixed blind.
 
@@ -855,3 +856,39 @@ and the prompt/decode consistency are each settled by code plus a measurement, a
 regardless. The only thing left standing in the way is the one item this machine cannot supply — an
 independent `h` for qwen4exp to check the taps against (Round 22's CUDA note aside, which is a defect for a
 machine that can run CUDA/HIP).
+
+## Round 24: the CUDA prefill tap is **not** defective — `gr_write` has already folded it (2026-11-24)
+
+Rounds 22 and 23 said `df2_tap_rows` (the SYCL/CUDA *prefill* tap) omits the layer's last sublayer, and that
+whoever can run CUDA/HIP should change it to `df2_tap_gr`. That conclusion was wrong, and this round proves it
+before any code was changed. The two paths tap at different points, and each is right at its own point.
+
+**Prefill** (`sycl/src/prefill/prefill.cpp:4944-4952`) folds first, then taps:
+
+```cpp
+} else {
+    gr_write(m.R, m.bo, m.inj, HC, T, m.cs);          // R[i] = R[i] + block_out[d] * w[c]  -- the fold, in place
+}
+if (steered && !cv_fused) strata::kernels::cvec_apply(m.R, ...);
+if (half == 1 && tap_rows > 0 && tap_slot[l] >= 0)   // "this layer's completed output, mean of the streams"
+    strata::kernels::df2_tap_rows(m.R + tap_t0 * D, tap_dev_ + tap_slot[l] * N, nt * N, N, HC, tap_rows, m.cs);
+```
+
+and `gr_write_kernel` (`src/kernels/cuda/gr.cu:331-346`) is exactly the fold:
+`out[i] = R[i] + block_out[d] * w[c]`, `w[c] = 2·sigmoid(inject[c]/hc)`. So at the prefill tap `R` already holds
+`R_c + bo·g_c`, and the plain mean over the streams is the completed layer output. Applying `tap_gr` there
+would fold `bo` **twice** — a real corruption, in exchange for a fix for a bug that does not exist.
+
+**Decode** (`src/core/verify.cpp:2484-2490`, and the same in SYCL) taps *before* the fold and therefore folds
+inline, with the comment saying so: "the layer's completed output: R with this FFN half's write applied (the
+next layer's read would fold it), the mean of the hc streams" — `df2_tap_gr(R, HC·N, bo + tb·N, N, inj2 + tb·HC,
+HC, ...)`.
+
+So `tap_gr` and `tap_rows` are not two answers to one question: they are the same quantity computed at two
+different points in the pipeline, and both correct. The Metal port's `df2_tap` sits at the decode instant
+(pre-fold, hence the `bo` term restored in Round 22), which matches this.
+
+**No code changed this round.** The useful output is a corrected record and a near-miss worth keeping: the
+reverted commit of Round 21 and this would-be fix were both errors of the same shape — inferring a kernel's
+inputs from a neighbouring call site instead of reading the kernel that consumes them. Two lines of
+`gr.cu`/`gr.metal` decided both.
