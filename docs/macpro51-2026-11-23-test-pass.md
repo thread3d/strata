@@ -736,3 +736,52 @@ target-extraction snippet, or an independent `h` for qwen4exp to compare the tap
 Recorded because it cost a run and will be needed again: `UD-IQ2_XS` runs on this engine with the same
 command, one pack swap (`--pack`, `--native`, `--native-dense-gguf`, `--ple-gguf` -> the `-00003-of-00003`
 shard), 0.50 tok/s decode, 4.8 s prefill for 4 tokens.
+
+## Round 21: the drafter's own capture patch settles the fold — and it was already measured (2026-11-24)
+
+Round 17 and 20 both ended by naming "the community's target-extraction snippet" as the way to settle the tap
+semantics. It exists, and it is authoritative: the drafter's model card
+(`incoai/Qwen3.8-Flash-Next-DFlash2`, the pack this branch loads) ships `patches/qwen38-dflash2-capture.patch`
+for SGLang, and the patch states the contract in four lines:
+
+```python
+assert list(layer_ids) == [5, 15, 25, 35, 45], layer_ids
+...
+if i in getattr(self, "_dflash_completed_layer_ids", ()):
+    # DFlash2 was trained on completed, zero-based layer outputs,
+    # averaged over the four hyper-connection streams.
+    assert hidden_states.shape[-1] == self.hc_count * self.hidden_size
+    aux_hidden_states.append(hidden_states.unflatten(-1, (self.hc_count, self.hidden_size)).mean(dim=-2))
+...
+print("Q38_DFLASH_CAPTURE completed_layers=[5,15,25,35,45] hc_mean=True features=12800", flush=True)
+```
+
+Three things follow, and two of them are already measured on this machine:
+
+- **The layer list is right.** "completed, zero-based" `[5, 15, 25, 35, 45]` is what `tap_slot_` does after each
+  layer completes, so the Round 16 layer-shift experiments were measuring a deviation from a correct choice.
+- **The gather is right.** Five slots of 2560 = the patch's `features=12800`, and `fc.weight` consumes exactly
+  that (verified in Round 15's dump: the drafter's context is 5 x 2560).
+- **The fold is a plain mean over the four streams — no `bo` term.** `mean(dim=-2)` over the hyper-connection
+  streams is `Σ_c R_c / hc`. The engine's `df2_tap` writes `(Σ_c R_c + bo·Σ_c g_c) / hc`, and so does the CUDA
+  **decode** kernel `tap_gr_kernel`; only the CUDA **prefill** kernel `tap_rows_kernel` matches the patch.
+  **That variant was already measured** (Round 17, `STRATA_DF2_TAP_PLAIN=1`): truth ranks
+  382 / 3156 / 2563 / 20201 / 51856 / 86 / **7** against the default's 457 / 2084 / 2282 / 15620 / 33206 / 91 /
+  **10**, acceptance 0 of 49 either way. So adopting the patch's fold changes the ranks by noise and does not
+  produce a draft.
+
+What that leaves is narrower than before, and it is **not** the fold, the layer list or the target's precision
+(Round 20). What is still unverified is whether the engine's `R_` at the moment `df2_tap` reads it is the
+*completed layer output* in the patch's sense — the patch reads `hidden_states` at one specific point inside
+the layer, and a tap that fires one sublayer early or late would carry a neighbouring quantity, which a
+stream-mean of the right form would not reveal. That is Round 17's probe 2 in its only remaining form:
+dump `R_` at the start of layer 6 and compare it, vector for vector, with the tap written for layer 5.
+
+**And a note on the `bo` term, because the two CUDA paths disagree with each other:** on the evidence of this
+patch, `tap_rows_kernel` is the correct one and the port (like CUDA's decode path) is the deviant. Aligning
+`df2_tap` to the plain mean is therefore a faithfulness fix worth making even though it does not move
+acceptance — but it should be made together with the measurement above, not instead of it, so the change
+lands with evidence rather than with a citation.
+
+External sources are recorded by URL only; nothing above was taken on trust from them, and the numbers are
+this machine's.
