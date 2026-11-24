@@ -87,6 +87,7 @@ def ple_shard(d):
 STEP = re.compile(r"prompt (\d+) token\(s\) \+ (\d+) generated in ([\d.]+) s \(([\d.]+) s a step\)")
 SPEC = re.compile(r"speculation\s+\d+ rounds of \d+, drafts accepted (\d+) of (\d+)")
 OUTPUT = re.compile(r"^output\s*: (.*)$", re.M)
+Q36_TOKENS = re.compile(r"^tokens\s*: (.*)$", re.M)   # the Qwen3.6 engine prints `tokens:`, this one `output:`
 PREFILL = re.compile(r"^prefill\s+(\d+) tokens in ([\d.]+) ms", re.M)
 
 
@@ -115,7 +116,7 @@ def q36(name):
     m = STEP.search(out)
     if m:
         rec.update(prompt_tokens=int(m.group(1)), decode_tokens=int(m.group(2)), s_per_step=float(m.group(4)))
-    o = OUTPUT.search(out)
+    o = OUTPUT.search(out) or Q36_TOKENS.search(out)
     if o:
         rec["tokens"] = o.group(1).split()
     if "s_per_step" not in rec:
@@ -186,12 +187,16 @@ def q38(dirname):
 
 def ds4():
     rec = {"family": "deepseek-v4.1-flash", "name": "deepseek-v4.1-flash"}
-    code, out, err, wall = rc("ds4", [str(BIN_DS4), "--pack-info"], 600)
+    # --pack-info needs --pack: a bare call prints the usage and exits 2 (checked 2026-11-24)
+    pack = MODELS / "deepseek-v4.1-flash" / "maya-ds4"
+    code, out, err, wall = rc("ds4", [str(BIN_DS4), "--pack", str(pack), "--pack-info"], 600)
     rec.update(rc=code, wall_s=wall)
-    for line in (out + err).splitlines():
-        if "pack" in line.lower() and ":" in line:
-            rec["info"] = line.strip()
-            break
+    keep = [ln.strip() for ln in (out + err).splitlines()
+            if ln.strip().startswith(("all experts", "dense types", "dspark:", "mtp tensors:", "files:"))]
+    if keep:
+        rec["info"] = keep[:3]
+    elif code != 0:
+        rec["info"] = [(out + err).strip().splitlines()[-1][:160]] if (out + err).strip() else []
     rec["note"] = ("not run: it needs STRATA_DS4_ALLOW_UNSTABLE_METAL=1, which resets this card "
                    "(see AGENTS.md); --pack-info is the part that runs here")
     return rec
