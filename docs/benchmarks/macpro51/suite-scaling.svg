@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="480" viewBox="0 0 900 480" role="img">
+<title>macpro51 UD-IQ1_M prefill rate against prompt size</title>
+<rect width="900" height="480" fill="#ffffff"/>
+<text x="74" y="26" font-family="system-ui,sans-serif" font-size="16" fill="#1f2933">Prefill rate against prompt size &#8212; ud-iq1_m, dflash2 attached</text>
+<text x="74" y="44" font-family="system-ui,sans-serif" font-size="12" fill="#6b7280">points = mean of up to 2 runs, error bar = &#177;1 s.d. (smaller than the marker at every point); right labels = wall time per run</text>
+<line x1="82" y1="404.0" x2="804" y2="404.0" stroke="#e5e7eb"/>
+<text x="74" y="408.0" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">0.0</text>
+<line x1="82" y1="334.8" x2="804" y2="334.8" stroke="#e5e7eb"/>
+<text x="74" y="338.8" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">0.9</text>
+<line x1="82" y1="265.6" x2="804" y2="265.6" stroke="#e5e7eb"/>
+<text x="74" y="269.6" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">1.9</text>
+<line x1="82" y1="196.4" x2="804" y2="196.4" stroke="#e5e7eb"/>
+<text x="74" y="200.4" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">2.8</text>
+<line x1="82" y1="127.2" x2="804" y2="127.2" stroke="#e5e7eb"/>
+<text x="74" y="131.2" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">3.8</text>
+<line x1="82" y1="58.0" x2="804" y2="58.0" stroke="#e5e7eb"/>
+<text x="74" y="62.0" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">4.7</text>
+<text x="20" y="231.0" transform="rotate(-90 20 231.0)" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#6b7280">prefill tokens per second</text>
+<polyline fill="none" stroke="#2563eb" stroke-width="2" points="82.0,290.8 262.5,186.4 443.0,126.1 623.5,106.1 804.0,103.1"/>
+<line x1="82.0" y1="291.8" x2="82.0" y2="289.8" stroke="#111827" stroke-width="1.4"/>
+<line x1="78.0" y1="291.8" x2="86.0" y2="291.8" stroke="#111827" stroke-width="1.4"/>
+<line x1="78.0" y1="289.8" x2="86.0" y2="289.8" stroke="#111827" stroke-width="1.4"/>
+<circle cx="82.0" cy="290.8" r="3.6" fill="#2563eb"><title>8 tokens: 1.55 tok/s mean of 2, wall 28.9 s</title></circle>
+<text x="82.0" y="422" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">8</text>
+<circle cx="262.5" cy="186.4" r="3.6" fill="#2563eb"><title>32 tokens: 2.98 tok/s mean of 2, wall 34.8 s</title></circle>
+<text x="262.5" y="422" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">32</text>
+<line x1="443.0" y1="126.7" x2="443.0" y2="125.6" stroke="#111827" stroke-width="1.4"/>
+<line x1="439.0" y1="126.7" x2="447.0" y2="126.7" stroke="#111827" stroke-width="1.4"/>
+<line x1="439.0" y1="125.6" x2="447.0" y2="125.6" stroke="#111827" stroke-width="1.4"/>
+<circle cx="443.0" cy="126.1" r="3.6" fill="#2563eb"><title>128 tokens: 3.80 tok/s mean of 2, wall 57.9 s</title></circle>
+<text x="443.0" y="422" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">128</text>
+<circle cx="623.5" cy="106.1" r="3.6" fill="#2563eb"><title>512 tokens: 4.08 tok/s mean of 2, wall 149.6 s</title></circle>
+<text x="623.5" y="422" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">512</text>
+<circle cx="804.0" cy="103.1" r="3.6" fill="#2563eb"><title>2048 tokens: 4.12 tok/s mean of 1, wall 521.1 s</title></circle>
+<text x="804.0" y="422" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">2048</text>
+<text x="812" y="107.1" font-family="system-ui,sans-serif" font-size="10" fill="#6b7280">521 s</text>
+<text x="812" y="120.1" font-family="system-ui,sans-serif" font-size="10" fill="#6b7280">150 s</text>
+<text x="812" y="133.1" font-family="system-ui,sans-serif" font-size="10" fill="#6b7280">58 s</text>
+<text x="812" y="190.4" font-family="system-ui,sans-serif" font-size="10" fill="#6b7280">35 s</text>
+<text x="812" y="294.8" font-family="system-ui,sans-serif" font-size="10" fill="#6b7280">29 s</text>
+<line x1="82" y1="404" x2="804" y2="404" stroke="#1f2933" stroke-width="1.2"/>
+<text x="443.0" y="446" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#6b7280">prompt tokens (log scale)</text>
+</svg>
