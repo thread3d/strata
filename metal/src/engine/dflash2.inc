@@ -42,11 +42,14 @@ bool Window::taps_enable(const std::vector<int>& layers, std::string& err) {
 void Window::tap_dispatch(std::vector<mtl::Dispatch>& ds, int l, const mtl::Buffer& R, const mtl::Buffer& bo, const mtl::Buffer& inj,
                           const mtl::Buffer& out, int rows) {
     const size_t nt = tap_layers_.size();
-    struct TapArgs { uint32_t n, hc, R_stride, bo_stride, inj_stride, out_stride, out_off; } a{
-        (uint32_t) N, (uint32_t) HC, (uint32_t) (HC * N), (uint32_t) N, (uint32_t) HC, (uint32_t) (nt * N), (uint32_t) (tap_slot_[l] * N)};
+    // the drafter's capture patch (patches/qwen38-dflash2-capture.patch) defines the tap as the mean over the
+    // hyper-connection streams of the completed layer output; `bo` and `inj` are no longer part of it
+    (void) bo; (void) inj;
+    struct TapArgs { uint32_t n, hc, R_stride, out_stride, out_off; } a{
+        (uint32_t) N, (uint32_t) HC, (uint32_t) (HC * N), (uint32_t) (nt * N), (uint32_t) (tap_slot_[l] * N)};
     mtl::Dispatch d;
     d.p = P(ldf2_, "df2_tap", {}, "df2_tap");
-    d.args = {mtl::Arg::B(R), mtl::Arg::B(bo), mtl::Arg::B(inj), mtl::Arg::B(out), mtl::Arg::V(a)};
+    d.args = {mtl::Arg::B(R), mtl::Arg::B(out), mtl::Arg::V(a)};
     d.grid[0] = N / 256;
     d.grid[1] = rows;
     d.tg[0] = 256;

@@ -399,20 +399,20 @@ kernel void df2_select_q4(device const float* hp [[buffer(0)]], device const flo
     }
 }
 
-// ---- the tap: out[r][out_off + i] = (sum_c R[r][c][i] + bo[r][i] * sum_c 2 sigmoid(inj[r][c] / hc)) / hc.  Grid (n / 256, rows), 256 threads.
-struct TapArgs { uint n; uint hc; uint R_stride; uint bo_stride; uint inj_stride; uint out_stride; uint out_off; };
+// ---- the tap: out[r][out_off + i] = sum_c R[r][c][i] / hc, the mean over the hyper-connection streams of the completed
+// layer output - the quantity the drafter was trained on (its own capture patch, patches/qwen38-dflash2-capture.patch:
+// "averaged over the four hyper-connection streams", hidden_states.unflatten(-1, (hc, hidden)).mean(dim=-2)).  The earlier
+// form added bo * sum_c 2 sigmoid(inj_c / hc), which is what the CUDA decode kernel tap_gr_kernel does; CUDA's prefill
+// kernel tap_rows_kernel is this plain mean.  Grid (n / 256, rows), 256 threads.
+struct TapArgs { uint n; uint hc; uint R_stride; uint out_stride; uint out_off; };
 
-kernel void df2_tap(device const float* R [[buffer(0)]], device const float* bo [[buffer(1)]], device const float* inj [[buffer(2)]],
-                    device float* out [[buffer(3)]], constant TapArgs& a [[buffer(4)]], uint2 gid [[thread_position_in_grid]]) {
+kernel void df2_tap(device const float* R [[buffer(0)]], device float* out [[buffer(1)]], constant TapArgs& a [[buffer(2)]],
+                    uint2 gid [[thread_position_in_grid]]) {
     const uint i = gid.x, r = gid.y;
     if (i >= a.n) return;
-    float wsum = 0.0f, rs = 0.0f;
-    for (uint c = 0; c < a.hc; ++c) {
-        const float x = inj[r * a.inj_stride + c] / float(a.hc);
-        wsum += 2.0f / (1.0f + exp(-x));
-        rs += R[r * a.R_stride + c * a.n + i];
-    }
-    out[r * a.out_stride + a.out_off + i] = (rs + bo[r * a.bo_stride + i] * wsum) / float(a.hc);
+    float rs = 0.0f;
+    for (uint c = 0; c < a.hc; ++c) rs += R[r * a.R_stride + c * a.n + i];
+    out[r * a.out_stride + a.out_off + i] = rs / float(a.hc);
 }
 
 // ---- Q8_0 matrix x up to 8 float columns, for the repacked pack (dflash2.inc): qs = int8 [rows][K], sc = half [rows][K / 32].
