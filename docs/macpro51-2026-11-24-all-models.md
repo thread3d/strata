@@ -1,5 +1,10 @@
 # Every model on macpro51, exercised — 2026-11-24
 
+> **Superseded for the refusals and the six skipped packs (`99e2d6c7b`).** Both Qwen3.6 refusals below are
+> fixed (BF16 experts; Q5_K embedding + Q2_K gate/up) and the six Qwen3.8 directories recorded as "not
+> convertible here" now run — they never needed converting. See
+> `docs/macpro51-2026-11-24-models-that-run.md`. The tables below are the state *before* those fixes.
+
 A full pass over everything in `~/models`, on the branch tip after a **clean rebuild** of `build-metal`
 (`cmake --build build-metal --clean-first -j 24`, 254/254 steps, `rc=0`) and with `ctest` green
 (17 passed, 1 skipped, 55.8 s). One engine process per model, driven by
