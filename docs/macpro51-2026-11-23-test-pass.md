@@ -676,3 +676,63 @@ rm -f bench/macpro51/results-qwen36.json        # the sweep resumes from existin
 python3 bench/macpro51/run_matrix.py --runs 3    # ~25 min here, 21 engine processes
 python3 bench/macpro51/charts.py
 ```
+
+## Round 20: the arena cannot be grown by freeing the prompt path, and a less-quantised target does not fix drafting (2026-11-24)
+
+### 1. Item 6, second half: the arena is capped by the card's working set, not by the prompt buffers
+
+Round 18 freed ~2.3 GB and the expert arena did not move (1.00 GB, 637 slots, both runs). The reason is in
+`arena_budget.h:114-117`, which takes `max(1 GB, min(gpu, ram, foot))` with
+`gpu = working_set - footprint_base - 1 GB` and `footprint_base = max(allocated, the process's footprint)`.
+The log line never said which term bound, so the arithmetic was re-derived by hand each time — including the
+Round 17 note that freeing 4.34 GB "would move the arena from 1.0 to ~5 GB", which is not possible. The three
+bounds are now one shared struct (`ArenaTerms`) and the line names the binding one:
+
+```
+strata metal stream: only 1.0 GB left for the expert arena (the GPU working set 8.6 GB, RAM 137.4 GB, 4.6 GB allocated): expect a low hit rate
+strata metal stream: the arena is capped by the GPU working set: working set 8.6 - base 10.9 = -3.3,
+                     RAM 121.5 - keep = 100.3, cap 8.6 - base = -2.8 GB (base = max(4.6 allocated, 10.9 held))
+```
+
+Both the GPU and the cap terms are **negative**: the process holds 10.9 GB against an 8.6 GB working set, so
+the arena is on its 1 GB floor and nothing freed elsewhere reaches it. The gate did shrink the base —
+13.23 GB before it, 10.9 GB in this run, footprint 14.2 -> 11.9 GB — but the arena stayed at 1.00 GB, which is
+what the formula says it must. To grow the arena on this machine you would have to shrink the 10.9 GB itself
+(the 2.34 GB native dense set, the ~1.5 GB of dense pack weights, the drafter's 1.1 GB), or the driver would
+have to recommend a larger working set; it will not, on an 8 GB card under macOS 11.
+
+### 2. Item 3: the oracle was run — the target's precision is not the explanation
+
+Round 17 left the tap *content* as the only unverified term, with two candidate causes: the target being
+1-bit (IQ1_M) puts its hidden states off the drafter's training distribution, or the tap semantics are wrong.
+The machine has a shelf of less-quantised Qwen3.8 packs after all (the earlier page's "only `UD-IQ1_M` was
+tried; `Q8_0` is 133 GB" was about `Q8_0` alone), so the same drafter and prompt were run against
+**`UD-IQ2_XS`** — the same layout (`pack/`, `*-metal.gguf`, the PLE shard), a 47 GB dense GGUF against 39 GB:
+
+| head of the drafter, same taps machinery | truth ranks (7 rows) | acceptance |
+|---|---|---|
+| target = UD-IQ1_M | 457 / 2084 / 2282 / 15620 / 33206 / 91 / **10** | 0 of 7 |
+| target = UD-IQ2_XS | 283 / 4957 / 4131 / 18475 / 47429 / 132 / **7** | 0 of 7 |
+
+Mixed on individual rows, **no improvement in kind**: the truths still sit at ranks 100s-10 000s, the head
+still prefers the same frequent punctuation/digit ids (`62`, `16`, `12`, `17`, `11`), and drafting still
+accepts nothing. The target itself behaves consistently — both packs emit `1544 76` for this prompt.
+
+And the two packs' taps are almost the same vectors, so the precision difference barely reaches them:
+
+```
+tap rows  cos 0.967 - 0.994   (rms 0.227/0.226, 0.265/0.268, 0.335/0.336, 0.320/0.317, 0.283/0.279)
+block rows cos 0.960 - 0.987
+logits     cos 0.957 - 0.974, argmax identical on rows 0 and 1
+```
+
+**That is a negative result for the quantisation hypothesis, and it is the useful kind:** a two-bit-better
+target moves the hidden states by 0.6-3.3% in cosine and changes nothing about the drafted answer. So the
+remaining explanation is the *relationship* between the taps this engine produces and the vectors the
+drafter was trained on — the fold and the layer semantics — not the target's precision. The probes that would
+settle that are the ones Round 17 named and this page still has not been able to run: the community's
+target-extraction snippet, or an independent `h` for qwen4exp to compare the tap against.
+
+Recorded because it cost a run and will be needed again: `UD-IQ2_XS` runs on this engine with the same
+command, one pack swap (`--pack`, `--native`, `--native-dense-gguf`, `--ple-gguf` -> the `-00003-of-00003`
+shard), 0.50 tok/s decode, 4.8 s prefill for 4 tokens.
