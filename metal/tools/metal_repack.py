@@ -31,6 +31,8 @@ LOCK_SUFFIX = ".repack.lock"   # <out>.repack.lock holds the repack's pid while 
 TYPE_SIZE = {0: (4, 1), 1: (2, 1), 30: (2, 1), 2: (18, 32), 3: (20, 32), 6: (22, 32), 7: (24, 32), 8: (34, 32),
              10: (84, 256), 11: (110, 256), 12: (144, 256), 13: (176, 256), 14: (210, 256), 16: (66, 256),
              17: (74, 256), 18: (98, 256), 19: (50, 256), 20: (18, 32), 21: (110, 256), 22: (82, 256), 23: (136, 256),
+             29: (56, 256),    # IQ1_M (the 2.00 bpw Qwen3.8 packs: block_iq1_m is QK_K/8 + QK_K/16 + QK_K/32 = 56)
+             144: (34, 128), 145: (26, 128), 146: (30, 128),   # agentionai's trellis experts (Gyro-M / Gyro-S)
              42: (18, 64)}
 PLE = "per_layer_token_embd.weight"
 
@@ -96,6 +98,9 @@ class Reader:
             ne = 1
             for d in t["dims"]:
                 ne *= d
+            if t["type"] not in TYPE_SIZE:
+                sys.exit("%s: tensor %s has ggml type %d, which this tool has no block size for; add it to "
+                         "TYPE_SIZE from tools/gguf_reader.py's BLOCK_GEOMETRY" % (self.path.name, name, t["type"]))
             b, q = TYPE_SIZE[t["type"]]
             t["bytes"] = ne // q * b
             t["src"] = self
