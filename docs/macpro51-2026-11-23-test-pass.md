@@ -829,3 +829,29 @@ would decide it.
 The lesson kept: a correct citation is not a correct change. The patch settled the *form* of the fold; only
 the kernel's read order could settle the *term*, and reading it took ten minutes against a rebuild-and-run
 cycle that had already been spent.
+
+## Round 23: both tap sites fire before the fold — the `bo` term is needed on both paths (2026-11-24)
+
+Round 22 restored the `bo` term on the strength of the decode window's order. The same question had to be
+asked of the prompt path, because a 5-row context mixes the two: rows 0..3 come from the prompt chunk, row 4
+from the decode window, and if their taps carried different quantities the drafter's context would be
+internally inconsistent — which no amount of tap-fold comparison would reveal.
+
+They agree. `metal/src/engine/prompt_chain.inc:496-498`:
+
+```cpp
+D(P_(b.lib, "moe_out"), {mtl::Arg::B(b.yr), mtl::Arg::B(b.ys), mtl::Arg::B(b.sgv), mtl::Arg::B(b.bo), mtl::Arg::V(oa)}, ...);
+if (taps_on_ && tap_slot_[l] >= 0) tap_dispatch(ds, l, b.R, b.bo, b.inj[cur_inj], tap_pro_buf(b.C + MAXT), nT);
+```
+
+`moe_out` writes the layer's FFN output into `b.bo`, and the tap reads `b.R` and `b.bo` immediately after —
+the same pre-fold instant as the decode window (`moe_combine_sh` -> `bo_`, then `tap_dispatch`). The fold
+`R'_c = R_c + bo·g_c` happens later on both paths, inside `gr_norm`/`gr_write` at the next layer's read
+(`gr.metal:51-53`). So both sites need the `bo` term, the reverted change would have been wrong on both, and
+the context rows of a prompt-plus-decode round are the same quantity.
+
+That closes the tap chain on this backend: the layer list, the feature gather, the fold form, the fold instant
+and the prompt/decode consistency are each settled by code plus a measurement, and acceptance is 0 of 49
+regardless. The only thing left standing in the way is the one item this machine cannot supply — an
+independent `h` for qwen4exp to check the taps against (Round 22's CUDA note aside, which is a defect for a
+machine that can run CUDA/HIP).
