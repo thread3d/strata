@@ -3,78 +3,78 @@
 <title>macpro51 Qwen3.8-Flash-Next prefill rate against the CPU expert-pool worker count</title>
 <rect width="900" height="470" fill="#ffffff"/>
 <text x="72" y="26" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="16" fill="#1f2933">Prefill rate against CPU expert-pool workers &#8212; ud-iq1_m, 260-token prompt</text>
-<text x="72" y="44" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="12" fill="#6b7280">bars = mean of 3 runs, error bar = &#177;1 standard deviation; 12 = physical cores, 24 = logical maximum</text>
+<text x="72" y="44" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="12" fill="#6b7280">bars = mean of 3 runs, error bar = &#177;1 standard deviation; 12 = physical cores, 24 = logical maximum; y axis zoomed to the data (flat result)</text>
 <line x1="78" y1="392.0" x2="872" y2="392.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="70" y="396.0" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">0.00</text>
+<text x="70" y="396.0" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">3.86</text>
 <line x1="78" y1="324.4" x2="872" y2="324.4" stroke="#e5e7eb" stroke-width="1"/>
-<text x="70" y="328.4" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">0.94</text>
+<text x="70" y="328.4" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">3.89</text>
 <line x1="78" y1="256.8" x2="872" y2="256.8" stroke="#e5e7eb" stroke-width="1"/>
-<text x="70" y="260.8" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">1.87</text>
+<text x="70" y="260.8" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">3.93</text>
 <line x1="78" y1="189.2" x2="872" y2="189.2" stroke="#e5e7eb" stroke-width="1"/>
-<text x="70" y="193.2" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">2.81</text>
+<text x="70" y="193.2" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">3.96</text>
 <line x1="78" y1="121.6" x2="872" y2="121.6" stroke="#e5e7eb" stroke-width="1"/>
-<text x="70" y="125.6" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">3.75</text>
+<text x="70" y="125.6" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">3.99</text>
 <line x1="78" y1="54.0" x2="872" y2="54.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="70" y="58.0" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">4.69</text>
+<text x="70" y="58.0" text-anchor="end" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">4.02</text>
 <text x="18" y="223.0" transform="rotate(-90 18 223.0)" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#6b7280">prefill tokens per second</text>
-<rect x="91.4" y="108.1" width="34.2" height="283.9" fill="#2563eb" rx="2"><title>1 workers: 3.94 tok/s mean of 3 (3.92-3.95), prefill 65811.9 ms, decode 3551 ms</title></rect>
-<line x1="108.5" y1="109.2" x2="108.5" y2="107.0" stroke="#111827" stroke-width="1.4"/>
-<line x1="101.0" y1="109.2" x2="116.1" y2="109.2" stroke="#111827" stroke-width="1.4"/>
-<line x1="101.0" y1="107.0" x2="116.1" y2="107.0" stroke="#111827" stroke-width="1.4"/>
+<rect x="91.4" y="236.9" width="34.2" height="155.1" fill="#2563eb" rx="2"><title>1 workers: 3.94 tok/s mean of 3 (3.92-3.95), prefill 65811.9 ms, decode 3551 ms</title></rect>
+<line x1="108.5" y1="268.9" x2="108.5" y2="205.0" stroke="#111827" stroke-width="1.4"/>
+<line x1="101.0" y1="268.9" x2="116.1" y2="268.9" stroke="#111827" stroke-width="1.4"/>
+<line x1="101.0" y1="205.0" x2="116.1" y2="205.0" stroke="#111827" stroke-width="1.4"/>
 <text x="108.5" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">1</text>
-<rect x="152.5" y="107.9" width="34.2" height="284.1" fill="#2563eb" rx="2"><title>2 workers: 3.94 tok/s mean of 3 (3.94-3.94), prefill 65706.3 ms, decode 3537 ms</title></rect>
+<rect x="152.5" y="230.0" width="34.2" height="162.0" fill="#2563eb" rx="2"><title>2 workers: 3.94 tok/s mean of 3 (3.94-3.94), prefill 65706.3 ms, decode 3537 ms</title></rect>
 <text x="169.6" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">2</text>
-<rect x="213.6" y="107.4" width="34.2" height="284.6" fill="#2563eb" rx="2"><title>3 workers: 3.95 tok/s mean of 3 (3.94-3.96), prefill 65667.3 ms, decode 3532 ms</title></rect>
-<line x1="230.7" y1="108.2" x2="230.7" y2="106.6" stroke="#111827" stroke-width="1.4"/>
-<line x1="223.2" y1="108.2" x2="238.2" y2="108.2" stroke="#111827" stroke-width="1.4"/>
-<line x1="223.2" y1="106.6" x2="238.2" y2="106.6" stroke="#111827" stroke-width="1.4"/>
+<rect x="213.6" y="216.0" width="34.2" height="176.0" fill="#2563eb" rx="2"><title>3 workers: 3.95 tok/s mean of 3 (3.94-3.96), prefill 65667.3 ms, decode 3532 ms</title></rect>
+<line x1="230.7" y1="240.2" x2="230.7" y2="191.9" stroke="#111827" stroke-width="1.4"/>
+<line x1="223.2" y1="240.2" x2="238.2" y2="240.2" stroke="#111827" stroke-width="1.4"/>
+<line x1="223.2" y1="191.9" x2="238.2" y2="191.9" stroke="#111827" stroke-width="1.4"/>
 <text x="230.7" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">3</text>
-<rect x="274.7" y="107.9" width="34.2" height="284.1" fill="#2563eb" rx="2"><title>4 workers: 3.94 tok/s mean of 3 (3.94-3.94), prefill 65676.6 ms, decode 3530 ms</title></rect>
+<rect x="274.7" y="230.0" width="34.2" height="162.0" fill="#2563eb" rx="2"><title>4 workers: 3.94 tok/s mean of 3 (3.94-3.94), prefill 65676.6 ms, decode 3530 ms</title></rect>
 <text x="291.8" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">4</text>
-<rect x="335.7" y="106.9" width="34.2" height="285.1" fill="#2563eb" rx="2"><title>5 workers: 3.95 tok/s mean of 3 (3.95-3.96), prefill 65524.7 ms, decode 3532 ms</title></rect>
-<line x1="352.8" y1="107.3" x2="352.8" y2="106.5" stroke="#111827" stroke-width="1.4"/>
-<line x1="345.3" y1="107.3" x2="360.4" y2="107.3" stroke="#111827" stroke-width="1.4"/>
-<line x1="345.3" y1="106.5" x2="360.4" y2="106.5" stroke="#111827" stroke-width="1.4"/>
+<rect x="335.7" y="202.1" width="34.2" height="189.9" fill="#2563eb" rx="2"><title>5 workers: 3.95 tok/s mean of 3 (3.95-3.96), prefill 65524.7 ms, decode 3532 ms</title></rect>
+<line x1="352.8" y1="214.2" x2="352.8" y2="190.0" stroke="#111827" stroke-width="1.4"/>
+<line x1="345.3" y1="214.2" x2="360.4" y2="214.2" stroke="#111827" stroke-width="1.4"/>
+<line x1="345.3" y1="190.0" x2="360.4" y2="190.0" stroke="#111827" stroke-width="1.4"/>
 <text x="352.8" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">5</text>
-<rect x="396.8" y="106.9" width="34.2" height="285.1" fill="#2563eb" rx="2"><title>6 workers: 3.95 tok/s mean of 3 (3.95-3.96), prefill 65509.5 ms, decode 3529 ms</title></rect>
-<line x1="413.9" y1="107.3" x2="413.9" y2="106.5" stroke="#111827" stroke-width="1.4"/>
-<line x1="406.4" y1="107.3" x2="421.4" y2="107.3" stroke="#111827" stroke-width="1.4"/>
-<line x1="406.4" y1="106.5" x2="421.4" y2="106.5" stroke="#111827" stroke-width="1.4"/>
+<rect x="396.8" y="202.1" width="34.2" height="189.9" fill="#2563eb" rx="2"><title>6 workers: 3.95 tok/s mean of 3 (3.95-3.96), prefill 65509.5 ms, decode 3529 ms</title></rect>
+<line x1="413.9" y1="214.2" x2="413.9" y2="190.0" stroke="#111827" stroke-width="1.4"/>
+<line x1="406.4" y1="214.2" x2="421.4" y2="214.2" stroke="#111827" stroke-width="1.4"/>
+<line x1="406.4" y1="190.0" x2="421.4" y2="190.0" stroke="#111827" stroke-width="1.4"/>
 <text x="413.9" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">6</text>
-<rect x="457.9" y="108.1" width="34.2" height="283.9" fill="#2563eb" rx="2"><title>7 workers: 3.94 tok/s mean of 3 (3.93-3.95), prefill 65733.2 ms, decode 3533 ms</title></rect>
-<line x1="475.0" y1="109.0" x2="475.0" y2="107.3" stroke="#111827" stroke-width="1.4"/>
-<line x1="467.5" y1="109.0" x2="482.5" y2="109.0" stroke="#111827" stroke-width="1.4"/>
-<line x1="467.5" y1="107.3" x2="482.5" y2="107.3" stroke="#111827" stroke-width="1.4"/>
+<rect x="457.9" y="236.9" width="34.2" height="155.1" fill="#2563eb" rx="2"><title>7 workers: 3.94 tok/s mean of 3 (3.93-3.95), prefill 65733.2 ms, decode 3533 ms</title></rect>
+<line x1="475.0" y1="261.1" x2="475.0" y2="212.8" stroke="#111827" stroke-width="1.4"/>
+<line x1="467.5" y1="261.1" x2="482.5" y2="261.1" stroke="#111827" stroke-width="1.4"/>
+<line x1="467.5" y1="212.8" x2="482.5" y2="212.8" stroke="#111827" stroke-width="1.4"/>
 <text x="475.0" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">7</text>
-<rect x="519.0" y="107.6" width="34.2" height="284.4" fill="#2563eb" rx="2"><title>8 workers: 3.94 tok/s mean of 3 (3.91-3.96), prefill 65724.3 ms, decode 3542 ms</title></rect>
-<line x1="536.1" y1="109.7" x2="536.1" y2="105.6" stroke="#111827" stroke-width="1.4"/>
-<line x1="528.6" y1="109.7" x2="543.6" y2="109.7" stroke="#111827" stroke-width="1.4"/>
-<line x1="528.6" y1="105.6" x2="543.6" y2="105.6" stroke="#111827" stroke-width="1.4"/>
+<rect x="519.0" y="223.0" width="34.2" height="169.0" fill="#2563eb" rx="2"><title>8 workers: 3.94 tok/s mean of 3 (3.91-3.96), prefill 65724.3 ms, decode 3542 ms</title></rect>
+<line x1="536.1" y1="283.4" x2="536.1" y2="162.6" stroke="#111827" stroke-width="1.4"/>
+<line x1="528.6" y1="283.4" x2="543.6" y2="283.4" stroke="#111827" stroke-width="1.4"/>
+<line x1="528.6" y1="162.6" x2="543.6" y2="162.6" stroke="#111827" stroke-width="1.4"/>
 <text x="536.1" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">8</text>
-<rect x="580.1" y="107.4" width="34.2" height="284.6" fill="#2563eb" rx="2"><title>9 workers: 3.95 tok/s mean of 3 (3.94-3.95), prefill 65647.2 ms, decode 3534 ms</title></rect>
-<line x1="597.2" y1="107.8" x2="597.2" y2="107.0" stroke="#111827" stroke-width="1.4"/>
-<line x1="589.6" y1="107.8" x2="604.7" y2="107.8" stroke="#111827" stroke-width="1.4"/>
-<line x1="589.6" y1="107.0" x2="604.7" y2="107.0" stroke="#111827" stroke-width="1.4"/>
+<rect x="580.1" y="216.0" width="34.2" height="176.0" fill="#2563eb" rx="2"><title>9 workers: 3.95 tok/s mean of 3 (3.94-3.95), prefill 65647.2 ms, decode 3534 ms</title></rect>
+<line x1="597.2" y1="228.1" x2="597.2" y2="204.0" stroke="#111827" stroke-width="1.4"/>
+<line x1="589.6" y1="228.1" x2="604.7" y2="228.1" stroke="#111827" stroke-width="1.4"/>
+<line x1="589.6" y1="204.0" x2="604.7" y2="204.0" stroke="#111827" stroke-width="1.4"/>
 <text x="597.2" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">9</text>
-<rect x="641.1" y="108.6" width="34.2" height="283.4" fill="#2563eb" rx="2"><title>10 workers: 3.93 tok/s mean of 3 (3.92-3.94), prefill 65909.7 ms, decode 3542 ms</title></rect>
-<line x1="658.2" y1="109.3" x2="658.2" y2="107.9" stroke="#111827" stroke-width="1.4"/>
-<line x1="650.7" y1="109.3" x2="665.8" y2="109.3" stroke="#111827" stroke-width="1.4"/>
-<line x1="650.7" y1="107.9" x2="665.8" y2="107.9" stroke="#111827" stroke-width="1.4"/>
+<rect x="641.1" y="250.9" width="34.2" height="141.1" fill="#2563eb" rx="2"><title>10 workers: 3.93 tok/s mean of 3 (3.92-3.94), prefill 65909.7 ms, decode 3542 ms</title></rect>
+<line x1="658.2" y1="271.8" x2="658.2" y2="230.0" stroke="#111827" stroke-width="1.4"/>
+<line x1="650.7" y1="271.8" x2="665.8" y2="271.8" stroke="#111827" stroke-width="1.4"/>
+<line x1="650.7" y1="230.0" x2="665.8" y2="230.0" stroke="#111827" stroke-width="1.4"/>
 <text x="658.2" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">10</text>
-<rect x="702.2" y="108.1" width="34.2" height="283.9" fill="#2563eb" rx="2"><title>11 workers: 3.94 tok/s mean of 3 (3.93-3.94), prefill 65775.6 ms, decode 3535 ms</title></rect>
-<line x1="719.3" y1="108.5" x2="719.3" y2="107.7" stroke="#111827" stroke-width="1.4"/>
-<line x1="711.8" y1="108.5" x2="726.8" y2="108.5" stroke="#111827" stroke-width="1.4"/>
-<line x1="711.8" y1="107.7" x2="726.8" y2="107.7" stroke="#111827" stroke-width="1.4"/>
+<rect x="702.2" y="236.9" width="34.2" height="155.1" fill="#2563eb" rx="2"><title>11 workers: 3.94 tok/s mean of 3 (3.93-3.94), prefill 65775.6 ms, decode 3535 ms</title></rect>
+<line x1="719.3" y1="249.0" x2="719.3" y2="224.9" stroke="#111827" stroke-width="1.4"/>
+<line x1="711.8" y1="249.0" x2="726.8" y2="249.0" stroke="#111827" stroke-width="1.4"/>
+<line x1="711.8" y1="224.9" x2="726.8" y2="224.9" stroke="#111827" stroke-width="1.4"/>
 <text x="719.3" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">11</text>
-<rect x="763.3" y="108.1" width="34.2" height="283.9" fill="#2563eb" rx="2"><title>12 workers: 3.94 tok/s mean of 3 (3.93-3.94), prefill 65772.8 ms, decode 3537 ms</title></rect>
-<line x1="780.4" y1="108.5" x2="780.4" y2="107.7" stroke="#111827" stroke-width="1.4"/>
-<line x1="772.9" y1="108.5" x2="787.9" y2="108.5" stroke="#111827" stroke-width="1.4"/>
-<line x1="772.9" y1="107.7" x2="787.9" y2="107.7" stroke="#111827" stroke-width="1.4"/>
+<rect x="763.3" y="236.9" width="34.2" height="155.1" fill="#2563eb" rx="2"><title>12 workers: 3.94 tok/s mean of 3 (3.93-3.94), prefill 65772.8 ms, decode 3537 ms</title></rect>
+<line x1="780.4" y1="249.0" x2="780.4" y2="224.9" stroke="#111827" stroke-width="1.4"/>
+<line x1="772.9" y1="249.0" x2="787.9" y2="249.0" stroke="#111827" stroke-width="1.4"/>
+<line x1="772.9" y1="224.9" x2="787.9" y2="224.9" stroke="#111827" stroke-width="1.4"/>
 <text x="780.4" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">12</text>
-<rect x="824.4" y="108.1" width="34.2" height="283.9" fill="#2563eb" rx="2"><title>24 workers: 3.94 tok/s mean of 3 (3.93-3.94), prefill 65759.9 ms, decode 3536 ms</title></rect>
-<line x1="841.5" y1="108.5" x2="841.5" y2="107.7" stroke="#111827" stroke-width="1.4"/>
-<line x1="833.9" y1="108.5" x2="849.0" y2="108.5" stroke="#111827" stroke-width="1.4"/>
-<line x1="833.9" y1="107.7" x2="849.0" y2="107.7" stroke="#111827" stroke-width="1.4"/>
+<rect x="824.4" y="236.9" width="34.2" height="155.1" fill="#2563eb" rx="2"><title>24 workers: 3.94 tok/s mean of 3 (3.93-3.94), prefill 65759.9 ms, decode 3536 ms</title></rect>
+<line x1="841.5" y1="249.0" x2="841.5" y2="224.9" stroke="#111827" stroke-width="1.4"/>
+<line x1="833.9" y1="249.0" x2="849.0" y2="249.0" stroke="#111827" stroke-width="1.4"/>
+<line x1="833.9" y1="224.9" x2="849.0" y2="224.9" stroke="#111827" stroke-width="1.4"/>
 <text x="841.5" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#6b7280">24</text>
 <line x1="78" y1="392" x2="872" y2="392" stroke="#1f2933" stroke-width="1.2"/>
 <text x="475.0" y="430" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#6b7280">--pool-workers</text>

@@ -70,8 +70,20 @@ def main() -> int:
     W, H = 900, 470
     L, R, T, B = 78, 28, 54, 78
     pw, ph = W - L - R, H - T - B
-    ymax = max(r["mean_tok_s"] + r["sd_tok_s"] for r in rows) * 1.18
-    ymin = 0.0
+    lo = min(r["mean_tok_s"] - r["sd_tok_s"] for r in rows)
+    hi = max(r["mean_tok_s"] + r["sd_tok_s"] for r in rows)
+    # near-flat data is the interesting case here: a zero-based axis would draw 13 identical bars and hide
+    # that the spread is inside the noise.  Zoom to the data (with a margin) whenever it occupies < 35% of
+    # the zero-based axis, and say so in the subtitle.
+    zero_based = hi * 1.18
+    span = hi - lo
+    if span < 0.35 * zero_based:
+        pad = max(span * 0.9, hi * 0.01)
+        ymin, ymax = max(0.0, lo - pad), hi + pad
+        zoomed = True
+    else:
+        ymin, ymax = 0.0, zero_based
+        zoomed = False
     n = len(rows)
     slot = pw / n
     bw = slot * 0.56
@@ -89,8 +101,9 @@ def main() -> int:
              '<text x="%d" y="26" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="16" fill="%s">'
              'Prefill rate against CPU expert-pool workers &#8212; ud-iq1_m, 260-token prompt</text>' % (L - 6, INK),
              '<text x="%d" y="44" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="12" fill="%s">'
-             'bars = mean of %d runs, error bar = &#177;1 standard deviation; 12 = physical cores, 24 = logical maximum</text>'
-             % (L - 6, MUTED, max(r["runs"] for r in rows))]
+             'bars = mean of %d runs, error bar = &#177;1 standard deviation; 12 = physical cores, 24 = logical maximum%s</text>'
+             % (L - 6, MUTED, max(r["runs"] for r in rows),
+                "; y axis zoomed to the data (flat result)" if zoomed else "")]
 
     ticks = 5
     for k in range(ticks + 1):
