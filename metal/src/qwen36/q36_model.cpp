@@ -167,10 +167,11 @@ bool open(const std::string& path, Model& m, std::string& err) {
         err = r.err;
         return false;
     }
-    // q36_embed dequantizes Q8_0, Q6_K and Q4_K; a table in another format is refused here rather than silently mis-read.
-    if (m.embed.ok() && m.embed.type() != ref::Q8_0 && m.embed.type() != ref::Q6_K && m.embed.type() != ref::Q4_K) {
+    // q36_embed dequantizes Q8_0, Q6_K, Q4_K and Q5_K; a table in another format is refused here rather than silently mis-read.
+    if (m.embed.ok() && m.embed.type() != ref::Q8_0 && m.embed.type() != ref::Q6_K && m.embed.type() != ref::Q4_K &&
+        m.embed.type() != ref::Q5_K) {
         err = "token_embd.weight is " + std::string(ref::type_name(m.embed.type())) +
-              ", q36_embed only supports Q8_0, Q6_K and Q4_K";
+              ", q36_embed only supports Q8_0, Q6_K, Q4_K and Q5_K";
         return false;
     }
 

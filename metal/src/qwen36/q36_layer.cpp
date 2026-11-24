@@ -48,7 +48,7 @@ bool join(mtl::Context& cx, LayerKernels& lk, mtl::Buffer& x, const mtl::Buffer*
     return true;
 }
 
-// x = dequant(token_embd row token)  (q36_glue.metal's q36_embed, Q8_0 only)
+// x = dequant(token_embd row token)  (q36_glue.metal's q36_embed: Q8_0, Q6_K, Q4_K, Q5_K)
 bool embed_row(mtl::Context& cx, LayerKernels& lk, const mtl::Buffer& table, mtl::Buffer& x,
                int n_embd, uint32_t token, std::string& err) {
     mtl::Dispatch d;

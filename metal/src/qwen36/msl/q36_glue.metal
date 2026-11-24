@@ -78,7 +78,8 @@ kernel void q36_add(device float* x [[buffer(0)]], device const float* y [[buffe
 // n_embd contiguous values at t * row_bytes, and the format is the pack's (Q8_0 here: an fp16 scale a 32 values).  Written as
 // its own kernel because the alternative - a one-hot multiply through gemv - would produce n_vocab values to throw away.
 //
-// Supported formats: Q8_0 (34 bytes per 32 values: fp16 scale + 32 int8), Q6_K (210 bytes per 256 values: 6-bit codes).
+// Supported formats: Q8_0 (34 bytes per 32 values: fp16 scale + 32 int8), Q6_K (210 bytes per 256 values: 6-bit codes),
+// Q4_K / Q5_K (144 / 176 bytes per 256 values: 4 / 5-bit codes with a 6-bit scale and a 6-bit min per 32).
 kernel void q36_embed(device const uchar* table [[buffer(0)]], device float* x [[buffer(1)]],
                       constant uint& n_embd [[buffer(2)]], constant uint& token [[buffer(3)]],
                       constant uint& etype [[buffer(4)]], uint gid [[thread_position_in_grid]]) {
@@ -102,7 +103,7 @@ kernel void q36_embed(device const uchar* table [[buffer(0)]], device float* x [
         device const uchar* ql = b + (size_t) hf * 64u;   // ql advances by 64 per half
         device const uchar* qh = b + 128u + (size_t) hf * 32u; // qh advances by 32 per half
         uchar ql_byte = (group == 1 || group == 3) ? ql[l + 32] : ql[l];
-        uint8_t nibble = (group == 0 || group == 2) ? (ql_byte & 0x0Fu) : (ql_byte >> 4);
+        uint8_t nibble = (group < 2) ? (ql_byte & 0x0Fu) : (ql_byte >> 4);   // q1/q2 low nibbles, q3/q4 high
         int qh_shift = group * 2;
         int qh_bits = ((int)qh[l] >> qh_shift) & 3;
         int code = (int)(nibble | (uint8_t)(qh_bits << 4)) - 32;
@@ -138,6 +139,30 @@ kernel void q36_embed(device const uchar* table [[buffer(0)]], device float* x [
         device const uchar* qb = qs + (size_t) j4 * 32u + (size_t) lj;
         uint8_t nibble = (li == 0) ? (*qb & 0x0Fu) : (*qb >> 4);
         x[gid] = d1 * (float)nibble - m1;
+    } else if (etype == 13) {   // Q5_K: 176 bytes per 256 values; d*scale*code - dmin*min, as ref's dequantize Q5_K
+        const size_t row_bytes = ((size_t) n_embd / 256u) * 176u;
+        device const uchar* row = table + (size_t) token * row_bytes;
+        int bid = (int) (gid / 256);          // super-block index within row
+        int off = (int) (gid % 256);          // offset within super-block (0-255)
+        device const uchar* b = row + (size_t) bid * 176u;
+        const float d  = float(as_type<half>(ushort(b[0] | (b[1] << 8))));
+        const float mn = float(as_type<half>(ushort(b[2] | (b[3] << 8))));
+        device const uchar* sc = b + 4;       // 12 bytes of packed 6-bit scale/min
+        device const uchar* qh = b + 16;      // 32 bytes: each value's 5th (high) bit
+        device const uchar* ql = b + 48;      // 128 bytes: low nibbles
+        int g  = off / 64;                    // the 64-value group (scale pair 2g, 2g+1)
+        int p  = off % 64;
+        int hf = p / 32;                      // 0 = low nibbles, 1 = high nibbles
+        int l  = p % 32;                      // byte within the group
+        int si = 2 * g + hf;                  // get_scale_min_k4(si, sc, s, m)
+        uchar s, m;
+        if (si < 4) { s = sc[si] & 63; m = sc[si + 4] & 63; }
+        else { s = (sc[si + 4] & 0x0Fu) | ((sc[si - 4] >> 6) << 4); m = (sc[si + 4] >> 4) | ((sc[si] >> 6) << 4); }
+        const uchar qlb = ql[(size_t) g * 32u + (size_t) l];
+        const uchar qhb = qh[l];   // qh is 32 bytes for the whole block: bit 2g+h, never advanced per group
+        int code = (int) (hf == 0 ? (qlb & 0x0Fu) : (qlb >> 4));
+        if (qhb & (1u << (2 * g + hf))) code += 16;
+        x[gid] = (d * (float) s) * (float) code - (mn * (float) m);
     }
 }
 
