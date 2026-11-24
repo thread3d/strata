@@ -79,3 +79,48 @@ python3 bench/macpro51/run_all_models.py                       # every model on 
 
 The llama.cpp oracle for the Qwen3.6 packs is `bench/macpro51/run_reference.py` (`~/llama_ref`), same ids
 in, ids out.
+
+## After the fixes: the full sweep and the llama.cpp regression
+
+`python3 bench/macpro51/run_all_models.py`, one engine process per model, 26 records in
+`bench/macpro51/results-all-models.json` (commit `93a93aab3`):
+
+- **Qwen3.6: 7 of 7 packs rc 0**, and all seven return the *same* 8 tokens on the harness's text prompt
+  (`271 248068 198 8160 579 264 7047 1817`). The harness now parses the Qwen3.6 engine's `tokens:` line as
+  well as the Qwen3.8 one's `output:`, so those sequences are in the record instead of "0 tok".
+- **Qwen3.8: 17 of 17 directories rc 0** - the eleven from before plus the six above, which return
+  `303 7472` like `Q8_0`; the four low-bit Unsloth packs keep their own `1544 76`.
+- `mmproj-F16.gguf` is still refused, correctly: `architecture is 'clip'`.
+- `deepseek-v4.1-flash`: `--pack-info` needs `--pack` (a bare call prints usage and exits 2), so the record
+  now carries the real report - 544 G parameters, 132.1 GB of experts at 1.94 bpw, dense 124.73 GB, two
+  IQ4_NL engram tensors on the CPU lane, 6 files present. It is still not *run*: that needs
+  `STRATA_DS4_ALLOW_UNSTABLE_METAL=1`, which resets this card.
+
+**Regression against the oracle** (`tokens/dsu_ref_vs_ggml`-independent: the 23-token id contract of
+`bench/macpro51/run_reference.py`, compared with `results-reference.json`): `Q4_K_M`, `UD-Q4_K_XL`,
+`UD-Q6_K_XL` and `Q8_0` are **24 of 24 ids identical** to llama.cpp; `Q6_K` is 23 of 24, the difference
+being the documented `25562`/`14162` near-tie at the last id. So the three engine fixes did not move any
+previously-working pack.
+
+## Prompt scaling on the two packs that could not load before
+
+Prompt built by cycling the 23-token context (so the continuations echo it - these are *timing* points,
+not a quality test), 8 new tokens, `--n 8`:
+
+| pack | prompt tokens | wall | s/step | derived s per prompt token |
+|---|---|---|---|---|
+| UD-Q2_K_XL (11.7 GB) | 8 | 12.50 s | 0.781 | - |
+| | 128 | 117.17 s | 0.862 | 0.87 |
+| | 512 | 568.59 s | 1.093 | 1.18 |
+| UD-Q8_K_XL (36.4 GB) | 8 | 47.22 s | 2.951 | - |
+| | 128 | 211.08 s | 1.552 | 1.54 |
+
+A 2048-token run on `UD-Q2_K_XL` was stopped after **27 minutes** without finishing, which is consistent
+with the 512 point's rate and rising. Two things this says that the engine had not recorded: the Qwen3.6
+prompt path costs **~0.9-1.2 s per prompt token**, i.e. 4-5x the Qwen3.8 engine's 243 ms/token
+(`docs/macpro51-2026-11-24-suite.md`), and the cost per token *rises* with length rather than amortising.
+`UD-Q8_K_XL` is ~2x `UD-Q2_K_XL` at the same length - it streams 33.8 GB of BF16/Q8_0 experts against
+~7 GB. Both packs were previously unloadable, so neither had a long-prompt measurement before this pass.
+
+The scaling sweep (`--only scale/threads` on the Qwen3.8 side) is unchanged by this work and still stands
+in `docs/macpro51-2026-11-24-suite.md`.
