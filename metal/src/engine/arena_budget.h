@@ -108,13 +108,28 @@ inline double arena_avail(double free_b, double purgeable_b, double inactive_b, 
 
 inline double arena_ple_reserve(const ArenaMem& m) { return m.ple_mapped > 0 ? m.ple_mapped : 0.5 * kGB; }
 
+/// The three bounds arena_budget() takes the least of, with the base they are measured against: the log line
+/// prints them so a reader can see which one binds (on macpro51 `gpu` is negative: the process's footprint
+/// alone is 4.6 GB above the card's 8.6 GB working set, so the arena is on its floor whatever else is freed).
+struct ArenaTerms {
+    double gpu = 0, ram = 0, foot = 0, base = 0;
+    const char* binding() const { return gpu <= ram && gpu <= foot ? "the GPU working set" : (ram <= foot ? "RAM" : "the footprint cap"); }
+};
+
+inline ArenaTerms arena_terms(const ArenaMem& m) {
+    ArenaTerms t;
+    t.base = footprint_base(m);
+    t.gpu = m.working_set - t.base - 1.0 * kGB;
+    t.ram = m.available - arena_keep(m) - arena_ple_reserve(m);
+    t.foot = footprint_cap(m) - t.base - arena_ple_reserve(m);   // the whole footprint under the cap
+    return t;
+}
+
 /// The arena's bytes (at least 1 GB: a smaller arena still runs, at a low hit rate).
 inline double arena_budget(const ArenaMem& m) {
     if (m.arena_gb >= 0) return m.arena_gb * kGB;
-    const double gpu = m.working_set - footprint_base(m) - 1.0 * kGB;
-    const double ram = m.available - arena_keep(m) - arena_ple_reserve(m);
-    const double foot = footprint_cap(m) - footprint_base(m) - arena_ple_reserve(m);   // the whole footprint under the cap
-    return std::max(1.0 * kGB, std::min(std::min(gpu, ram), foot));
+    const ArenaTerms t = arena_terms(m);
+    return std::max(1.0 * kGB, std::min(std::min(t.gpu, t.ram), t.foot));
 }
 
 /// The plan as numbers, for the log line and the tests: what the engine will hold with `arena` bytes of arena.

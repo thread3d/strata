@@ -1699,9 +1699,14 @@ bool Window::stream_arena(std::string& err) {
     const double avail = am.available;
     double budget = arena_budget(am);
     if (budget < 2 * gb) {
+        const ArenaTerms at = arena_terms(am);
         std::fprintf(stderr, "strata metal stream: only %.1f GB left for the expert arena (the GPU working set %.1f GB, RAM %.1f GB, "
                              "%.1f GB allocated): expect a low hit rate\n", budget / gb, cx_->recommended_working_set() / gb,
                      phys / gb, used / gb);
+        std::fprintf(stderr, "strata metal stream: the arena is capped by %s: working set %.1f - base %.1f = %.1f, "
+                             "RAM %.1f - keep = %.1f, cap %.1f - base = %.1f GB (base = max(%.1f allocated, %.1f held))\n",
+                     at.binding(), am.working_set / gb, at.base / gb, at.gpu / gb, am.available / gb, at.ram / gb,
+                     footprint_cap(am) / gb, at.foot / gb, am.allocated / gb, am.proc_footprint / gb);
         budget = std::max(budget, 1.0 * gb);
     }
     std::string prof;
