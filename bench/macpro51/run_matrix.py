@@ -39,7 +39,8 @@ SLAB = re.compile(r"slab: ([\d.]+) MiB \(([^)]*)\)")
 
 def run_one(pack: str, round_no: int) -> dict:
     path = MODELS / ("Qwen3.6-35B-A3B-%s.gguf" % pack)
-    rec = {"pack": pack, "round": round_no, "model": str(path)}
+    rec = {"pack": pack, "round": round_no, "model": str(path),
+           "phase": "warmup" if round_no == 1 else "measure"}   # round 1 primes the page cache (BENCHMARK_PROTOCOL.md:96)
     if not path.is_file():
         rec.update(rc=-1, error="no such file")
         return rec

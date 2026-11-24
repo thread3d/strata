@@ -55,7 +55,10 @@ def summarise():
 
     rows = []
     for pack, runs in packs.items():
-        timed = [r for r in runs if "s_per_step" in r]
+        # the warm-up run primes the page cache; BENCHMARK_PROTOCOL.md:96-97 keeps it out of the summaries
+        timed = [r for r in runs if "s_per_step" in r and r.get("phase", "measure") != "warmup"]
+        if not timed:
+            timed = [r for r in runs if "s_per_step" in r and r.get("round", 2) >= 2]
         steps = sorted(r["s_per_step"] for r in timed)
         row = {
             "pack": pack,
