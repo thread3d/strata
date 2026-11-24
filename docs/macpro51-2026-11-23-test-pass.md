@@ -632,3 +632,47 @@ still prints that the alternative source "`--draft dflash2` with an external `--
 only and is not built for this backend" (`src/program/generate.cpp:4818`). It is false on this branch — the
 same command with those flags runs the drafter here — and it is the kind of line that sends the next reader
 down the wrong path.
+
+## Round 19: the warm Qwen3.6 matrix reproduces, and the cold run is the outlier (2026-11-24)
+
+Item 8 asked whether the stored warm matrix (`0.90-1.17 s/step`) could be reproduced, because this session's
+single runs measured 1.30-1.81. It can, and the gap was the page cache, not the engine.
+
+A fresh 3-run sweep (`python3 bench/macpro51/run_matrix.py --runs 3`, engine `build-metal/strata-q36-metal`,
+24 tokens decoded per run, 21 runs, rc=0) measured every pack once on a cold cache and twice after it:
+
+| pack | run 1 (cold) | run 2 | run 3 | mean of the warm runs | previously committed |
+|---|---|---|---|---|---|
+| Q4_K_M | 1.494 | 0.981 | 0.984 | **0.982 ± 0.002** | 0.980 ± 0.005 |
+| UD-Q4_K_XL | 1.717 | 0.903 | 0.901 | **0.902 ± 0.001** | 0.905 ± 0.003 |
+| Q6_K | 1.971 | 1.017 | 1.017 | **1.017 ± 0.000** | 1.017 ± 0.002 |
+| UD-Q6_K_XL | 2.086 | 1.083 | 1.078 | **1.081 ± 0.004** | 1.097 ± 0.002 |
+| Q8_0 | 2.283 | 1.171 | 1.173 | **1.172 ± 0.001** | 1.172 ± 0.003 |
+| UD-Q2_K_XL | refused | | | | refused (Q5_K embed) |
+| UD-Q8_K_XL | refused | | | | refused (BF16 down) |
+
+So the warm matrix reproduces to **0.5-1.5%** on every pack, and both refusals reproduce with the engine's
+own wording (`token_embd.weight is Q5_K, q36_embed only supports Q8_0, Q6_K and Q4_K`;
+`blk.34.ffn_down_exps.weight is BF16, and this port has no grouped expert down kernel for that type`).
+
+The one number that changes is the *cold* one, and it is worth writing down because it is what made this
+session's earlier single runs look like a regression: **the first run of a pack costs 1.5-1.95x its warm
+time** (1.494/0.981 = 1.52, 1.717/0.903 = 1.90, 1.971/1.017 = 1.94, 2.086/1.081 = 1.93, 2.283/1.172 = 1.95).
+That is disk and page cache, not the GPU: each pack is a 19.7-36.4 GB file and its first pass reads it.
+
+**A tooling fix came out of this, and it is the reason the numbers above are the warm ones.** The first
+3-run sweep was about to be published as `mean 1.153 ± 0.295` (Q4_K_M) — a mean the machine never sustains
+and an sd that is really just "one cold run". The repository's own protocol settles it:
+`docs/BENCHMARK_PROTOCOL.md:96-97`, "Include warm-up time in `required_duration_s`, but **exclude warm-up
+requests from performance and quality summaries**". So round 1 is now tagged `"phase": "warmup"` in
+`results-qwen36.json` and excluded by `charts.py`; the CSV's `runs` column says 2, not 3, and the tooltip
+says which. The cold run stays in the JSON, so nothing is hidden — it is excluded from the summary, as the
+protocol says, not deleted.
+
+Reproduce with:
+
+```sh
+rm -f bench/macpro51/results-qwen36.json        # the sweep resumes from existing records: it skips (pack, round) pairs it already has
+python3 bench/macpro51/run_matrix.py --runs 3    # ~25 min here, 21 engine processes
+python3 bench/macpro51/charts.py
+```
