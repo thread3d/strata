@@ -60,6 +60,16 @@ template <> struct X<T_Q2_0> {
         xsum[1] = 0.0f;
     }
 };
+// Q2_K: raw x (the 2-bit fields are read in place) with the per-16 sums the min term needs
+template <> struct X<T_Q2_K> {
+    template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
+        load16(xp + 32 * u, xs);
+        load16(xp + 32 * u + 16, xs + 16);
+        xsum[0] = s16[2 * u];
+        xsum[1] = s16[2 * u + 1];
+    }
+};
+
 // Q4_K / Q5_K: unit (block b, chunk c, half m): run0 at 256b + 64c + 16m, run1 = run0 + 32
 template <> struct X<T_Q4_K> {
     template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
@@ -280,6 +290,24 @@ template <> struct Dec<T_Q3_K> {
         }
         const float d1 = d * float(l1 - 32), d2 = d * float(l2 - 32);
         sc = float4(d1, d2, 4.0f * d1, 4.0f * d2);
+    }
+};
+
+template <> struct Dec<T_Q2_K> {   // d (scale nibble) code - dmin (min nibble), from ggml dequantize_row_q2_K
+    static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
+        device const uchar* b = row + (u >> 3) * 84;
+        const int hw = (u >> 2) & 1;        // 0 = values 0..127, 1 = 128..255 (not `half`: that is the MSL type)
+        const int j = u & 3;                // the 32-value group inside the half
+        const int shift = 2 * j;
+        const int is = hw * 8 + 2 * j;      // the scale/min byte for the unit's first 16
+        const float d = rdh(b + 80), dm = rdh(b + 82);
+        const uchar s0 = b[is], s1 = b[is + 1];
+        device const uchar* qp = b + 16 + hw * 32;
+        for (int l = 0; l < 16; ++l) {
+            q[l] = float((qp[l] >> shift) & 3);
+            q[16 + l] = float((qp[l + 16] >> shift) & 3);
+        }
+        sc = float4(d * (s0 & 15), d * (s1 & 15), dm * (s0 >> 4), dm * (s1 >> 4));
     }
 };
 

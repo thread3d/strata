@@ -10,7 +10,7 @@
 
 int main() {
     int fails = 0;
-    for (int ty : {ref::IQ1_S, ref::IQ1_M, ref::Q6_K, ref::IQ2_XXS, ref::Q4_K, ref::Q5_K, ref::Q3_K, ref::Q8_0, ref::IQ4_XS, ref::IQ3_S, ref::IQ4_NL}) {
+    for (int ty : {ref::IQ1_S, ref::IQ1_M, ref::Q6_K, ref::IQ2_XXS, ref::Q4_K, ref::Q5_K, ref::Q2_K, ref::Q3_K, ref::Q8_0, ref::IQ4_XS, ref::IQ3_S, ref::IQ4_NL}) {
         const int n = 64, k = 2048;
         std::vector<uint8_t> w(ref::row_bytes(ty, k) * n);
         ref::random_blocks(ty, w.data(), n, k, 21 + ty, 0.05f);
