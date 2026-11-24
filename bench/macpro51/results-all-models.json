@@ -1,0 +1,320 @@
+[
+ {
+  "family": "deepseek-v4.1-flash",
+  "name": "deepseek-v4.1-flash",
+  "rc": 2,
+  "wall_s": 0.0,
+  "note": "not run: it needs STRATA_DS4_ALLOW_UNSTABLE_METAL=1, which resets this card (see AGENTS.md); --pack-info is the part that runs here"
+ },
+ {
+  "family": "qwen36",
+  "name": "Qwen3.6-35B-A3B-Q4_K_M.gguf",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q4_K_M.gguf",
+  "bytes": 21166758368,
+  "rc": 0,
+  "wall_s": 33.6,
+  "prompt_tokens": 23,
+  "decode_tokens": 8,
+  "s_per_step": 0.967
+ },
+ {
+  "family": "qwen36",
+  "name": "Qwen3.6-35B-A3B-Q6_K.gguf",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q6_K.gguf",
+  "bytes": 28514152928,
+  "rc": 0,
+  "wall_s": 36.1,
+  "prompt_tokens": 23,
+  "decode_tokens": 8,
+  "s_per_step": 1.01
+ },
+ {
+  "family": "qwen36",
+  "name": "Qwen3.6-35B-A3B-Q8_0.gguf",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",
+  "bytes": 37801097504,
+  "rc": 0,
+  "wall_s": 42.2,
+  "prompt_tokens": 23,
+  "decode_tokens": 8,
+  "s_per_step": 1.177
+ },
+ {
+  "family": "qwen36",
+  "name": "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
+  "bytes": 12574128416,
+  "rc": 1,
+  "wall_s": 0.3,
+  "error": "cannot read the model: token_embd.weight is Q5_K, q36_embed only supports Q8_0, Q6_K and Q4_K"
+ },
+ {
+  "family": "qwen36",
+  "name": "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+  "bytes": 22853663008,
+  "rc": 0,
+  "wall_s": 33.4,
+  "prompt_tokens": 23,
+  "decode_tokens": 8,
+  "s_per_step": 0.907
+ },
+ {
+  "family": "qwen36",
+  "name": "Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",
+  "bytes": 32611711264,
+  "rc": 0,
+  "wall_s": 39.3,
+  "prompt_tokens": 23,
+  "decode_tokens": 8,
+  "s_per_step": 1.082
+ },
+ {
+  "family": "qwen36",
+  "name": "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
+  "bytes": 39099447584,
+  "rc": 1,
+  "wall_s": 0.3,
+  "error": "cannot read the model: blk.34.ffn_down_exps.weight is BF16, and this port has no grouped expert down kernel for that type (it takes: Q8_0, Q5_0, Q5_1, IQ4_NL, IQ4_XS, IQ3_S and Q2_0)"
+ },
+ {
+  "family": "qwen36",
+  "name": "mmproj-F16.gguf",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/mmproj-F16.gguf",
+  "bytes": 899283584,
+  "rc": 1,
+  "wall_s": 0.1,
+  "error": "cannot read the model: architecture is 'clip', this engine requires 'qwen4exp'"
+ },
+ {
+  "family": "qwen38",
+  "name": "Gyro-M",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/Gyro-M",
+  "rc": -1,
+  "error": "no native pack or no *-metal.gguf"
+ },
+ {
+  "family": "qwen38",
+  "name": "Gyro-S",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/Gyro-S",
+  "rc": -1,
+  "error": "no native pack or no *-metal.gguf"
+ },
+ {
+  "family": "qwen38",
+  "name": "IQ2_XS",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/IQ2_XS",
+  "rc": -1,
+  "error": "no native pack or no *-metal.gguf"
+ },
+ {
+  "family": "qwen38",
+  "name": "IQ3_S",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/IQ3_S",
+  "rc": -1,
+  "error": "no native pack or no *-metal.gguf"
+ },
+ {
+  "family": "qwen38",
+  "name": "IQ3_XXS",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/IQ3_XXS",
+  "rc": -1,
+  "error": "no native pack or no *-metal.gguf"
+ },
+ {
+  "family": "qwen38",
+  "name": "Q2_0",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/Q2_0",
+  "rc": -1,
+  "error": "no native pack or no *-metal.gguf"
+ },
+ {
+  "family": "qwen38",
+  "name": "Q8_0",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/Q8_0",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/Q8_0/Q8_0-metal.gguf",
+  "bytes": 133832310784,
+  "rc": 0,
+  "wall_s": 38.6,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "303",
+   "7472"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 6009.3
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-IQ1_M",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-IQ1_M",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-IQ1_M/UD-IQ1_M-metal.gguf",
+  "bytes": 39214481408,
+  "rc": 0,
+  "wall_s": 48.6,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "1544",
+   "76"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 5614.2
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-IQ2_XS",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-IQ2_XS",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-IQ2_XS/UD-IQ2_XS-metal.gguf",
+  "bytes": 47039479808,
+  "rc": 0,
+  "wall_s": 38.8,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "1544",
+   "76"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 4501.6
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-IQ3_XXS",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-IQ3_XXS",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-IQ3_XXS/UD-IQ3_XXS-metal.gguf",
+  "bytes": 54834741248,
+  "rc": 0,
+  "wall_s": 41.6,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "303",
+   "7472"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 4997.5
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-IQ4_XS",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-IQ4_XS",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-IQ4_XS/UD-IQ4_XS-metal.gguf",
+  "bytes": 64880361472,
+  "rc": 0,
+  "wall_s": 41.5,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "303",
+   "7472"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 4820.7
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-Q2_0",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q2_0",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q2_0/UD-Q2_0-metal.gguf",
+  "bytes": 41757278208,
+  "rc": 0,
+  "wall_s": 41.7,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "1544",
+   "76"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 4583.2
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-Q2_K_XL",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q2_K_XL",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q2_K_XL/UD-Q2_K_XL-metal.gguf",
+  "bytes": 50788139008,
+  "rc": 0,
+  "wall_s": 40.6,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "1544",
+   "76"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 4715.5
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-Q3_K_XL",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q3_K_XL",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q3_K_XL/UD-Q3_K_XL-metal.gguf",
+  "bytes": 60672950272,
+  "rc": 0,
+  "wall_s": 41.7,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "303",
+   "7472"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 4847.5
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-Q4_K_XL",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q4_K_XL",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q4_K_XL/UD-Q4_K_XL-metal.gguf",
+  "bytes": 82541477888,
+  "rc": 0,
+  "wall_s": 40.8,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "303",
+   "7472"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 5002.1
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-Q5_K_XL",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q5_K_XL",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q5_K_XL/UD-Q5_K_XL-metal.gguf",
+  "bytes": 103893106688,
+  "rc": 0,
+  "wall_s": 35.3,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "303",
+   "7472"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 5609.4
+ },
+ {
+  "family": "qwen38",
+  "name": "UD-Q6_K_XL",
+  "dir": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q6_K_XL",
+  "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen38/UD-Q6_K_XL/UD-Q6_K_XL-metal.gguf",
+  "bytes": 114772082688,
+  "rc": 0,
+  "wall_s": 36.2,
+  "accepted": 0,
+  "offered": 7,
+  "tokens": [
+   "303",
+   "7472"
+  ],
+  "prefill_tokens": 4,
+  "prefill_ms": 5824.4
+ }
+]

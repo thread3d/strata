@@ -36,7 +36,53 @@ RESULTS = HERE / "results-all-models.json"
 
 PROMPT = "Explain, in two short sentences, why the sky looks blue during the day and red at sunset."
 Q38_TOKENS = "3,1,42498,456,11"
-PLE_BYTES = 28800138432   # the PLE/vision shard has this size in every qwen38 pack
+def ple_shard(d):
+    """The shard whose GGUF header carries the PLE tensors (`blk.1.ple_conv1d.weight`). The size differs per
+    pack (28.8 GB in UD-IQ1_M, 12.1 GB in UD-Q4_K_XL), so a size rule is wrong - the header is the truth."""
+    import struct
+    for p in sorted(Path(d).glob("*.gguf")):
+        if p.name.endswith("-metal.gguf"):
+            continue
+        try:
+            f = open(p, "rb")
+            if f.read(4) != b"GGUF":
+                f.close()
+                continue
+            f.seek(0)
+            f.read(4)
+            ver, nt, nkv = struct.unpack("<IQQ", f.read(20))
+
+            def rd_str():
+                n = struct.unpack("<Q", f.read(8))[0]
+                return f.read(n)
+
+            def skip(t):
+                sz = {0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8}.get(t)
+                if sz:
+                    f.read(sz)
+                elif t == 8:
+                    rd_str()
+                elif t == 9:
+                    at, n = struct.unpack("<IQ", f.read(12))
+                    for _ in range(n):
+                        skip(at)
+
+            for _ in range(nkv):
+                rd_str()
+                skip(struct.unpack("<I", f.read(4))[0])
+            hit = False
+            for _ in range(nt):
+                if b"per_layer_token_embd" in rd_str().lower():
+                    hit = True
+                    break
+                nd = struct.unpack("<I", f.read(4))[0]
+                f.read(8 * nd + 4 + 8)
+            f.close()
+            if hit:
+                return p
+        except Exception:
+            continue
+    return None
 
 STEP = re.compile(r"prompt (\d+) token\(s\) \+ (\d+) generated in ([\d.]+) s \(([\d.]+) s a step\)")
 SPEC = re.compile(r"speculation\s+\d+ rounds of \d+, drafts accepted (\d+) of (\d+)")
@@ -82,17 +128,17 @@ def q38(dirname):
     rec = {"family": "qwen38", "name": dirname, "dir": str(d)}
     metal = sorted(d.glob("*-metal.gguf"))
     pack = d / "pack"
-    ple = [f for f in sorted(d.glob("*.gguf")) if f.stat().st_size == PLE_BYTES]
+    ple = ple_shard(d)
     if not metal or not pack.is_dir():
         rec.update(rc=-1, error="no native pack or no *-metal.gguf")
         return rec
-    if not ple:
-        rec.update(rc=-1, error="no PLE shard (none of %d bytes)" % PLE_BYTES)
+    if ple is None:
+        rec.update(rc=-1, error="no shard in the pack carries the PLE tensors")
         return rec
     rec["model"] = str(metal[0])
     rec["bytes"] = metal[0].stat().st_size
     argv = [str(BIN), "--pack", str(pack), "--native", str(metal[0]), "--native-dense-gguf", str(metal[0]),
-            "--ple-gguf", str(ple[0]), "--expert-profile", "data/expert-profile.bin", "--expert-cache", "auto",
+            "--ple-gguf", str(ple), "--expert-profile", "data/expert-profile.bin", "--expert-cache", "auto",
             "--tokens", Q38_TOKENS, "--max-new", "2", "--max-context", "512",
             "--draft", "dflash2", "--draft-model", str(MODELS / "dflash2-drafter" / "dflash2.pack"),
             "--draft-fallback", "none", "--mtp-draft-vocab", "data/draft_vocab.bin",
