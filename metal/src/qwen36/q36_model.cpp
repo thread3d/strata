@@ -48,6 +48,7 @@ bool expert_gu_ok(int t) {
     switch (t) {
     case ref::Q2_0: case ref::Q4_K: case ref::Q5_K: case ref::Q6_K: case ref::Q8_0:
     case ref::IQ2_XXS: case ref::IQ2_XS: case ref::IQ2_S: case ref::IQ3_XXS: case ref::IQ3_S: case ref::IQ4_XS:
+    case ref::BF16:   // the UD-Q8_K_XL pack's layer 39 gate/up
         return true;
     default:
         return false;
@@ -57,6 +58,7 @@ bool expert_dn_ok(int t) {
     switch (t) {
     case ref::Q2_0: case ref::Q5_0: case ref::Q5_1: case ref::Q5_K: case ref::Q8_0: case ref::IQ4_NL: case ref::IQ4_XS: case ref::IQ3_S: case ref::IQ3_XXS:
     case ref::Q4_K: case ref::Q6_K: case ref::Q3_K:
+    case ref::BF16:   // the UD-Q8_K_XL pack's layers 34/38/39 down
         return true;
     default:
         return false;
@@ -95,8 +97,8 @@ bool check_type(std::string& err, const TensorRef& r, Role role, const char* wha
     std::snprintf(buf, sizeof buf, "%s is %s, and this port has no %s kernel for that type (it takes: %s)", r.name(),
                   r.t->type_name(), what,
                   role == Role::Dense ? "dense Q8_0, the K-quants, the IQ types, F16/BF16/F32"
-                                      : (role == Role::ExpertGateUp ? "Q8_0, the K-quants, the IQ types and Q2_0"
-                                                                    : "Q8_0, Q5_0, Q5_1, IQ4_NL, IQ4_XS, IQ3_S and Q2_0"));
+                                      : (role == Role::ExpertGateUp ? "Q8_0, BF16, the K-quants, the IQ types and Q2_0"
+                                                                    : "Q8_0, BF16, Q5_0/Q5_1, the K-quants, IQ4_NL, IQ4_XS, IQ3_S, IQ3_XXS and Q2_0"));
     if (err.empty()) err = buf;
     return false;
 }

@@ -453,6 +453,7 @@ GU_SET(T_IQ2_S)
 GU_SET(T_IQ3_S)
 GU_SET(T_IQ4_XS)   // the IQ3_S pack's gate/up in one layer
 GU_SET(T_Q4_K) GU_SET(T_Q5_K) GU_SET(T_Q6_K) GU_SET(T_Q8_0)   // the UD-Q4/5/6_K_XL packs
+GU_SET(T_BF16)   // the UD-Q8_K_XL pack's layer 39 gate/up: raw bf16, 16 values a unit, no scales
 DN_SET(T_Q5_1) DN_SET(T_Q8_0)
 DN_SET(T_Q5_0)   // the UD-IQ2_XS / Q2_K_XL / Q3_K_XL / IQ4_XS packs' down experts (generic Dec: d * (code - 16))
 #ifndef STRATA_KQ_DOWN   // with the K-quant down path on, DNK_SET below instantiates the same host names
@@ -462,6 +463,7 @@ DN_SET(T_Q2_0)
 DN_SET(T_Q2_0R)
 DN_SET(T_IQ4_NL)
 DN_SET(T_IQ3_XXS)   // the UD-Q2_K_XL pack's down experts
+DN_SET(T_BF16)      // the UD-Q8_K_XL pack's layers 34/38/39 down experts: raw bf16, 16 values a unit
 // UD files at expert widths divisible by 256: IQ4_XS / IQ3_S downs read raw h like the gate/up's raw-kind formats (the generic
 // X / Dec); the K-quants take moe_down_k (XD above).  Same host names, moe_down_<type>_<L>_<R>_<S>.
 #ifdef STRATA_KQ_DOWN   // the host defines it when a layer's down is one of these types (window.cpp kq_down_prelude): today's sets compile exactly what they did
