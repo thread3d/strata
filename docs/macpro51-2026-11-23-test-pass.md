@@ -737,6 +737,12 @@ Recorded because it cost a run and will be needed again: `UD-IQ2_XS` runs on thi
 command, one pack swap (`--pack`, `--native`, `--native-dense-gguf`, `--ple-gguf` -> the `-00003-of-00003`
 shard), 0.50 tok/s decode, 4.8 s prefill for 4 tokens.
 
+> **Superseded in part (Round 22):** the fold this section concluded was wrong. The `bo` term is needed -
+> at tap time `R_` is pre-fold and the sublayer output is still in `bo_`, and `gr_norm` applies
+> `R_c + bo*g_c` only at the next layer's read. The patch's `mean(dim=-2)` is the completed layer output,
+> i.e. the form the port already had; `tap_gr_kernel` is the correct CUDA kernel and `tap_rows_kernel`
+> (prefill) the deviant one. See Round 22.
+
 ## Round 21: the drafter's own capture patch settles the fold — and it was already measured (2026-11-24)
 
 Round 17 and 20 both ended by naming "the community's target-extraction snippet" as the way to settle the tap
@@ -785,3 +791,41 @@ lands with evidence rather than with a citation.
 
 External sources are recorded by URL only; nothing above was taken on trust from them, and the numbers are
 this machine's.
+
+## Round 22: the tap needs the `bo` term after all — Round 21's change reverted, and its CUDA conclusion corrected (2026-11-24)
+
+Round 21 read the drafter's capture patch (`mean(dim=-2)` over the hyper-connection streams) and concluded the
+port should drop the `bo` term. **That was wrong**, and it is worth recording how it was caught and what the
+kernel actually does, because the patch really is authoritative — it was the inference from it that was not.
+
+The question Round 21 could not answer from the patch alone was *which instant* the tap reads. The answer is
+in the engine's own kernels:
+
+- the layer's last sublayer output is written by the MoE combine into `bo_` (`moe_combine_sh`, window.cpp:1340),
+  **not** into `R_`;
+- `tap_dispatch` runs immediately after that (window.cpp:1345), so at that moment `R_` is still pre-fold;
+- the fold happens later, in `gr_norm` at the *next* layer's read (`metal/kernels/gr.metal:51-53`):
+  `v = fma(bo[t*n+d], g, v); r[d] = v;` — i.e. `R'_c = R_c + bo·g_c`, written back into `R`.
+
+So the completed layer output is `R_c + bo·g_c`, and its mean over the streams is
+`(Σ_c R_c + bo·Σ_c g_c) / hc` — **exactly the form the port already had**, and exactly `mean(dim=-2)` of the
+patch applied to the completed layer output. The plain mean is the *pre-sublayer* state: it drops the MLP.
+`6ab61461b` reverts `c1438b0a5`, and the reverted build reproduces the pre-change dump bit for bit, which is
+the regression check that the revert restored the exact old arithmetic.
+
+**And this inverts Round 21's remark about the two CUDA kernels.** On this evidence `tap_gr_kernel` (the
+decode path, with the `bo` term) is the correct one, and `tap_rows_kernel` (the prefill path, plain mean of
+`R`) is the one that omits a sublayer — the opposite of what Round 21 said. That matters beyond the drafter:
+if CUDA's prefill writes taps that way, the rows a prompt contributes are tapped one sublayer early. It is
+recorded here as a found defect for whoever can run CUDA/HIP, not fixed blind.
+
+What the episode cost and what it changes: one engine commit, one revert, and two runs. The measured ranks
+that motivated the change (382/3156/2563/20201/51856/86/7 for the plain mean against
+457/2084/2282/15620/33206/91/10 for the correct one) were already a sign that the difference was noise rather
+than signal — and they now read as evidence that acceptance is insensitive to which of the two quantities the
+drafter is fed, which is itself worth knowing: the drafter is not near the acceptance boundary where the fold
+would decide it.
+
+The lesson kept: a correct citation is not a correct change. The patch settled the *form* of the fold; only
+the kernel's read order could settle the *term*, and reading it took ten minutes against a rebuild-and-run
+cycle that had already been spent.
