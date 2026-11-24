@@ -7,7 +7,7 @@ Three families are on the box and each is driven by a different entry point:
 
   * qwen36  - plain GGUF, `build-metal/strata-q36-metal --model X --prompt "..." --n N --text`
               (the q36 engine reads one file; the seven packs include two the engine refuses).
-  * qwen38  - native pack + a metal GGUF + the PLE shard, `build-metal/strata --pack ... --native ...
+  * qwen38  - native pack + the GGUF its offsets are in + the PLE shard, `build-metal/strata --pack ... --native ...
               --ple-gguf ... --draft dflash2 ...`.  A native IQ pack refuses without `--spec`, and
               `--spec` needs a draft source, so the DFlash2 drafter is always attached here.
   * deepseek-v4.1-flash - `strata_ds4 --pack-info` (works without a GPU); running it needs
@@ -123,21 +123,46 @@ def q36(name):
     return rec
 
 
+def native_file(d, ple):
+    """The GGUF a pack's absolute expert offsets are in: native_experts.txt names it in its header line
+    ("... absolute offsets in <file>.gguf, or in the named shard beside it").  Only packs converted before
+    that file existed need the fallback, which prefers a -metal.gguf and then the largest shard that is not
+    the PLE holder (the dense half is always the big one)."""
+    try:
+        head = (d / "pack" / "native_experts.txt").read_text(errors="replace").splitlines()[:1]
+    except OSError:
+        head = []
+    m = re.search(r"absolute offsets in ([^,]+),", head[0]) if head else None
+    if m:
+        cand = d / m.group(1).strip()
+        if cand.is_file():
+            return cand
+    metal = sorted(d.glob("*-metal.gguf"))
+    if metal:
+        return metal[0]
+    others = [q for q in sorted(d.glob("*.gguf")) if q != ple]
+    return max(others, key=lambda q: q.stat().st_size) if others else None
+
+
 def q38(dirname):
     d = MODELS / "qwen38" / dirname
     rec = {"family": "qwen38", "name": dirname, "dir": str(d)}
-    metal = sorted(d.glob("*-metal.gguf"))
     pack = d / "pack"
     ple = ple_shard(d)
-    if not metal or not pack.is_dir():
-        rec.update(rc=-1, error="no native pack or no *-metal.gguf")
+    if not pack.is_dir():
+        rec.update(rc=-1, error="no native pack")
         return rec
     if ple is None:
         rec.update(rc=-1, error="no shard in the pack carries the PLE tensors")
         return rec
-    rec["model"] = str(metal[0])
-    rec["bytes"] = metal[0].stat().st_size
-    argv = [str(BIN), "--pack", str(pack), "--native", str(metal[0]), "--native-dense-gguf", str(metal[0]),
+    native = native_file(d, ple)
+    if native is None:
+        rec.update(rc=-1, error="no shard holds the dense tensors")
+        return rec
+    rec["model"] = str(native)
+    rec["native"] = native.name
+    rec["bytes"] = native.stat().st_size
+    argv = [str(BIN), "--pack", str(pack), "--native", str(native), "--native-dense-gguf", str(native),
             "--ple-gguf", str(ple), "--expert-profile", "data/expert-profile.bin", "--expert-cache", "auto",
             "--tokens", Q38_TOKENS, "--max-new", "2", "--max-context", "512",
             "--draft", "dflash2", "--draft-model", str(MODELS / "dflash2-drafter" / "dflash2.pack"),
