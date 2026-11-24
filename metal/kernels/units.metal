@@ -60,6 +60,17 @@ template <> struct X<T_Q2_0> {
         xsum[1] = 0.0f;
     }
 };
+// IQ1_M: raw x, and the two 8-value sums its two deltas need (the interface's xsum is per half of the unit)
+template <> struct X<T_IQ1_M> {
+    template <typename P> static inline void load(P xp, P, int u, thread float* xs, thread float* xsum) {
+        load16(xp + 16 * u, xs);
+        float a = 0.0f, b = 0.0f;
+        for (int j = 0; j < 8; ++j) { a += xs[j]; b += xs[8 + j]; }
+        xsum[0] = a;
+        xsum[1] = b;
+    }
+};
+
 // Q2_K: raw x (the 2-bit fields are read in place) with the per-16 sums the min term needs
 template <> struct X<T_Q2_K> {
     template <typename P> static inline void load(P xp, P s16, int u, thread float* xs, thread float* xsum) {
@@ -308,6 +319,33 @@ template <> struct Dec<T_Q2_K> {   // d (scale nibble) code - dmin (min nibble),
             q[16 + l] = float((qp[l + 16] >> shift) & 3);
         }
         sc = float4(d * (s0 & 15), d * (s1 & 15), dm * (s0 >> 4), dm * (s1 >> 4));
+    }
+};
+
+template <> struct Dec<T_IQ1_M> {   // dl (grid + delta): a 16-value unit is two 8-value groups, one delta each
+    static inline void run(device const uchar* row, int u, thread float* q, thread float4& sc, threadgroup const uint*) {
+        device const uchar* b = row + (u >> 4) * 56;       // 16 units (16 values each) a block
+        const int ib = (u >> 1) & 7;                        // the 32-value sub-block
+        const int hf = u & 1;                              // first or second 16 of it
+        const ushort s0 = ushort(b[48] | (b[49] << 8)), s1 = ushort(b[50] | (b[51] << 8));
+        const ushort s2 = ushort(b[52] | (b[53] << 8)), s3 = ushort(b[54] | (b[55] << 8));
+        const float d = float(as_type<half>(ushort((s0 >> 12) | ((s1 >> 8) & 0x00f0) | ((s2 >> 4) & 0x0f00) | (s3 & 0xf000))));
+        const ushort sb = ushort(b[48 + 2 * (ib >> 1)] | (b[49 + 2 * (ib >> 1)] << 8));
+        const float dl = d * float(2 * ((sb >> (6 * (ib & 1) + (hf ? 3 : 0))) & 7) + 1);
+        float delta[2];
+        for (int h = 0; h < 2; ++h) {
+            const int g = 2 * hf + h;                      // the 8-value group inside the sub-block
+            const uint qhb = uint(b[32 + 2 * ib + (g >= 2 ? 1 : 0)]);
+            const uint idx = uint(b[4 * ib + g]) | ((g & 1) ? ((qhb << 4) & 0x700u) : ((qhb << 8) & 0x700u));
+            const bool neg = (g & 1) ? ((qhb & 0x80u) != 0u) : ((qhb & 0x08u) != 0u);
+            delta[h] = neg ? -0.125f : 0.125f;
+            const ulong gr = iq1s_grid[idx];
+            for (int j = 0; j < 8; ++j) {
+                const uint by = uint((gr >> (8u * uint(j))) & 0xffu);
+                q[8 * h + j] = (by & 0x80u) ? float(int(by) - 256) : float(int(by));
+            }
+        }
+        sc = float4(dl, dl, -dl * delta[0], -dl * delta[1]);
     }
 };
 
