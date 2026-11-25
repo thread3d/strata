@@ -12,6 +12,7 @@
 #include <iostream>
 #include <numeric>
 #include <random>
+#include <functional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -129,9 +130,14 @@ static bool run_greedy_decode(
     int& total_accepted,
     int& total_offered,
     std::string& err,
-    int tree_budget = 0) {
+    int tree_budget = 0,
+    std::function<void(int32_t)> on_token = {},
+    std::function<void(int, int, double)> on_prefill = {}) {
     r.reset_slot(slot);
     out_ids.clear();
+    // every finished token goes through here, so a served request can stream it at once (the server's
+    // silence watchdog kills an engine that says nothing for engine_silence_s, and TTFT is measured here)
+    auto push = [&](int32_t tok) { out_ids.push_back(tok); if (on_token) on_token(tok); };
     total_accepted = 0;
     total_offered = 0;
 
@@ -156,11 +162,12 @@ static bool run_greedy_decode(
         st.compute_logits = is_last;
         st.logits_last_only_idx = is_last ? (cm - 1) : -1;
         if (!r.forward_batch(st, nullptr, is_last ? &next_tok : nullptr, err)) return false;
+        if (on_prefill) on_prefill(p0 + cm, P, (mtl::now_s() - tp0) * 1e3);
     }
     prompt_ms = (mtl::now_s() - tp0) * 1e3;
 
     if (max_new <= 0) { decode_ms = 0.0; return true; }
-    out_ids.push_back(next_tok);
+    push(next_tok);
     int cur_pos = P;
 
     // 2. Decode loop (adaptive DSpark draft length OR Multi-Branch Tree DSpark!)
@@ -184,7 +191,7 @@ static bool run_greedy_decode(
             st.compute_logits = true;
             if (!r.forward_batch(st, nullptr, &next_tok, err)) return false;
             ++cur_pos;
-            out_ids.push_back(next_tok);
+            push(next_tok);
         } else if (tree_budget != 0 && r.use_dspark_meff) {
             InkDraftTree tree;
             const int rem_cap = max_new - (int)out_ids.size();
@@ -199,7 +206,7 @@ static bool run_greedy_decode(
                 st.capture_taps = true; st.compute_logits = true;
                 if (!r.forward_batch(st, nullptr, &next_tok, err)) return false;
                 ++cur_pos;
-                out_ids.push_back(next_tok);
+                push(next_tok);
                 continue;
             }
             if (tree.is_linear) {
@@ -221,12 +228,12 @@ static bool run_greedy_decode(
                 total_accepted += accepted;
                 for (int i = 0; i < accepted; ++i) {
                     const int32_t tk = tree.tok_ids[i + 1];
-                    out_ids.push_back(tk);
+                    push(tk);
                     if (tk == eos_id || (int)out_ids.size() >= max_new) break;
                 }
                 if ((int)out_ids.size() < max_new && (accepted == 0 || tree.tok_ids[accepted] != eos_id)) {
                     next_tok = ver_ids[accepted];
-                    out_ids.push_back(next_tok);
+                    push(next_tok);
                 }
                 if (accepted < rem) r.restore_verify_step(slot, accepted);
                 cur_depth = std::max(4, std::min(7, accepted + 3));
@@ -284,12 +291,12 @@ static bool run_greedy_decode(
 
             for (int i = 1; i <= accepted; ++i) {
                 const int32_t tk = tree.tok_ids[path_nodes[i]];
-                out_ids.push_back(tk);
+                push(tk);
                 if (tk == eos_id || (int)out_ids.size() >= max_new) break;
             }
             if ((int)out_ids.size() < max_new && (accepted == 0 || tree.tok_ids[path_nodes[accepted]] != eos_id)) {
                 next_tok = bonus_tok;
-                out_ids.push_back(next_tok);
+                push(next_tok);
             }
             r.commit_tree_path(slot, cur_pos, path_nodes);
             cur_depth = std::max(4, std::min(7, accepted + 3));
@@ -304,7 +311,7 @@ static bool run_greedy_decode(
                 st.capture_taps = true; st.compute_logits = true;
                 if (!r.forward_batch(st, nullptr, &next_tok, err)) return false;
                 ++cur_pos;
-                out_ids.push_back(next_tok);
+                push(next_tok);
                 continue;
             }
             const int rem = std::min(nd, max_new - (int)out_ids.size() - 1);
@@ -340,12 +347,12 @@ static bool run_greedy_decode(
             total_accepted += accepted;
 
             for (int i = 0; i < accepted; ++i) {
-                out_ids.push_back(draft[i]);
+                push(draft[i]);
                 if (draft[i] == eos_id || (int)out_ids.size() >= max_new) break;
             }
             if ((int)out_ids.size() < max_new && (accepted == 0 || draft[accepted - 1] != eos_id)) {
                 next_tok = ver_ids[accepted];
-                out_ids.push_back(next_tok);
+                push(next_tok);
             }
             // O(1) ZERO-REPLAY ShortConv & f_rnn state rollback when partial accept occurred!
             if (accepted < rem) {
@@ -550,14 +557,18 @@ int main(int argc, char** argv) {
             double pms = 0.0, dms = 0.0;
             int acc = 0, off = 0;
             std::string derr;
-            if (!run_greedy_decode(runner, 0, ids, max_new, runner.use_dspark, out, pms, dms, acc, off, derr)) {
+            // stream: the server kills an engine that says nothing for engine_silence_s, and TTFT is the
+            // moment the first T line arrives, so tokens and prompt-progress lines go out as they happen.
+            auto emit_tok = [](int32_t id) { std::printf("T %d\n", (int) id); std::fflush(stdout); };
+            auto emit_pf = [](int read, int total, double ms) {
+                std::printf("PP %d %d %.0f %.2f\n", read, total, ms, read * 1000.0 / (ms > 0.0 ? ms : 1.0));
+                std::fflush(stdout);
+            };
+            if (!run_greedy_decode(runner, 0, ids, max_new, runner.use_dspark, out, pms, dms, acc, off, derr,
+                                   0, emit_tok, emit_pf)) {
                 std::printf("ERR %s\n", derr.c_str());
                 std::fflush(stdout);
                 continue;
-            }
-            for (int32_t id : out) {
-                std::printf("T %d\n", (int) id);
-                std::fflush(stdout);
             }
             std::printf("DONE %d %d %.3f %.3f %s %d %d 0\n", (int) out.size(), (int) ids.size(), pms, dms,
                         out.empty() ? "error" : "length", acc, off);
