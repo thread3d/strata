@@ -437,17 +437,40 @@ kernel void ink_mpp_ctrl_fuse_gf_norm(
 kernel void ink_mpp_moe_plan(
     device const int* topk_idx [[buffer(0)]],
     constant int& P            [[buffer(1)]],
-    constant int& allow_128    [[buffer(2)]],  // 1 for M >= 128, 0 for M < 128
-    device int* srt_pair       [[buffer(3)]],  // [total_rows] (-1 for padded rows)
-    device int* pair_pos       [[buffer(4)]],  // [P] -> row index in sorted layout
-    device int4* tiles_128     [[buffer(5)]],  // [n128] = (e, row0, valid_rows, 0)
-    device int4* tiles_64      [[buffer(6)]],  // [n64]  = (e, row0, valid_rows, 0)
-    device int4* tiles_32      [[buffer(7)]],  // [n32]  = (e, row0, valid_rows, 0)
-    device int4* tiles_16      [[buffer(8)]],  // [n16]  = (e, row0, valid_rows, 0)
-    device uint* meta          [[buffer(9)]],  // indirect dispatch args (24 uints)
-    uint e    [[thread_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]]) {
+    constant int& allow_128    [[buffer(2)]],
+    // 1 for M >= 128,
+    0 for M < 128
+    device int* srt_pair       [[buffer(3)]],
+    // [total_rows] (-1 for padded rows)
+    device int* pair_pos       [[buffer(4)]],
+    // [P] -> row index in sorted layout
+    device int4* tiles_128     [[buffer(5)]],
+    // [n128] = (e,
+    row0,
+    valid_rows,
+    0)
+    device int4* tiles_64      [[buffer(6)]],
+    // [n64]  = (e,
+    row0,
+    valid_rows,
+    0)
+    device int4* tiles_32      [[buffer(7)]],
+    // [n32]  = (e,
+    row0,
+    valid_rows,
+    0)
+    device int4* tiles_16      [[buffer(8)]],
+    // [n16]  = (e,
+    row0,
+    valid_rows,
+    0)
+    device uint* meta          [[buffer(9)]],
+    // indirect dispatch args (24 uints)
+    uint e    [[thread_index_in_threadgroup]]) {    const uint tid = e;   // this kernel names its thread index differently
+
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup int sg_r[4];
     threadgroup int sg_128[4];
     threadgroup int sg_64[4];

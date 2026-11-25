@@ -204,14 +204,16 @@ kernel void iv_rope2d(
 // 7. Full Bidirectional ViT Attention (S tokens, 16 heads x 64)
 //    grid (S, 16, 1), 128 threads (4 SGs x 32 lanes, 2 dims/lane)
 kernel void iv_attn(
+    uint tid [[thread_index_in_threadgroup]],
     device const float* Q [[buffer(0)]],
     device const float* K [[buffer(1)]],
     device const float* V [[buffer(2)]],
     device float* O       [[buffer(3)]],
     constant int& S       [[buffer(4)]],
-    uint2 tgp  [[threadgroup_position_in_grid]],
-    uint sg    [[simdgroup_index_in_threadgroup]],
-    uint lane  [[thread_index_in_simdgroup]]) {
+    uint2 tgp  [[threadgroup_position_in_grid]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup float sh_m[4];
     threadgroup float sh_l[4];
     threadgroup float sh_o[4 * IV_HD];

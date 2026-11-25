@@ -521,6 +521,8 @@ int main(int argc, char** argv) {
                 if (line == "STOP" || line == "QUIT") break;
                 continue;
             }
+            if (std::getenv("STRATA_INK_SERVE_TRACE"))
+                std::fprintf(stderr, "[ink_serve] line (%zu chars): %.240s\n", line.size(), line.c_str());
             std::istringstream ss(line);
             std::string tag;
             int max_new = 0;
@@ -529,7 +531,15 @@ int main(int argc, char** argv) {
             std::string tok;
             while (ss >> tok) {
                 if (tok.find('=') != std::string::npos) continue;   // temperature=/top_p=/... ride the same line
-                ids.push_back((int32_t) std::atoi(tok.c_str()));
+                // terminal/serve writes "GEN <max_new>[keys] id,id,id": the ids arrive comma-separated in one
+                // field (space-separated also accepted, which is what the hand-written lines use).
+                for (size_t pos = 0; pos <= tok.size();) {
+                    const size_t comma = tok.find(',', pos);
+                    const std::string one = tok.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+                    if (!one.empty()) ids.push_back((int32_t) std::atoi(one.c_str()));
+                    if (comma == std::string::npos) break;
+                    pos = comma + 1;
+                }
             }
             if (ids.empty()) {
                 std::printf("ERR empty prompt\n");

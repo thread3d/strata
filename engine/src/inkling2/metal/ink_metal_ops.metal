@@ -774,20 +774,32 @@ struct InkAttnArgs {
 };
 
 kernel void ink_relpos_sink_gqa(
-    device const float* q_buf        [[buffer(0)]],  // [M, 24, 128]
-    device const float* r_buf        [[buffer(1)]],  // [M, 24, 16]
-    device const half* rel_proj_t    [[buffer(2)]],  // [1025, 16] transposed half (L1-hot coalesced!)
-    device const float* sinks_buf    [[buffer(3)]],  // [M, 24]
-    device const float* gate_buf     [[buffer(4)]],  // [M, 24, 128]
-    device const half* k_cache       [[buffer(5)]],  // [max_slots, kv_stride, 8, 128]
-    device const half* v_cache       [[buffer(6)]],  // [max_slots, kv_stride, 8, 128]
-    device const int* slot_ids       [[buffer(7)]],  // [M]
-    device const int* pos_buf        [[buffer(8)]],  // [M]
-    device float* attn_out           [[buffer(9)]],  // [M, 24, 128]
+    uint tid [[thread_index_in_threadgroup]],
+    device const float* q_buf        [[buffer(0)]],
+    // [M, 24, 128]
+    device const float* r_buf        [[buffer(1)]],
+    // [M, 24, 16]
+    device const half* rel_proj_t    [[buffer(2)]],
+    // [1025, 16] transposed half (L1-hot coalesced!)
+    device const float* sinks_buf    [[buffer(3)]],
+    // [M, 24]
+    device const float* gate_buf     [[buffer(4)]],
+    // [M, 24, 128]
+    device const half* k_cache       [[buffer(5)]],
+    // [max_slots, kv_stride, 8, 128]
+    device const half* v_cache       [[buffer(6)]],
+    // [max_slots, kv_stride, 8, 128]
+    device const int* slot_ids       [[buffer(7)]],
+    // [M]
+    device const int* pos_buf        [[buffer(8)]],
+    // [M]
+    device float* attn_out           [[buffer(9)]],
+    // [M, 24, 128]
     constant InkAttnArgs& A          [[buffer(10)]],
-    uint2 tgp  [[threadgroup_position_in_grid]],
-    uint sg    [[simdgroup_index_in_threadgroup]],
-    uint lane  [[thread_index_in_simdgroup]]) {
+    uint2 tgp  [[threadgroup_position_in_grid]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup float sh_m[4];
     threadgroup float sh_l[4];
     threadgroup float sh_o[4 * INK_HD];
@@ -868,19 +880,30 @@ kernel void ink_relpos_sink_gqa(
 //     - Cuts decode attention at P=1024/2048 by ~10-15x with exact FP32 online softmax!
 // ============================================================================
 kernel void ink_relpos_gqa_splitk(
-    device const float* q_buf        [[buffer(0)]],  // [M, 24, 128]
-    device const float* r_buf        [[buffer(1)]],  // [M, 24, 16]
-    device const half* rel_proj_t    [[buffer(2)]],  // [1025, 16]
-    device const half* k_cache       [[buffer(3)]],  // [max_slots, kv_stride, 8, 128]
-    device const half* v_cache       [[buffer(4)]],  // [max_slots, kv_stride, 8, 128]
-    device const int* slot_ids       [[buffer(5)]],  // [M]
-    device const int* pos_buf        [[buffer(6)]],  // [M]
-    device float* part_o             [[buffer(7)]],  // [M, 24, S_PARTS, 128]
-    device float* part_ml            [[buffer(8)]],  // [M, 24, S_PARTS, 2]
+    uint tid [[thread_index_in_threadgroup]],
+    device const float* q_buf        [[buffer(0)]],
+    // [M, 24, 128]
+    device const float* r_buf        [[buffer(1)]],
+    // [M, 24, 16]
+    device const half* rel_proj_t    [[buffer(2)]],
+    // [1025, 16]
+    device const half* k_cache       [[buffer(3)]],
+    // [max_slots, kv_stride, 8, 128]
+    device const half* v_cache       [[buffer(4)]],
+    // [max_slots, kv_stride, 8, 128]
+    device const int* slot_ids       [[buffer(5)]],
+    // [M]
+    device const int* pos_buf        [[buffer(6)]],
+    // [M]
+    device float* part_o             [[buffer(7)]],
+    // [M, 24, S_PARTS, 128]
+    device float* part_ml            [[buffer(8)]],
+    // [M, 24, S_PARTS, 2]
     constant InkAttnArgs& A          [[buffer(9)]],
-    uint3 tgp  [[threadgroup_position_in_grid]],
-    uint sg    [[simdgroup_index_in_threadgroup]],
-    uint lane  [[thread_index_in_simdgroup]]) {
+    uint3 tgp  [[threadgroup_position_in_grid]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     constexpr int S_PARTS = 8;
     threadgroup float sh_m[3][4];
     threadgroup float sh_l[3][4];
@@ -1359,6 +1382,7 @@ struct InkTreeAttnArgs {
 // 3-Q-per-KV Split-K Tree Flash-Decoding (S_PARTS = 8): exact prefix [< anchor_pos] + masked tree ancestors!
 // Reduced via existing ink_relpos_gqa_splitk_reduce! grid (M, 8, 8), 128 threads
 kernel void ink_relpos_tree_gqa_splitk(
+    uint tid [[thread_index_in_threadgroup]],
     device const float* q_buf     [[buffer(0)]],
     device const float* r_buf     [[buffer(1)]],
     device const half* rel_proj_t [[buffer(2)]],
@@ -1371,9 +1395,10 @@ kernel void ink_relpos_tree_gqa_splitk(
     device float* part_o          [[buffer(9)]],
     device float* part_ml         [[buffer(10)]],
     constant InkTreeAttnArgs& A   [[buffer(11)]],
-    uint3 tgp  [[threadgroup_position_in_grid]],
-    uint sg    [[simdgroup_index_in_threadgroup]],
-    uint lane  [[thread_index_in_simdgroup]]) {
+    uint3 tgp  [[threadgroup_position_in_grid]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     constexpr int S_PARTS = 8;
     threadgroup float sh_m[3][4];
     threadgroup float sh_l[3][4];

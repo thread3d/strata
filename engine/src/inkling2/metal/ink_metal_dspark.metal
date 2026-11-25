@@ -212,20 +212,29 @@ kernel void dspark_qk_norm_rope(
 // 5. Non-causal Block-8 Attention over [ctx_kv (c0..apos-1) | draft_kv (0..7)]
 // grid (8, 24, 1), 128 threads (4 SGs x 32 lanes, 4 dims/lane)
 kernel void dspark_block_attn(
-    device const float* q_buf   [[buffer(0)]],  // [8, 24, 128]
-    device const float* kd_buf  [[buffer(1)]],  // [8, 8, 128]
-    device const float* vd_buf  [[buffer(2)]],  // [8, 8, 128]
-    device const half* ctx_k    [[buffer(3)]],  // [max_slots, kv_stride, 8, 128]
-    device const half* ctx_v    [[buffer(4)]],  // [max_slots, kv_stride, 8, 128]
-    device float* out_buf       [[buffer(5)]],  // [8, 24, 128]
+    uint tid [[thread_index_in_threadgroup]],
+    device const float* q_buf   [[buffer(0)]],
+    // [8, 24, 128]
+    device const float* kd_buf  [[buffer(1)]],
+    // [8, 8, 128]
+    device const float* vd_buf  [[buffer(2)]],
+    // [8, 8, 128]
+    device const half* ctx_k    [[buffer(3)]],
+    // [max_slots, kv_stride, 8, 128]
+    device const half* ctx_v    [[buffer(4)]],
+    // [max_slots, kv_stride, 8, 128]
+    device float* out_buf       [[buffer(5)]],
+    // [8, 24, 128]
     constant int& slot          [[buffer(6)]],
     constant int& apos          [[buffer(7)]],
     constant int& is_swa        [[buffer(8)]],
-    constant int& swa_win       [[buffer(9)]],  // 1025
+    constant int& swa_win       [[buffer(9)]],
+    // 1025
     constant int& kv_stride     [[buffer(10)]],
-    uint2 tgp  [[threadgroup_position_in_grid]],
-    uint sg    [[simdgroup_index_in_threadgroup]],
-    uint lane  [[thread_index_in_simdgroup]]) {
+    uint2 tgp  [[threadgroup_position_in_grid]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup float sh_m[4];
     threadgroup float sh_l[4];
     threadgroup float sh_o[4 * DSP_HD];
@@ -712,16 +721,20 @@ kernel void dspark_score_512_reduce(
 // unemb_fmt: 0=BF16, 1=Q8_ROW, 2=S6_K
 kernel void dspark_build_meff_q8(
     device const uchar* W_unemb [[buffer(0)]],
-    device const half* W_hout_T [[buffer(1)]],  // [256, 2304] half
-    device float* meff_sc       [[buffer(2)]],  // [V]
-    device char* meff_q         [[buffer(3)]],  // [V, 256]
+    device const half* W_hout_T [[buffer(1)]],
+    // [256, 2304] half
+    device float* meff_sc       [[buffer(2)]],
+    // [V]
+    device char* meff_q         [[buffer(3)]],
+    // [V, 256]
     constant int& V             [[buffer(4)]],
     constant int& V_padded      [[buffer(5)]],
     constant int& unemb_fmt     [[buffer(6)]],
     uint tg   [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[16 * 32];     // 1 KB
     threadgroup half sB[256 * 32];    // 16 KB (reused as sO[16 * 256] float = 16 KB!)
     const int v0 = int(tg) * 16;

@@ -291,9 +291,10 @@ kernel void ink_linear_bf16_mm8(
     constant int& K        [[buffer(4)]],
     constant int& M        [[buffer(5)]],
     uint tg   [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[8 * 32];
     threadgroup half sB[64 * 32];
     const int n0 = int(tg) * 64;
@@ -416,9 +417,10 @@ kernel void ink_linear_bf16_mm(
     constant int& K        [[buffer(4)]],
     constant int& M        [[buffer(5)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[64 * 32];
     threadgroup half sB[64 * 32];
     const int m0 = int(tgp.y) * 64;
@@ -535,9 +537,10 @@ kernel void ink_linear_q8row_mm8(
     constant int& K       [[buffer(4)]],
     constant int& M       [[buffer(5)]],
     uint tg   [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[8 * 32];
     threadgroup half sB[64 * 32];
     const int n0 = int(tg) * 64;
@@ -1064,9 +1067,10 @@ kernel void ink_linear_q8row_mm(
     constant int& K       [[buffer(4)]],
     constant int& M       [[buffer(5)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[32 * 32];
     threadgroup half sB[64 * 32];
     const int m0 = int(tgp.y) * 32, n0 = int(tgp.x) * 64;
@@ -1132,9 +1136,10 @@ kernel void ink_linear_f32_mm(
     constant int& K       [[buffer(4)]],
     constant int& M       [[buffer(5)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[32 * 32];
     threadgroup half sB[64 * 32];
     const int m0 = int(tgp.y) * 32, n0 = int(tgp.x) * 64;
@@ -1236,8 +1241,9 @@ kernel void ink_linear_f32_exact_mm(
     constant int& K       [[buffer(4)]],
     constant int& M       [[buffer(5)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+
     threadgroup float sA[32 * 16];
     threadgroup float sB[32 * 16];
     threadgroup float sO[32 * 32];
@@ -1425,9 +1431,10 @@ kernel void ink_linear_sk6_mm8(
     constant int& K       [[buffer(4)]],
     constant int& M       [[buffer(5)]],
     uint tg   [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[8 * 32];
     threadgroup half sB[64 * 32];
     const int n0 = int(tg) * 64;
@@ -1480,9 +1487,10 @@ kernel void ink_linear_sk5_mm8(
     constant int& K       [[buffer(4)]],
     constant int& M       [[buffer(5)]],
     uint tg   [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[8 * 32];
     threadgroup half sB[64 * 32];
     const int n0 = int(tg) * 64;
@@ -1915,9 +1923,11 @@ kernel void ink_moe_plan(
     device int* pair_list      [[buffer(5)]],
     device uint* meta          [[buffer(6)]],
     device uint2* tiles        [[buffer(7)]],
-    uint e    [[thread_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]]) {
+    uint e    [[thread_index_in_threadgroup]]) {    const uint tid = e;   // this kernel names its thread index differently
+
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup int sg_u[4];
     threadgroup int sg_p[4];
     threadgroup int sg_t[4];
@@ -2870,9 +2880,10 @@ kernel void ink_moe_gu_mm_sf4(
     device const uchar* sec4_2      [[buffer(10)]],
     device const uchar* sec4_3      [[buffer(11)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[32 * 64];
     threadgroup half sB[64 * 64];
     threadgroup int sh_pid[32];
@@ -2970,9 +2981,10 @@ kernel void ink_moe_dn_mm_sf4(
     device const uchar* sec4_2      [[buffer(11)]],
     device const uchar* sec4_3      [[buffer(12)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[32 * 64];
     threadgroup half sB[64 * 64];
     threadgroup int sh_pid[32];
@@ -3074,9 +3086,10 @@ kernel void ink_moe_gu_mm_mx8(
     device const uchar* sec4_2      [[buffer(10)]],
     device const uchar* sec4_3      [[buffer(11)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[32 * 64];
     threadgroup half sB[64 * 64];
     threadgroup int sh_pid[32];
@@ -3171,9 +3184,10 @@ kernel void ink_moe_dn_mm_mx8(
     device const uchar* sec4_2      [[buffer(11)]],
     device const uchar* sec4_3      [[buffer(12)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[32 * 64];
     threadgroup half sB[64 * 64];
     threadgroup int sh_pid[32];
@@ -3272,9 +3286,10 @@ kernel void ink_moe_gu_mm_gen(
     device const uchar* sec4_2      [[buffer(10)]],
     device const uchar* sec4_3      [[buffer(11)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[32 * 64];
     threadgroup half sB[64 * 64];
     threadgroup int sh_pid[32];
@@ -3393,9 +3408,10 @@ kernel void ink_moe_dn_mm_gen(
     device const uchar* sec4_2      [[buffer(11)]],
     device const uchar* sec4_3      [[buffer(12)]],
     uint2 tgp [[threadgroup_position_in_grid]],
-    uint tid  [[thread_index_in_threadgroup]],
-    uint sg   [[simdgroup_index_in_threadgroup]],
-    uint lane [[thread_index_in_simdgroup]]) {
+    uint tid  [[thread_index_in_threadgroup]]) {
+    const uint sg = tid >> 5;      // logical 32-lane group (this card reports 0..3 for 8)
+    const uint lane = tid & 31u;   // logical lane (hardware simdgroups are 64 here)
+
     threadgroup half sA[32 * 64];
     threadgroup half sB[64 * 64];
     threadgroup int sh_pid[32];
