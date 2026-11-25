@@ -9,6 +9,27 @@
 #include <metal_stdlib>
 #include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
 using namespace metal;
+
+// --- 64-lane AMD cards -------------------------------------------------------
+// The kernels below are written for 32-lane simdgroups (lane = tid & 31, sg = tid >> 5) and every
+// cross-lane op must stay inside one 32-lane half. Apple's simd_sum / simd_prefix_exclusive_sum span
+// the whole hardware simdgroup (64 lanes on this card), so they are redefined over a 32-lane window
+// with shuffles whose offset (< 32) can never cross the half boundary.
+template <typename T> inline T ink_sum32(T x) {
+    for (int o = 16; o > 0; o >>= 1) x += simd_shuffle_xor(x, o);
+    return x;
+}
+template <typename T> inline T ink_prefix_excl_sum32(T x, uint lane32) {
+    T inc = x;
+    for (uint o = 1; o < 32; o <<= 1) {
+        T y = simd_shuffle_up(inc, o);
+        if (lane32 >= o) inc += y;
+    }
+    return inc - x;
+}
+#define simd_sum ink_sum32
+// ---------------------------------------------------------------------------
+
 using namespace mpp::tensor_ops;
 
 // ---- Shared codec helpers (kept self-contained so ink_metal_mpp.metal compiles standalone!) ----
@@ -461,11 +482,11 @@ kernel void ink_mpp_moe_plan(
     }
     const int rows = n128 * 128 + n64 * 64 + n32 * 32 + n16 * 16;
 
-    const int ex_r   = simd_prefix_exclusive_sum(rows);
-    const int ex_128 = simd_prefix_exclusive_sum(n128);
-    const int ex_64  = simd_prefix_exclusive_sum(n64);
-    const int ex_32  = simd_prefix_exclusive_sum(n32);
-    const int ex_16  = simd_prefix_exclusive_sum(n16);
+    const int ex_r   = ink_prefix_excl_sum32(rows, (e & 31u));
+    const int ex_128 = ink_prefix_excl_sum32(n128, (e & 31u));
+    const int ex_64  = ink_prefix_excl_sum32(n64, (e & 31u));
+    const int ex_32  = ink_prefix_excl_sum32(n32, (e & 31u));
+    const int ex_16  = ink_prefix_excl_sum32(n16, (e & 31u));
     if (lane == 31) {
         sg_r[sg]   = ex_r + rows;
         sg_128[sg] = ex_128 + n128;

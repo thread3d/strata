@@ -423,6 +423,7 @@ int main(int argc, char** argv) {
     int gen_n = 32;
     int bench_prompt = 128;
     bool do_selfcheck = false;
+    bool do_serve = false;
     bool do_spec_check = false;
     bool do_bench = false;
     bool do_par_sweep = false;
@@ -452,6 +453,7 @@ int main(int argc, char** argv) {
         else if (a == "--prompt-len") bench_prompt = atoi(nxt().c_str());
         else if (a == "--draft") draft_mode = nxt();
         else if (a == "--selfcheck") do_selfcheck = true;
+        else if (a == "--serve") do_serve = true;
         else if (a == "--spec-check") do_spec_check = true;
         else if (a == "--bench") do_bench = true;
         else if (a == "--par-sweep") { do_par_sweep = true; if (max_slots < 64) max_slots = 64; }
@@ -506,6 +508,52 @@ int main(int argc, char** argv) {
         printf("[VISION] OK: %d tokens x %d dims, rms=%.6f, first4=[%.4f, %.4f, %.4f, %.4f]\n",
                ntok, mod.man.c.hidden, std::sqrt(l2 / std::max<size_t>(1, emb.size())),
                emb[0], emb[1], emb[2], emb[3]);
+    }
+
+    // Serve mode: the `strata --serve` line protocol (terminal/serve/server.py reads it).
+    //   GEN <max_new> [key=value ...] <ids ...>  ->  T <id> (one per line)  ->  DONE <gen> <ptok> <pms> <dms> <finish> <acc> <off> 0
+    if (do_serve) {
+        std::printf("READY %d\n", max_ctx);
+        std::fflush(stdout);
+        std::string line;
+        while (std::getline(std::cin, line)) {
+            if (line.rfind("GEN ", 0) != 0) {
+                if (line == "STOP" || line == "QUIT") break;
+                continue;
+            }
+            std::istringstream ss(line);
+            std::string tag;
+            int max_new = 0;
+            ss >> tag >> max_new;
+            std::vector<int32_t> ids;
+            std::string tok;
+            while (ss >> tok) {
+                if (tok.find('=') != std::string::npos) continue;   // temperature=/top_p=/... ride the same line
+                ids.push_back((int32_t) std::atoi(tok.c_str()));
+            }
+            if (ids.empty()) {
+                std::printf("ERR empty prompt\n");
+                std::fflush(stdout);
+                continue;
+            }
+            std::vector<int32_t> out;
+            double pms = 0.0, dms = 0.0;
+            int acc = 0, off = 0;
+            std::string derr;
+            if (!run_greedy_decode(runner, 0, ids, max_new, runner.use_dspark, out, pms, dms, acc, off, derr)) {
+                std::printf("ERR %s\n", derr.c_str());
+                std::fflush(stdout);
+                continue;
+            }
+            for (int32_t id : out) {
+                std::printf("T %d\n", (int) id);
+                std::fflush(stdout);
+            }
+            std::printf("DONE %d %d %.3f %.3f %s %d %d 0\n", (int) out.size(), (int) ids.size(), pms, dms,
+                        out.empty() ? "error" : "length", acc, off);
+            std::fflush(stdout);
+        }
+        return 0;
     }
 
     // Default test prompt if none provided

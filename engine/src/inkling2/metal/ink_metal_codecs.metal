@@ -9,6 +9,27 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// --- 64-lane AMD cards -------------------------------------------------------
+// The kernels below are written for 32-lane simdgroups (lane = tid & 31, sg = tid >> 5) and every
+// cross-lane op must stay inside one 32-lane half. Apple's simd_sum / simd_prefix_exclusive_sum span
+// the whole hardware simdgroup (64 lanes on this card), so they are redefined over a 32-lane window
+// with shuffles whose offset (< 32) can never cross the half boundary.
+template <typename T> inline T ink_sum32(T x) {
+    for (int o = 16; o > 0; o >>= 1) x += simd_shuffle_xor(x, o);
+    return x;
+}
+template <typename T> inline T ink_prefix_excl_sum32(T x, uint lane32) {
+    T inc = x;
+    for (uint o = 1; o < 32; o <<= 1) {
+        T y = simd_shuffle_up(inc, o);
+        if (lane32 >= o) inc += y;
+    }
+    return inc - x;
+}
+#define simd_sum ink_sum32
+// ---------------------------------------------------------------------------
+
+
 // ============================================================================
 // 1. Lossless NVFP4 (E2M1) & FP8 (E4M3FN) & UE8M0 Register-LUT Decoders
 // ============================================================================
@@ -1904,9 +1925,9 @@ kernel void ink_moe_plan(
     for (int i = 0; i < P; ++i) if (topk_idx[i] == int(e)) ++c;
     const int has = c > 0 ? 1 : 0;
     const int nt = (c + 31) >> 5;
-    const int ex_u = simd_prefix_exclusive_sum(has);
-    const int ex_p = simd_prefix_exclusive_sum(c);
-    const int ex_t = simd_prefix_exclusive_sum(nt);
+    const int ex_u = ink_prefix_excl_sum32(has, (e & 31u));
+    const int ex_p = ink_prefix_excl_sum32(c, (e & 31u));
+    const int ex_t = ink_prefix_excl_sum32(nt, (e & 31u));
     if (lane == 31) { sg_u[sg] = ex_u + has; sg_p[sg] = ex_p + c; sg_t[sg] = ex_t + nt; }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     int base_u = 0, base_p = 0, base_t = 0;

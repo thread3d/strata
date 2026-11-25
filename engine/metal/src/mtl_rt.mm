@@ -19,6 +19,7 @@
 #include <mach/vm_region.h>
 #include <mach/mach_time.h>
 #include <sys/sysctl.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <algorithm>
 #include <atomic>
@@ -1290,6 +1291,24 @@ Buffer Context::wrap(void* p, size_t bytes) {
     return r;
 #else
     id<MTLBuffer> b = [impl_->dev newBufferWithBytesNoCopy:p length:bytes options:MTLResourceStorageModeShared deallocator:nil];
+    if (!b) {
+        // macOS 11 / Metal 2 on this card refuses a no-copy buffer over a read-only private file mapping:
+        // the .strata weights arrive as mmap(PROT_READ) pages, and the device wraps the same bytes fine when
+        // they come from malloc. MAP_PRIVATE makes adding PROT_WRITE a copy-on-write change, so the file is
+        // never written; that is enough for the driver to accept the pages without copying them.
+        const uintptr_t page = 4096;
+        const uintptr_t lo = (uintptr_t) p & ~(page - 1);
+        const size_t span = bytes + ((uintptr_t) p - lo);
+        if (mprotect((void*) lo, span, PROT_READ | PROT_WRITE) == 0)
+            b = [impl_->dev newBufferWithBytesNoCopy:p length:bytes options:MTLResourceStorageModeShared deallocator:nil];
+        if (!b) {   // last resort: one shared buffer and a copy, so a refused wrap is not a dead end
+            b = [impl_->dev newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+            if (b) {
+                std::memcpy([b contents], p, bytes);
+                std::fprintf(stderr, "mtl: wrap %zu copied (no-copy refused)\n", bytes);
+            }
+        }
+    }
     if (!b) {
         std::fprintf(stderr, "mtl: wrap %zu failed\n", bytes);
         std::exit(4);

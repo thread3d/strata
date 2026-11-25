@@ -10,6 +10,27 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// --- 64-lane AMD cards -------------------------------------------------------
+// The kernels below are written for 32-lane simdgroups (lane = tid & 31, sg = tid >> 5) and every
+// cross-lane op must stay inside one 32-lane half. Apple's simd_sum / simd_prefix_exclusive_sum span
+// the whole hardware simdgroup (64 lanes on this card), so they are redefined over a 32-lane window
+// with shuffles whose offset (< 32) can never cross the half boundary.
+template <typename T> inline T ink_sum32(T x) {
+    for (int o = 16; o > 0; o >>= 1) x += simd_shuffle_xor(x, o);
+    return x;
+}
+template <typename T> inline T ink_prefix_excl_sum32(T x, uint lane32) {
+    T inc = x;
+    for (uint o = 1; o < 32; o <<= 1) {
+        T y = simd_shuffle_up(inc, o);
+        if (lane32 >= o) inc += y;
+    }
+    return inc - x;
+}
+#define simd_sum ink_sum32
+// ---------------------------------------------------------------------------
+
+
 #define DSP_D 2304
 #define DSP_NH 24
 #define DSP_NKV 8

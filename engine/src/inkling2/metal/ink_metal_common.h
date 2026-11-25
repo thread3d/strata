@@ -327,10 +327,10 @@ struct InkMetalModel {
     uint64_t sec1_off = 0, sec1_bytes = 0;
     uint64_t sec4_off = 0, sec4_bytes = 0;
     uint8_t format_minor = 0;
-    static constexpr size_t kMaxSec4Chunks = 4;
+    static constexpr size_t kMaxSec4Chunks = 8;   // 4 was too few for SQ-20 on a 3.5 GiB maxBufferLength card
     mtl::Buffer sec1_buf;                  // zero-copy wrap over Section 1 (trunk + DSpark)
     uint64_t sec1_map_off = 0;
-    mtl::Buffer sec4_bufs[kMaxSec4Chunks]; // 1..4 page-aligned zero-copy Metal buffers over Section 4
+    mtl::Buffer sec4_bufs[kMaxSec4Chunks]; // 1..8 page-aligned zero-copy Metal buffers over Section 4
     size_t n_sec4_chunks = 0;
     mtl::Buffer expert_dev_buf;            // [24 * 128] InkExpertDev
     mtl::Buffer msg_queries_buf;           // [12 * 4 * 2304] F32 pre-stacked cross-pass queries

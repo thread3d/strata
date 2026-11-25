@@ -106,6 +106,7 @@ struct InkMetalRunner {
 
     int lib_codecs = -1, lib_ops = -1, lib_dspark = -1, lib_vis = -1, lib_mpp = -1;
     bool is_apple10 = false;
+    bool mat_ok = true;   // simdgroup_matrix available (32-lane simdgroups); false on this AMD card
     bool use_mpp = false, use_mpp_trunk_f16 = false, use_dspark_f16 = false;
     int mpp_decomp_cap = 0;
 
@@ -237,7 +238,17 @@ struct InkMetalRunner {
         max_slots = std::max(1, std::min(64, slots));
         max_ctx = std::max(256, ctx_len);
         max_batch = std::max(64, batch_cap);
+        mat_ok = cx->simd_width() == 32;   // the matrix kernels need 32-lane simdgroups; an AMD card has 64
+        if (!mat_ok) {
+            std::fprintf(stderr, "[ink_metal] simd_width=%d: no simdgroup_matrix on this card; matrix-free kernels only, batch and slots capped at 8\n", cx->simd_width());
+            max_batch = std::min(max_batch, 8);
+            max_slots = std::min(max_slots, 8);
+        }
         use_dspark = enable_dspark && m.man.c.has_dspark;
+        if (!mat_ok && use_dspark) {
+            std::fprintf(stderr, "[ink_metal] matrix-free mode: DSpark drafter off (its kernels need simdgroup_matrix)\n");
+            use_dspark = false;
+        }
 
         // Compile Metal shader libraries
         if (!compile_shaders(kernel_dir, err)) return false;
@@ -245,15 +256,9 @@ struct InkMetalRunner {
         // Create pipelines
         p_lin_bf16_mv1 = cx->pipeline(lib_codecs, "ink_linear_bf16_mv1");
         p_lin_bf16_mv  = cx->pipeline(lib_codecs, "ink_linear_bf16_mv");
-        p_lin_bf16_mm8 = cx->pipeline(lib_codecs, "ink_linear_bf16_mm8");
-        p_lin_bf16_mm  = cx->pipeline(lib_codecs, "ink_linear_bf16_mm");
         p_lin_q8_mv1   = cx->pipeline(lib_codecs, "ink_linear_q8row_mv1");
         p_lin_q8_mv    = cx->pipeline(lib_codecs, "ink_linear_q8row_mv");
-        p_lin_q8_mm8   = cx->pipeline(lib_codecs, "ink_linear_q8row_mm8");
-        p_lin_q8_mm    = cx->pipeline(lib_codecs, "ink_linear_q8row_mm");
         p_lin_f32      = cx->pipeline(lib_codecs, "ink_linear_f32");
-        p_lin_f32_mm   = cx->pipeline(lib_codecs, "ink_linear_f32_mm");
-        p_lin_f32_exact_mm = cx->pipeline(lib_codecs, "ink_linear_f32_exact_mm");
         p_unemb_argmax_q8   = cx->pipeline(lib_codecs, "ink_unembed_argmax_q8row");
         p_unemb_argmax_bf16 = cx->pipeline(lib_codecs, "ink_unembed_argmax_bf16");
         p_unemb_argmax_sk6  = cx->pipeline(lib_codecs, "ink_unembed_argmax_sk6");
@@ -265,8 +270,16 @@ struct InkMetalRunner {
         for (int f : {2, 3, 4, 5, 6, 8}) {
             p_lin_sk[f] = cx->pipeline(lib_codecs, "ink_linear_sk_mv_" + std::to_string(f));
         }
-        p_lin_sk5_mm8   = cx->pipeline(lib_codecs, "ink_linear_sk5_mm8");
-        p_lin_sk6_mm8   = cx->pipeline(lib_codecs, "ink_linear_sk6_mm8");
+        if (mat_ok) {   // simdgroup_matrix kernels: they do not compile for a 64-lane AMD card
+            p_lin_bf16_mm8 = cx->pipeline(lib_codecs, "ink_linear_bf16_mm8");
+            p_lin_bf16_mm  = cx->pipeline(lib_codecs, "ink_linear_bf16_mm");
+            p_lin_q8_mm8   = cx->pipeline(lib_codecs, "ink_linear_q8row_mm8");
+            p_lin_q8_mm    = cx->pipeline(lib_codecs, "ink_linear_q8row_mm");
+            p_lin_f32_mm   = cx->pipeline(lib_codecs, "ink_linear_f32_mm");
+            p_lin_f32_exact_mm = cx->pipeline(lib_codecs, "ink_linear_f32_exact_mm");
+            p_lin_sk5_mm8  = cx->pipeline(lib_codecs, "ink_linear_sk5_mm8");
+            p_lin_sk6_mm8  = cx->pipeline(lib_codecs, "ink_linear_sk6_mm8");
+        }
         p_moe_plan      = cx->pipeline(lib_codecs, "ink_moe_plan");
         p_moe_gu        = cx->pipeline(lib_codecs, "ink_moe_gu_situ");
         p_moe_dn        = cx->pipeline(lib_codecs, "ink_moe_dn");
@@ -284,12 +297,14 @@ struct InkMetalRunner {
         p_moe_dn_sk4    = cx->pipeline(lib_codecs, "ink_moe_dn_sk4");
         p_moe_gu_sk5    = cx->pipeline(lib_codecs, "ink_moe_gu_sk5");
         p_moe_dn_sk5    = cx->pipeline(lib_codecs, "ink_moe_dn_sk5");
-        p_moe_gu_mm_sf4 = cx->pipeline(lib_codecs, "ink_moe_gu_mm_sf4");
-        p_moe_dn_mm_sf4 = cx->pipeline(lib_codecs, "ink_moe_dn_mm_sf4");
-        p_moe_gu_mm_mx8 = cx->pipeline(lib_codecs, "ink_moe_gu_mm_mx8");
-        p_moe_dn_mm_mx8 = cx->pipeline(lib_codecs, "ink_moe_dn_mm_mx8");
-        p_moe_gu_mm_gen = cx->pipeline(lib_codecs, "ink_moe_gu_mm_gen");
-        p_moe_dn_mm_gen = cx->pipeline(lib_codecs, "ink_moe_dn_mm_gen");
+        if (mat_ok) {   // MoE matrix kernels: same 64-lane limit as the linear ones
+            p_moe_gu_mm_sf4 = cx->pipeline(lib_codecs, "ink_moe_gu_mm_sf4");
+            p_moe_dn_mm_sf4 = cx->pipeline(lib_codecs, "ink_moe_dn_mm_sf4");
+            p_moe_gu_mm_mx8 = cx->pipeline(lib_codecs, "ink_moe_gu_mm_mx8");
+            p_moe_dn_mm_mx8 = cx->pipeline(lib_codecs, "ink_moe_dn_mm_mx8");
+            p_moe_gu_mm_gen = cx->pipeline(lib_codecs, "ink_moe_gu_mm_gen");
+            p_moe_dn_mm_gen = cx->pipeline(lib_codecs, "ink_moe_dn_mm_gen");
+        }
         p_moe_red8      = cx->pipeline(lib_codecs, "ink_moe_reduce8");
 
         // Detect homogeneous layers & per-layer codec bitmasks for zero-spill concurrent dispatch!
@@ -345,6 +360,7 @@ struct InkMetalRunner {
         p_softcap             = cx->pipeline(lib_ops, "ink_softcap_f32");
         p_argmax_rows         = cx->pipeline(lib_ops, "ink_argmax_rows");
 
+        if (use_dspark) {   // DSpark's kernels need simdgroup_matrix; off on a 64-lane card
         p_dsp_mix         = cx->pipeline(lib_dspark, "dspark_mix_taps");
         p_dsp_ctx_kv      = cx->pipeline(lib_dspark, "dspark_ctx_kv_store");
         p_dsp_ctx_kv_tree = cx->pipeline(lib_dspark, "dspark_ctx_kv_store_tree");
@@ -380,6 +396,7 @@ struct InkMetalRunner {
         p_dsp_mrnn_beam4        = cx->pipeline(lib_dspark, "dspark_markov_rnn_update_beam4");
         p_dsp_meff_beam4_top2_q8 = cx->pipeline(lib_dspark, "dspark_meff_beam4_top2_q8");
         p_dsp_beam4_select       = cx->pipeline(lib_dspark, "dspark_beam4_select");
+        }
 
         // Allocate KV caches & ShortConv state pools (WorkingSet-aware auto-ctx sizing for 16/24/32 GB Mac M1/M2/M3/M4!)
         const auto& c = mod->man.c;
@@ -852,7 +869,7 @@ struct InkMetalRunner {
                 d.p = &p_lin_bf16_mv1;
                 d.grid[0] = (uint32_t)((N + 31) / 32);
                 d.tg[0] = 256;
-            } else if (M >= 2 && M <= 8 && N >= 32768) {
+            } else if (mat_ok && M >= 2 && M <= 8 && N >= 32768) {
                 // On huge vocab unembed (N=200k), simdgroup_half8x8 mm8 beats register mv at M=2..8 (cuts DSpark k=2..4 by -0.7 ms!)
                 d.p = &p_lin_bf16_mm8;
                 d.grid[0] = (uint32_t)((N + 63) / 64);
@@ -873,7 +890,7 @@ struct InkMetalRunner {
                 d.p = &p_lin_q8_mv1;
                 d.grid[0] = (uint32_t)((N + 31) / 32);
                 d.tg[0] = 256;
-            } else if (M >= 2 && M <= 8 && N >= 32768) {
+            } else if (mat_ok && M >= 2 && M <= 8 && N >= 32768) {
                 d.p = &p_lin_q8_mm8;
                 d.grid[0] = (uint32_t)((N + 63) / 64);
                 d.tg[0] = 256;
@@ -889,12 +906,12 @@ struct InkMetalRunner {
                 d.tg[0] = 256;
             }
         } else if (ti.fmt == FMT_F32) {
-            if (M > 8 && !exact_f32) {
+            if (mat_ok && M > 8 && !exact_f32) {
                 d.p = &p_lin_f32_mm;
                 d.grid[0] = (uint32_t)((N + 63) / 64);
                 d.grid[1] = (uint32_t)((M + 31) / 32);
                 d.tg[0] = 256;
-            } else if (M >= 64 && exact_f32) {
+            } else if (mat_ok && M >= 64 && exact_f32) {
                 d.p = &p_lin_f32_exact_mm;
                 d.grid[0] = (uint32_t)((N + 31) / 32);
                 d.grid[1] = (uint32_t)((M + 31) / 32);
@@ -906,11 +923,11 @@ struct InkMetalRunner {
                 d.tg[0] = 128;
             }
         } else if (ti.fmt >= FMT_S2 && ti.fmt <= FMT_S8) {
-            if (ti.fmt == FMT_S6 && M >= 2 && M <= 8 && is_apple10) {
+            if (ti.fmt == FMT_S6 && M >= 2 && M <= 8 && is_apple10 && mat_ok) {
                 d.p = &p_lin_sk6_mm8;
                 d.grid[0] = (uint32_t)((N + 63) / 64);
                 d.tg[0] = 256;
-            } else if (ti.fmt == FMT_S5 && M >= 2 && M <= 8) {
+            } else if (ti.fmt == FMT_S5 && M >= 2 && M <= 8 && mat_ok) {
                 d.p = &p_lin_sk5_mm8;
                 d.grid[0] = (uint32_t)((N + 63) / 64);
                 d.tg[0] = 256;
@@ -1785,7 +1802,7 @@ struct InkMetalRunner {
                         ds.push_back(std::move(d));
                     }
                 }
-                const bool use_moe_mm = (M >= 48);
+                const bool use_moe_mm = mat_ok && (M >= 48);
                 if (use_moe_mm) {
                     {
                         mtl::Dispatch d;
