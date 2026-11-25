@@ -10,6 +10,7 @@ reads; nothing is inferred.  Packs the engine refuses are recorded with the engi
 """
 
 from __future__ import annotations
+import os
 
 import argparse
 import json
@@ -19,8 +20,9 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
-BIN = REPO / "build-metal" / "strata-q36-metal"
+REPO = next((q for q in HERE.parents if (q / ".git").exists()), HERE.parents[1])   # the clone root, wherever bench/ lives
+BUILD = Path(os.environ.get("STRATA_BENCH_BUILD", REPO / "build-merge"))
+BIN = BUILD / "strata-q36-metal"
 MODELS = Path.home() / "models" / "qwen36"
 RESULTS = HERE / "results-qwen36.json"
 

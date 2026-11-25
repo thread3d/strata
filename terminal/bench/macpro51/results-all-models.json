@@ -5,10 +5,10 @@
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q4_K_M.gguf",
   "bytes": 21166758368,
   "rc": 0,
-  "wall_s": 33.8,
+  "wall_s": 65.2,
   "prompt_tokens": 23,
   "decode_tokens": 8,
-  "s_per_step": 0.97,
+  "s_per_step": 0.916,
   "tokens": [
    "271",
    "248068",
@@ -26,10 +26,10 @@
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q6_K.gguf",
   "bytes": 28514152928,
   "rc": 0,
-  "wall_s": 36.9,
+  "wall_s": 34.8,
   "prompt_tokens": 23,
   "decode_tokens": 8,
-  "s_per_step": 1.015,
+  "s_per_step": 0.975,
   "tokens": [
    "271",
    "248068",
@@ -47,10 +47,10 @@
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",
   "bytes": 37801097504,
   "rc": 0,
-  "wall_s": 71.5,
+  "wall_s": 39.5,
   "prompt_tokens": 23,
   "decode_tokens": 8,
-  "s_per_step": 2.038,
+  "s_per_step": 1.097,
   "tokens": [
    "271",
    "248068",
@@ -68,10 +68,10 @@
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf",
   "bytes": 12574128416,
   "rc": 0,
-  "wall_s": 47.8,
+  "wall_s": 26.1,
   "prompt_tokens": 23,
   "decode_tokens": 8,
-  "s_per_step": 1.398,
+  "s_per_step": 0.721,
   "tokens": [
    "271",
    "248068",
@@ -89,10 +89,10 @@
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
   "bytes": 22853663008,
   "rc": 0,
-  "wall_s": 76.3,
+  "wall_s": 31.7,
   "prompt_tokens": 23,
   "decode_tokens": 8,
-  "s_per_step": 2.123,
+  "s_per_step": 0.846,
   "tokens": [
    "271",
    "248068",
@@ -110,10 +110,10 @@
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",
   "bytes": 32611711264,
   "rc": 0,
-  "wall_s": 91.5,
+  "wall_s": 37.1,
   "prompt_tokens": 23,
   "decode_tokens": 8,
-  "s_per_step": 2.597,
+  "s_per_step": 1.021,
   "tokens": [
    "271",
    "248068",
@@ -131,10 +131,10 @@
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
   "bytes": 39099447584,
   "rc": 0,
-  "wall_s": 95.5,
+  "wall_s": 40.6,
   "prompt_tokens": 23,
   "decode_tokens": 8,
-  "s_per_step": 2.758,
+  "s_per_step": 1.132,
   "tokens": [
    "271",
    "248068",
@@ -152,7 +152,7 @@
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/mmproj-F16.gguf",
   "bytes": 899283584,
   "rc": 1,
-  "wall_s": 0.3,
+  "wall_s": 0.5,
   "error": "cannot read the model: architecture is 'clip', this engine requires 'qwen4exp'"
  },
  {
@@ -163,7 +163,7 @@
   "native": "Qwen3.8-Flash-Next-Gyro-M-TQ2_0.gguf",
   "bytes": 91965774272,
   "rc": 0,
-  "wall_s": 76.9,
+  "wall_s": 37.6,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -171,7 +171,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 5771.4
+  "prefill_ms": 4908.3
  },
  {
   "family": "qwen38",
@@ -181,7 +181,7 @@
   "native": "Qwen3.8-Flash-Next-Gyro-S-TQ1_0.gguf",
   "bytes": 58487015808,
   "rc": 0,
-  "wall_s": 33.6,
+  "wall_s": 42.8,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -189,7 +189,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4505.8
+  "prefill_ms": 4582.1
  },
  {
   "family": "qwen38",
@@ -199,7 +199,7 @@
   "native": "Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
   "bytes": 39225954592,
   "rc": 0,
-  "wall_s": 34.5,
+  "wall_s": 44.8,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -207,7 +207,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4007.6
+  "prefill_ms": 4443.0
  },
  {
   "family": "qwen38",
@@ -217,7 +217,7 @@
   "native": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
   "bytes": 54817524224,
   "rc": 0,
-  "wall_s": 42.7,
+  "wall_s": 42.8,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -225,7 +225,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4701.7
+  "prefill_ms": 4876.3
  },
  {
   "family": "qwen38",
@@ -235,7 +235,7 @@
   "native": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
   "bytes": 47039860096,
   "rc": 0,
-  "wall_s": 38.8,
+  "wall_s": 43.9,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -243,7 +243,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4411.6
+  "prefill_ms": 4488.6
  },
  {
   "family": "qwen38",
@@ -253,7 +253,7 @@
   "native": "Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00001-of-00002.gguf",
   "bytes": 37623740192,
   "rc": 0,
-  "wall_s": 31.9,
+  "wall_s": 44.3,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -261,7 +261,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4094.1
+  "prefill_ms": 4376.0
  },
  {
   "family": "qwen38",
@@ -271,7 +271,7 @@
   "native": "Q8_0-metal.gguf",
   "bytes": 133832310784,
   "rc": 0,
-  "wall_s": 42.7,
+  "wall_s": 41.9,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -279,7 +279,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 6068.7
+  "prefill_ms": 6135.9
  },
  {
   "family": "qwen38",
@@ -289,15 +289,15 @@
   "native": "UD-IQ1_M-metal.gguf",
   "bytes": 39214481408,
   "rc": 0,
-  "wall_s": 42.1,
+  "wall_s": 38.4,
   "accepted": 0,
   "offered": 7,
   "tokens": [
-   "1544",
-   "76"
+   "303",
+   "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4597.4
+  "prefill_ms": 4410.5
  },
  {
   "family": "qwen38",
@@ -307,15 +307,15 @@
   "native": "UD-IQ2_XS-metal.gguf",
   "bytes": 47039479808,
   "rc": 0,
-  "wall_s": 41.8,
+  "wall_s": 40.7,
   "accepted": 0,
   "offered": 7,
   "tokens": [
-   "1544",
-   "76"
+   "303",
+   "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4735.3
+  "prefill_ms": 4671.3
  },
  {
   "family": "qwen38",
@@ -325,7 +325,7 @@
   "native": "UD-IQ3_XXS-metal.gguf",
   "bytes": 54834741248,
   "rc": 0,
-  "wall_s": 42.5,
+  "wall_s": 42.1,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -333,7 +333,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4877.3
+  "prefill_ms": 4881.9
  },
  {
   "family": "qwen38",
@@ -343,7 +343,7 @@
   "native": "UD-IQ4_XS-metal.gguf",
   "bytes": 64880361472,
   "rc": 0,
-  "wall_s": 43.0,
+  "wall_s": 42.5,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -351,7 +351,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 5078.5
+  "prefill_ms": 5206.9
  },
  {
   "family": "qwen38",
@@ -361,15 +361,15 @@
   "native": "UD-Q2_0-metal.gguf",
   "bytes": 41757278208,
   "rc": 0,
-  "wall_s": 41.3,
+  "wall_s": 41.8,
   "accepted": 0,
   "offered": 7,
   "tokens": [
-   "1544",
-   "76"
+   "303",
+   "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4747.0
+  "prefill_ms": 4665.1
  },
  {
   "family": "qwen38",
@@ -379,15 +379,15 @@
   "native": "UD-Q2_K_XL-metal.gguf",
   "bytes": 50788139008,
   "rc": 0,
-  "wall_s": 41.5,
+  "wall_s": 41.2,
   "accepted": 0,
   "offered": 7,
   "tokens": [
-   "1544",
-   "76"
+   "303",
+   "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 4829.3
+  "prefill_ms": 4939.4
  },
  {
   "family": "qwen38",
@@ -397,7 +397,7 @@
   "native": "UD-Q3_K_XL-metal.gguf",
   "bytes": 60672950272,
   "rc": 0,
-  "wall_s": 42.4,
+  "wall_s": 42.1,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -405,7 +405,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 5027.6
+  "prefill_ms": 5152.7
  },
  {
   "family": "qwen38",
@@ -415,7 +415,7 @@
   "native": "UD-Q4_K_XL-metal.gguf",
   "bytes": 82541477888,
   "rc": 0,
-  "wall_s": 39.4,
+  "wall_s": 39.3,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -423,7 +423,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 5252.2
+  "prefill_ms": 5313.2
  },
  {
   "family": "qwen38",
@@ -433,7 +433,7 @@
   "native": "UD-Q5_K_XL-metal.gguf",
   "bytes": 103893106688,
   "rc": 0,
-  "wall_s": 40.2,
+  "wall_s": 39.7,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -441,7 +441,7 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 5598.5
+  "prefill_ms": 5597.8
  },
  {
   "family": "qwen38",
@@ -451,7 +451,7 @@
   "native": "UD-Q6_K_XL-metal.gguf",
   "bytes": 114772082688,
   "rc": 0,
-  "wall_s": 41.3,
+  "wall_s": 40.5,
   "accepted": 0,
   "offered": 7,
   "tokens": [
@@ -459,13 +459,13 @@
    "7472"
   ],
   "prefill_tokens": 4,
-  "prefill_ms": 5793.7
+  "prefill_ms": 6101.6
  },
  {
   "family": "deepseek-v4.1-flash",
   "name": "deepseek-v4.1-flash",
   "rc": 0,
-  "wall_s": 0.1,
+  "wall_s": 0.2,
   "info": [
    "all experts 132.1 GB at 1.94 bpw (544 G parameters), dense 124.73 GB (embed 0.46, head 0.46, mtp 7.97, vision 0.00, engram 110.81)",
    "dense types: BF16 F32 IQ4_NL MXFP4 Q5_K Q8_0",

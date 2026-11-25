@@ -17,7 +17,9 @@ Refusals are results: the engine's own line is kept verbatim rather than summari
 timed for performance - the numbers are only there to say whether a model runs at all and how fast it
 gets through a fixed short workload on this card.
 """
+
 from __future__ import annotations
+import os
 
 import argparse
 import json
@@ -27,10 +29,12 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
-BIN = REPO / "build-metal" / "strata"
-BIN_Q36 = REPO / "build-metal" / "strata-q36-metal"
-BIN_DS4 = REPO / "build-metal" / "strata_ds4"
+REPO = next((q for q in HERE.parents if (q / ".git").exists()), HERE.parents[1])   # the clone root, wherever bench/ lives
+DATA = REPO / "terminal" / "data"   # data/ moved under terminal/ in the 2026-11-25 merge
+BUILD = Path(os.environ.get("STRATA_BENCH_BUILD", REPO / "build-merge"))
+BIN = BUILD / "strata"
+BIN_Q36 = BUILD / "strata-q36-metal"
+BIN_DS4 = BUILD / "strata_ds4"
 MODELS = Path.home() / "models"
 RESULTS = HERE / "results-all-models.json"
 
@@ -164,10 +168,10 @@ def q38(dirname):
     rec["native"] = native.name
     rec["bytes"] = native.stat().st_size
     argv = [str(BIN), "--pack", str(pack), "--native", str(native), "--native-dense-gguf", str(native),
-            "--ple-gguf", str(ple), "--expert-profile", "data/expert-profile.bin", "--expert-cache", "auto",
+            "--ple-gguf", str(ple), "--expert-profile", str(DATA / "expert-profile.bin"), "--expert-cache", "auto",
             "--tokens", Q38_TOKENS, "--max-new", "2", "--max-context", "512",
             "--draft", "dflash2", "--draft-model", str(MODELS / "dflash2-drafter" / "dflash2.pack"),
-            "--draft-fallback", "none", "--mtp-draft-vocab", "data/draft_vocab.bin",
+            "--draft-fallback", "none", "--mtp-draft-vocab", str(DATA / "draft_vocab.bin"),
             "--spec", "8", "--suffix-draft", "0", "--lookup-max-t", "0", "--prefill", "1"]
     code, out, err, wall = rc(dirname, argv, 5400)
     rec.update(rc=code, wall_s=wall)

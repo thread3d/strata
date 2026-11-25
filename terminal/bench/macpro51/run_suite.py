@@ -19,7 +19,9 @@ the doc rather than attempted.
 The breadth block (every model on the box) is `run_all_models.py` and its records are already in
 results-all-models.json; this suite does not repeat it.
 """
+
 from __future__ import annotations
+import os
 
 import argparse
 import json
@@ -29,8 +31,10 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
-BIN = REPO / "build-metal" / "strata"
+REPO = next((q for q in HERE.parents if (q / ".git").exists()), HERE.parents[1])   # the clone root, wherever bench/ lives
+DATA = REPO / "terminal" / "data"   # data/ moved under terminal/ in the 2026-11-25 merge
+BUILD = Path(os.environ.get("STRATA_BENCH_BUILD", REPO / "build-merge"))
+BIN = BUILD / "strata"
 M = Path.home() / "models" / "qwen38" / "UD-IQ1_M"
 DRAFTER = Path.home() / "models" / "dflash2-drafter" / "dflash2.pack"
 OUT = HERE / "results-suite.json"
@@ -57,11 +61,11 @@ def base_argv(prompt_tokens, max_context, max_new, spec, workers, extra):
             "--native", str(M / "UD-IQ1_M-metal.gguf"),
             "--native-dense-gguf", str(M / "UD-IQ1_M-metal.gguf"),
             "--ple-gguf", str(M / "Qwen3.8-Flash-Next-UD-IQ1_M-00003-of-00003.gguf"),
-            "--expert-profile", "data/expert-profile.bin", "--expert-cache", "auto",
+            "--expert-profile", str(DATA / "expert-profile.bin"), "--expert-cache", "auto",
             "--tokens", ",".join(str(t) for t in tokens_for(prompt_tokens)),
             "--max-new", str(max_new), "--max-context", str(max_context),
             "--draft", "dflash2", "--draft-model", str(DRAFTER),
-            "--draft-fallback", "none", "--mtp-draft-vocab", "data/draft_vocab.bin",
+            "--draft-fallback", "none", "--mtp-draft-vocab", str(DATA / "draft_vocab.bin"),
             "--spec", str(spec), "--suffix-draft", "0", "--lookup-max-t", "0", "--prefill", "1",
             "--pool-workers", str(workers)] + extra
 

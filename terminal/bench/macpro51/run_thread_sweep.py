@@ -12,7 +12,9 @@ not expected to move.
 Each record keeps the engine's own lines (prefill tokens/ms, decode ms, the token ids) so nothing has to be
 re-derived; the sweep appends to the JSON as it goes, so an interrupted run resumes instead of restarting.
 """
+
 from __future__ import annotations
+import os
 
 import argparse
 import json
@@ -22,8 +24,10 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
-BIN = REPO / "build-metal" / "strata"
+REPO = next((q for q in HERE.parents if (q / ".git").exists()), HERE.parents[1])   # the clone root, wherever bench/ lives
+DATA = REPO / "terminal" / "data"   # data/ moved under terminal/ in the 2026-11-25 merge
+BUILD = Path(os.environ.get("STRATA_BENCH_BUILD", REPO / "build-merge"))
+BIN = BUILD / "strata"
 MODELS = Path.home() / "models" / "qwen38" / "UD-IQ1_M"
 RESULTS = HERE / "results-threads.json"
 
@@ -45,10 +49,10 @@ def run(workers: int, round_no: int) -> dict:
             "--native", str(MODELS / "UD-IQ1_M-metal.gguf"),
             "--native-dense-gguf", str(MODELS / "UD-IQ1_M-metal.gguf"),
             "--ple-gguf", str(MODELS / "Qwen3.8-Flash-Next-UD-IQ1_M-00003-of-00003.gguf"),
-            "--expert-profile", "data/expert-profile.bin", "--expert-cache", "auto",
+            "--expert-profile", str(DATA / "expert-profile.bin"), "--expert-cache", "auto",
             "--tokens", PROMPT, "--max-new", "2", "--max-context", "512",
             "--draft", "dflash2", "--draft-model", str(Path.home() / "models/dflash2-drafter/dflash2.pack"),
-            "--draft-fallback", "none", "--mtp-draft-vocab", "data/draft_vocab.bin",
+            "--draft-fallback", "none", "--mtp-draft-vocab", str(DATA / "draft_vocab.bin"),
             "--spec", "8", "--suffix-draft", "0", "--lookup-max-t", "0", "--prefill", "1",
             "--pool-workers", str(workers)]
     t0 = time.time()

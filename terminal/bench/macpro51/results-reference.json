@@ -4,7 +4,7 @@
   "round": 1,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q4_K_M.gguf",
   "decode": 24,
-  "wall_s": 17.6,
+  "wall_s": 20.2,
   "rc": 0,
   "tokens": [
    271,
@@ -38,7 +38,7 @@
   "round": 1,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
   "decode": 24,
-  "wall_s": 15.1,
+  "wall_s": 17.6,
   "rc": 0,
   "tokens": [
    271,
@@ -72,7 +72,7 @@
   "round": 1,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q6_K.gguf",
   "decode": 24,
-  "wall_s": 18.4,
+  "wall_s": 19.4,
   "rc": 0,
   "tokens": [
    271,
@@ -106,7 +106,7 @@
   "round": 1,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",
   "decode": 24,
-  "wall_s": 14.3,
+  "wall_s": 16.4,
   "rc": 0,
   "tokens": [
    271,
@@ -140,7 +140,7 @@
   "round": 1,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",
   "decode": 24,
-  "wall_s": 15.5,
+  "wall_s": 16.4,
   "rc": 0,
   "tokens": [
    271,
@@ -174,7 +174,7 @@
   "round": 2,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q4_K_M.gguf",
   "decode": 24,
-  "wall_s": 17.5,
+  "wall_s": 18.4,
   "rc": 0,
   "tokens": [
    271,
@@ -208,7 +208,7 @@
   "round": 2,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
   "decode": 24,
-  "wall_s": 15.9,
+  "wall_s": 16.1,
   "rc": 0,
   "tokens": [
    271,
@@ -242,7 +242,7 @@
   "round": 2,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q6_K.gguf",
   "decode": 24,
-  "wall_s": 16.3,
+  "wall_s": 17.8,
   "rc": 0,
   "tokens": [
    271,
@@ -276,7 +276,7 @@
   "round": 2,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-UD-Q6_K_XL.gguf",
   "decode": 24,
-  "wall_s": 14.3,
+  "wall_s": 15.3,
   "rc": 0,
   "tokens": [
    271,
@@ -310,7 +310,7 @@
   "round": 2,
   "model": "/Volumes/Sonnet Raid/Users/threaded/models/qwen36/Qwen3.6-35B-A3B-Q8_0.gguf",
   "decode": 24,
-  "wall_s": 16.0,
+  "wall_s": 14.7,
   "rc": 0,
   "tokens": [
    271,
