@@ -48,24 +48,37 @@ page-cache warm-up, round 2 is the measurement, as `BENCHMARK_PROTOCOL.md` presc
 
 | case | prefill | wall |
 |---|---|---|
-| prompt 8 | 4 440 ms (1.8 tok/s) | 28.3 s |
-| prompt 32 | 10 762 ms (2.97 tok/s) | 34.9 s |
-| prompt 128 | 36 666 ms (3.46 tok/s) | 60.9 s |
-| prompt 512 | 149 415 ms (3.44 tok/s) | 173.9 s |
-| prompt 2048 (one run, by design) | 629 338 ms (3.25 tok/s) | 654.1 s |
+| prompt 8 | 7 tokens in 4 440–4 478 ms (1.56–1.58 tok/s) | 28.3 s |
+| prompt 32 | 31 tokens in 10 423–10 763 ms (2.88–2.97 tok/s) | 34.1–34.9 s |
+| prompt 128 | 127 tokens in 36 387–36 666 ms (3.46–3.49 tok/s) | 60.8–60.9 s |
+| prompt 512 | 511 tokens in 148 354–149 415 ms (3.42–3.44 tok/s) | 172.9–173.9 s |
+| prompt 2048 (one run, by design) | 2 047 tokens in 629 338 ms (3.25 tok/s) | 654.1 s |
+
+A case name is one more than the tokens the engine prefills (the first sampled token is not
+prefilled): "prompt 8" prefills 7, "prompt 2048" prefills 2 047. An earlier version of this table
+printed one run's milliseconds beside the other run's token rate, and 1.8 tok/s for prompt 8; both
+are corrected here from `results-suite.json`.
 
 The edge block behaves: `1-token prompt`, `verify block 2`, `no GPU expert cache`, `no CPU pool`,
 `pool-workers 64` and `max-context 4096` all run; the four invalid cases
 (`prompt 64` with `--max-context 16`, `--max-new 0`, `--spec 1`, `--spec 64`) and an unknown flag are
 refused, which is what they are for.
 
-**DFlash2 acceptance is still 0 of 7 drafts** on Qwen3.8 — unchanged by the merge, and the same
-finding as [macpro51-2026-11-24-models-that-run.md](macpro51-2026-11-24-models-that-run.md): the
-drafter is faithful and the context it is fed is the open question.
+**The suite's draft counter is not 0 of 7 in every case** — an earlier version of this page said it
+was, and the run's own `results-suite.json` says otherwise. It reads **0 of 7 at an 8-token prompt,
+2 of 7 at 32 and 128, and 7 of 7 at 512 and 2048**. That is the prompt, not the drafter: `run_suite.py`
+builds every prompt by repeating one 17-token cycle (`BASE`), so at 512 and 2048 tokens the next
+tokens are the cycle's next tokens and target and drafter agree on them trivially. Re-run of the
+512-token case on the current build (2026-11-25): `speculation 2 rounds of 8, drafts accepted 7 of 7
+(1.000), 4.50 tokens per round`, output `42498 456` (the cycle continuation), 0.50 tok/s decode,
+3.39 tok/s prefill. Speed does not improve across these cases (0.54 / 0.54 / 0.51 / 0.50 / 0.47 tok/s
+at 8 / 32 / 128 / 512 / 2048), so this is not evidence the drafter helps on real text. The real-text
+result is unchanged at **0 of 105** ([macpro51-2026-11-23-test-pass.md](macpro51-2026-11-23-test-pass.md)),
+and the open question remains the context the drafter is fed.
 
 ## Thread sweep
 
-39 runs over `--pool-workers` 1 … 24 on the same Qwen3.8 pack: **99.3 s to 101.2 s, mean 100.3 s** —
+39 runs over `--pool-workers` 1–12 and 24 on the same Qwen3.8 pack: **99.3 s to 101.2 s, mean 100.3 s** —
 flat. On this card the CPU expert pool is not the lever; the window's GPU/readback path is.
 
 ## All models
