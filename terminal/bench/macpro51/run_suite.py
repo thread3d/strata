@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The full suite: prompt/context scaling, thread interaction, and edge cases, on macpro51.
 
-    python3 bench/macpro51/run_suite.py [--only BLOCK] [--runs N]
+    python3 terminal/bench/macpro51/run_suite.py [--only BLOCK] [--runs N]
 
 Blocks
   scale    prompt sizes in powers of two (8 .. 2048) on UD-IQ1_M, 2 runs each (1 for the largest)

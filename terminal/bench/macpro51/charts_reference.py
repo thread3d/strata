@@ -4,7 +4,7 @@
 Reads results-qwen36.json and results-reference.json, writes the CSV and the SVG beside them
 (docs/benchmarks/macpro51/).  Standard library only, like charts.py.
 
-    python3 bench/macpro51/charts_reference.py
+    python3 terminal/bench/macpro51/charts_reference.py
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+REPO = next((q for q in HERE.parents if (q / ".git").exists()), HERE.parents[1])   # the clone root, wherever bench/ lives
 OUT = REPO / "docs" / "benchmarks" / "macpro51"
 STRATA = HERE / "results-qwen36.json"
 REFERENCE = HERE / "results-reference.json"

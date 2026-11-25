@@ -7,7 +7,7 @@ deliverable in a repository anyway: it is crisp at any zoom and readable as text
 The error bars are the standard deviation across the runs, which is what makes the spread
 comparable between packs; the min and max stay in the CSV and the tooltip so nothing is hidden.
 
-    python3 bench/macpro51/charts.py
+    python3 terminal/bench/macpro51/charts.py
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import math
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+REPO = next((q for q in HERE.parents if (q / ".git").exists()), HERE.parents[1])   # the clone root, wherever bench/ lives
 RESULTS = HERE / "results-qwen36.json"
 OUT = REPO / "docs" / "benchmarks" / "macpro51"
 

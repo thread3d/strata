@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The llama.cpp side of the macpro51 comparison: same packs, same context, same token budget.
 
-    python3 bench/macpro51/run_reference.py --runs 2
+    python3 terminal/bench/macpro51/run_reference.py --runs 2
 
 The reference is ``llama_ref.cpp`` beside this file, built against the llama.cpp checkout at
 ``~/projects/llama.cpp`` (rev 8bed7cfb9, CPU + BLAS; there is no Metal backend in that build).  It
@@ -11,7 +11,7 @@ by eye over decoded text.  Build it with:
 
     cd ~/projects/llama.cpp
     clang++ -O2 -std=c++17 -Iinclude -Iggml/include \
-        ~/projects/Strata/strata/bench/macpro51/llama_ref.cpp \
+        ~/projects/Strata/strata/terminal/bench/macpro51/llama_ref.cpp \
         -Lbuild/bin -lllama -lggml -lggml-base -o ~/llama_ref
 
 and point --ref-bin at it (the default is ~/llama_ref).

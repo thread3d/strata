@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Chart the suite: prompt-size scaling (with error bars) and the threads x prompt matrix.
 
-    python3 bench/macpro51/charts_suite.py
+    python3 terminal/bench/macpro51/charts_suite.py
 
 Writes, under docs/benchmarks/macpro51/:
     suite-scaling.csv / suite-scaling.svg   prefill rate and wall time against prompt size (log2 x axis)
@@ -17,7 +17,7 @@ import math
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+REPO = next((q for q in HERE.parents if (q / ".git").exists()), HERE.parents[1])   # the clone root, wherever bench/ lives
 RESULTS = HERE / "results-suite.json"
 OUT = REPO / "docs" / "benchmarks" / "macpro51"
 INK, MUTED, GRID, LINE, ERR = "#1f2933", "#6b7280", "#e5e7eb", "#2563eb", "#111827"

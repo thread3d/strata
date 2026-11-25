@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Chart the CPU-pool worker sweep: results-threads.json -> a CSV and one SVG.
 
-    python3 bench/macpro51/charts_threads.py
+    python3 terminal/bench/macpro51/charts_threads.py
 
 Pure standard library (the sweep machine has no matplotlib; an SVG is crisp and readable as text anyway).
 The error bars are +/- 1 sample standard deviation across the runs of that worker count, so the spread of
@@ -16,7 +16,7 @@ import math
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+REPO = next((q for q in HERE.parents if (q / ".git").exists()), HERE.parents[1])   # the clone root, wherever bench/ lives
 RESULTS = HERE / "results-threads.json"
 OUT = REPO / "docs" / "benchmarks" / "macpro51"
 

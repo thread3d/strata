@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise every model on this machine and record what the engine says, one process per model.
 
-    python3 bench/macpro51/run_all_models.py [--only NAME] [--out results-all-models.json]
+    python3 terminal/bench/macpro51/run_all_models.py [--only NAME] [--out results-all-models.json]
 
 Three families are on the box and each is driven by a different entry point:
 

@@ -6,7 +6,7 @@ tokens and still sit a whole logit apart. This prints the per-position max and R
 in logits plus whether the argmax agrees, so a change to the down kernel can be judged
 quantitatively instead of by "the tokens look right now".
 
-    python3 bench/macpro51/logit_distance.py --ref Q8_0 --test Q6_K
+    python3 terminal/bench/macpro51/logit_distance.py --ref Q8_0 --test Q6_K
 
 Row 0 is the first prompt token's row. It is reported but excluded from the summary: the
 engine's first row is not a prediction the model ever makes, and on this machine it comes out

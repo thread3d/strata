@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The Qwen3.6-35B-A3B matrix on macpro51, one engine process per run.
 
-    python3 bench/macpro51/run_matrix.py --runs 2
-    python3 bench/macpro51/run_matrix.py --only Q8_0 --runs 1
+    python3 terminal/bench/macpro51/run_matrix.py --runs 2
+    python3 terminal/bench/macpro51/run_matrix.py --only Q8_0 --runs 1
 
 Writes ``results-qwen36.json`` next to this file.  The engine prints everything this script
 reads; nothing is inferred.  Packs the engine refuses are recorded with the engine's own line

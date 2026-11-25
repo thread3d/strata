@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sweep the CPU expert-pool worker count and record what the prompt path does with it.
 
-    python3 bench/macpro51/run_thread_sweep.py --runs 3
+    python3 terminal/bench/macpro51/run_thread_sweep.py --runs 3
 
 One engine process per (workers, run).  The workload is a fixed 260-token prompt with a 2-token decode:
 the prompt is where the CPU pool works here -- `--pool-workers` sizes the CPU expert pool, and the default
