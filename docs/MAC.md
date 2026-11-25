@@ -1,7 +1,7 @@
 # Strata on a Mac (Apple Silicon, Metal)
 
 This page is for people with an Apple Silicon Mac (M1 or newer). Strata runs there on its own Metal engine: the NVIDIA kernels
-are replaced by Metal ones (`metal/`), and the host code and the server are the PC's. Intel Macs cannot run it; the engine does
+are replaced by Metal ones (`engine/metal/`), and the host code and the server are the PC's. Intel Macs cannot run it; the engine does
 build there ([An Intel Mac](#an-intel-mac)).
 
 > **On this page:** [What you need](#what-you-need) · [Install](#install) · [Defaults](#defaults-and-options) ·
@@ -309,6 +309,14 @@ The code is in `metal/` (the engine's side in `engine/metal/src/engine`, the ker
 The engine **builds** on an Intel Mac. The Qwen3.6 path also **runs** there and returns text; the Qwen3.8 and DeepSeek paths
 do not, for the reasons below. What was measured on 2026-11-22, and what each path does now, is in
 [macpro51-2026-11-22.md](macpro51-2026-11-22.md).
+
+**2026-11-25:** the main merge moved every path below — `metal/` is `engine/metal/`, `src/` is `engine/src/` — and the
+engine now builds with `cmake -S engine/metal -B build-merge -G Ninja -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 ...`
+(`engine/metal/CMakeLists.txt` defaults to 15.0, and with that target `__builtin_available(macOS 15.0, *)` is
+compile-time true, so the residency-set path runs on Big Sur and `runtime_hello` dies). On branch `macpro51` the Qwen3.8
+path also runs now, through the DFlash2 drafter (`c22a8a6bd`, measured before the merge: 8 tokens, 0.48 tok/s); the
+DeepSeek engine still refuses without `STRATA_DS4_ALLOW_UNSTABLE_METAL=1`. What the merge changed, and the test
+evidence for it, is in [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md).
 
 Measured on: an Intel Mac Pro (2 × 6-core Xeon X5675, 24 threads), 96 GB, Radeon RX 580 8 GB (Metal 2), macOS 11.7.11, Command
 Line Tools 13 (Apple clang 13.0.0, macOS 12.1 SDK). Built there from a git checkout: the engine (`build-metal/strata`), the

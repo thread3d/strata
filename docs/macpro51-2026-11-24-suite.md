@@ -1,5 +1,9 @@
 # The full test suite on macpro51 — performance and edge cases, 2026-11-24
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 Everything below was run on the branch tip (`8641c4798` + this suite), engine `strata 0.1.59-metal` from a
 clean rebuild, `ctest` green. Four blocks, ~40 engine processes:
 

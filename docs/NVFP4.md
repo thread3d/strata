@@ -1,5 +1,9 @@
 # NVFP4 routed experts
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 This page is for people who run, convert or test Qwen3.8-Flash-Next packs whose routed experts are NVFP4. They need an
 NVIDIA card. For the choice between the three versions, see [MODELS.md](MODELS.md#nvfp4).
 

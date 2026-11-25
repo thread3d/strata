@@ -1,5 +1,9 @@
 # Qwen3.6-35B-A3B (Q8_0) on Metal: what "no backend" means, and the port's plan
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 Written 2026-11-14, after the branch moved to upstream `13eedf55` (Strata 0.2.13, engine 0.1.59).
 Everything below is read from the code at that commit unless it is marked **measured**, in which case it
 was run on the Mac Pro (2 x 6-core Xeon X5675, 24 threads, 96 GB, Radeon RX 580 8 GB, Metal 2,

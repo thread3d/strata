@@ -1,5 +1,9 @@
 # CPU expert-pool worker sweep on macpro51 — 2026-11-24
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 Varying `--pool-workers` from 1 to the machine's ceiling, three runs per point, on the branch tip
 (`f42506b47`, tag `working2` + the harness). Records: `bench/macpro51/results-threads.json` (39 records).
 Charts: `docs/benchmarks/macpro51/thread-sweep.svg` and `.csv`.

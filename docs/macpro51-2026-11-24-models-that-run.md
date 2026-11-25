@@ -1,5 +1,9 @@
 # The downloaded models that would not run — macpro51, 2026-11-24
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 At `f2349f144` (the "every model on the box exercised" pass) four Qwen3.6/Qwen3.8 files were refused by the
 engine and six Qwen3.8 directories were recorded as "not convertible here". This page is the follow-up: what
 each refusal actually was, the six commits that fixed them, and the matrix that results.

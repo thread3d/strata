@@ -1,5 +1,9 @@
 # Qwen3.6 Metal on macpro51 (Radeon RX 580) - Status Summary
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 > **Superseded 2026-11-22.** The numbers below were not reproduced by the branch tip (`be4cbc78f`) and some cannot be: the token ids listed for several packs change at the fourth token, and the file sizes are wrong (Q8_0 is 37.8 GB, not 52 GB). See [macpro51-2026-11-22.md](macpro51-2026-11-22.md) for what the engine actually does on this machine now.
 
 ## Current State (as of 2026-11-16)

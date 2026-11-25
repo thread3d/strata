@@ -1,5 +1,9 @@
 # macpro51: the DFlash2 drafter on a 64-lane SIMD GPU, 2026-11-23
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 Companion to `docs/macpro51-2026-11-22.md`, which is the record for the Qwen3.6 engine on this
 machine. This page covers one thing: **DFlash2** (`--draft dflash2`, the block drafter for
 Qwen3.8-Flash-Next), which the Metal port carried but had never run here.

@@ -1,5 +1,9 @@
 # The GDN step against the reference: what the diff found, and the two "fixes" that were wrong
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 `metal/kernels/gdn.metal` is shared with the DeltaNet families, and Qwen3.6-35B-A3B (qwen35moe) differs from them in the step's output gate.  This
 document records the operator-by-operator diff of the kernel against `src/qwen35/q36ref.cu`'s statement of the family's step, and - more usefully -
 the two changes that diff produced which were NOT defects, and how that was finally established.

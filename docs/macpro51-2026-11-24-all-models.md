@@ -1,5 +1,9 @@
 # Every model on macpro51, exercised — 2026-11-24
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 > **Superseded for the refusals and the six skipped packs (`99e2d6c7b`).** Both Qwen3.6 refusals below are
 > fixed (BF16 experts; Q5_K embedding + Q2_K gate/up) and the six Qwen3.8 directories recorded as "not
 > convertible here" now run — they never needed converting. See

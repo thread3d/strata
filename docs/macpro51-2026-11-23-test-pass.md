@@ -1,5 +1,9 @@
 # macpro51: a full test pass at `5360e6292`, 2026-11-23
 
+> **Paths moved on 2026-11-25:** `metal/` is `engine/metal/`, `src/` is `engine/src/`,
+> `bench/macpro51/` is `terminal/bench/macpro51/`. See
+> [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
+
 "Full" on this page means: build the branch, run the whole `ctest` suite, drive each model family's
 CLI path as far as this machine allows, and run the diagnostics the port is judged by. Every number
 is from that run's own output on macpro51; nothing was inferred. Timings are single cold runs and
