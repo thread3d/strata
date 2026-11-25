@@ -4,6 +4,9 @@
 > `bench/macpro51/` is `terminal/bench/macpro51/`. See
 > [macpro51-2026-11-25-merge.md](macpro51-2026-11-25-merge.md) for the mapping and the test record.
 
+> **Superseded for numbers by the post-merge sweep (2026-11-25):**
+> [macpro51-2026-11-25-sweep.md](macpro51-2026-11-25-sweep.md) - all seven packs run, 4-7 % faster.
+
 Everything below was run on the branch tip (`8641c4798` + this suite), engine `strata 0.1.59-metal` from a
 clean rebuild, `ctest` green. Four blocks, ~40 engine processes:
 

@@ -126,11 +126,15 @@ CSV had been produced by an older revision of `charts_reference.py`. The scripts
 counting parent directories to find the repo root (that broke when `bench/` moved under `terminal/`):
 they now locate the clone by its `.git`. Their usage lines say `terminal/bench/macpro51/...`.
 
-## Not done in this pass
+## The sweep that followed
 
-- No model pack was loaded and no inference or benchmark was re-run after the merge. The last measured
-  behaviour of each model is the pre-merge state in
-  [macpro51-2026-11-24-models-that-run.md](macpro51-2026-11-24-models-that-run.md).
+The full sweep was run on this tree the same day: [macpro51-2026-11-25-sweep.md](macpro51-2026-11-25-sweep.md).
+All seven Qwen3.6 packs run (two of them for the first time) and the five that already ran are 4-7 %
+faster; the Qwen3.8 suite, the thread sweep and the all-models pass all completed. The charts beside the
+results were regenerated from those numbers.
+
+## Still open after both passes
+
 - `strata_ds4` still refuses to run on this card by design (it needs
   `STRATA_DS4_ALLOW_UNSTABLE_METAL=1`, which resets the GPU); the restored port is compile- and
   link-verified, not run.
