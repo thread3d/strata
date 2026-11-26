@@ -1,6 +1,6 @@
 # Inkling-2-Mini and Hy4-Flash on macpro51: what it took, and how fast it goes
 
-Status: **partial**. The standard protocol cannot complete on this machine — the 16K cases exceed the
+Status: **partial** — Inkling-2-Mini SQ-10 runs and answers correctly, and its standard run cannot complete because the 16K cases exceed the protocol's own 1800 s request budget (measured below). Hy4-Flash builds and cannot load on this card (Section 1 needs a 5.92 GB buffer; the limit is 3.8 GB). The 22-task sweep did not fit in the time available.
 protocol's own 1800 s request budget (measured, below). The numbers that did complete are recorded here.
 
 macpro51 is the 2010/2012 Mac Pro (Xeon X5675, 96 GB DDR3, **Radeon RX 580 8 GB, Metal 2, macOS 11.7**)
@@ -71,25 +71,37 @@ tokens instead of once per 8; the present ceiling comes from the `mat_ok` cap of
 the matrix-free `mv` kernels handle M ≤ 8. That kernel is **not implemented here**, and no number in
 this page is extrapolated from it.
 
-## Standard benchmark results
+## Standard benchmark results — partial, and why
 
-<!-- the suite is still running; the table is filled from
-     docs/bench-results/2026-11-25-macpro51-inkling-sq-10/README.md + results.json when it finishes -->
+Raw evidence: `docs/bench-results/2026-11-26-macpro51-inkling-sq-10/` (README + console log). There is
+**no `results.json`**, because the runner writes it at the end and the run cannot reach the end in a
+budget that exists.
 
-| case | result |
-|---|---|
-| warmup | truncated, 1.43 tok/s decode, TTFT 389 s |
-| short (×3) | truncated, ~1.40 tok/s decode, TTFT ~4.7 s |
-| 4K (×3) | truncated, 8.6 tok/s prompt, 1.30 tok/s decode, TTFT ~397 s |
-| 16K (×3) | **failed: timeout at 1800 s** (first token at 1,894 s) |
-| sanity 12 | pending (the 13.8K cases R3/R4 will time out like 16K) |
+| case | prompt tok/s | decode tok/s | first token | outcome |
+|---|---:|---:|---:|---|
+| warmup | 9.60 | 1.43 | 389.0 s | truncated |
+| short (×3) | 9.00 / 9.01 / 8.95 | 1.40 | 4.7 s | truncated |
+| 4K (×3) | 8.62 / 8.63 / 8.60 | 1.30 | 397 s | truncated |
+| 16K (×3) | 7.27 / 7.27 / 7.26 | — | **1,894.5 / 1,894.9 / 1,896.5 s** | **failed: timeout** |
+| sanity I1-I3 | 9.3-10.0 | 1.40 | 5 s | truncated at the 2048 cap (= failed) |
 
-## 22 checked tasks
+The 16K failure is deterministic to within 2 s across three runs, and the prefill rate *decays* with
+context (9.6 → 8.6 → 7.3 tok/s), so it is not a marginal miss that a little luck would fix.
 
-Not yet run to completion. The first attempt used `BENCH_MAX_TOKENS=400` and was abandoned: the first
-coding task spent the whole 400 tokens thinking and never emitted the function (`FAIL ... out 400`), so
-that cap manufactures failures. It is re-run at 1200-1500 tokens with `BENCH_TIMEOUT`, and the deviation
-from the 2026-11-22 Radeon report (6000 tokens, `reasoning_effort: high`) will be stated with the result.
+## 22 checked tasks — attempted twice, not completed
+
+Both attempts are documented because the failures are informative:
+
+1. `BENCH_MAX_TOKENS=400`: the first coding task spent all 400 tokens thinking and never emitted the
+   function (`FAIL ... out 400`). A cap that low manufactures failures, so the attempt was abandoned
+   rather than reported.
+2. `BENCH_MAX_TOKENS=800, BENCH_REASONING=low`: the first task reached **710 of 800 tokens after 879 s**
+   and was still thinking, with decode down to 0.8 tok/s. At 10-17 minutes a task the 22-task sweep needs
+   roughly 6 hours, and the runner writes its JSON only at the end, so a partial run yields no artifact.
+
+No pass/fail figure is reported for the tasks. The honest statement is that this model's thinking budget
+and this machine's 0.8-1.4 tok/s decode make the sweep a multi-hour run that did not fit alongside the
+standard suite in the time available.
 
 ## The crash on 2026-11-25, for the record
 
@@ -111,6 +123,19 @@ also drives the display. The context is now 20480 (KV ~1.44 GiB) and the engine 
   top-1 = 0); its SF4/MX8 formats are the difference from SQ-10/SQ-15, which are correct.
 - **The Unsloth GGUF builds** cannot be read by this runner (`.strata` only, "bad .strata magic").
 - **DSpark** is off: its kernels are matrix based and this card cannot run them.
-- **Hy4-Flash** is built, its tokenizer converted, its config written, and `--info` reads SQ-64
-  (`arch=hy4flash layers=42 hidden=3072 vocab=120832 experts=512 drafter=dfly2 images=1`) — but it has
-  **not been run**, because the GPU has been busy with the Inkling sweep.
+- **Hy4-Flash SQ-64 builds, inspects, and cannot load on this card.** `strata-hy4-metal` compiles clean,
+  its tokenizer converts, and `--info` reads it (`arch=hy4flash layers=42 hidden=3072 vocab=120832
+  experts=512 drafter=dfly2 images=1`), but the load dies at
+
+  ```
+  [gpu] AMD Radeon RX 580 metal4=0 maxBuffer 3.8 GB workingSet 8.6 GB
+  mtl: wrap 5920620544 failed
+  ```
+
+  With a 62 GB file on an 8.6 GB working set, `hy4_metal_main.cpp:238` selects the cold-expert path and
+  then wraps **Section 1 (5.92 GB) as a single Metal buffer** (line 252); this card's `maxBufferLength`
+  is 3.8 GB, and the copy fallback fails for the same reason. Every tensor accessor reads through that
+  one `wbuf`, so the fix is to split Section 1 across several buffers and remap the accessors — the
+  chunked-buffer design Inkling already has. That is a port, not a configuration change, and it was not
+  attempted: the Hy4 kernels are the same Apple-silicon vintage, so it would very likely surface the same
+  32-lane/`simdgroup_matrix` defects that took nine fixes on the Inkling side.
