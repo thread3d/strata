@@ -20,6 +20,7 @@ URL = os.environ.get("BENCH_URL", "http://127.0.0.1:8080/v1/chat/completions")
 label = sys.argv[1]
 
 MAX_TOKENS = int(os.environ.get("BENCH_MAX_TOKENS", "6000"))
+TASK_TIMEOUT = float(os.environ.get("BENCH_TIMEOUT", "900"))
 REASONING = os.environ.get("BENCH_REASONING", "high")
 
 
@@ -32,7 +33,7 @@ def ask(messages, tools=None, max_tokens=None):
     req = urllib.request.Request(URL, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
     t0 = time.time(); first = None; text = []; think = 0; calls = {}; usage = {}; finish = None
     try:
-        with urllib.request.urlopen(req, timeout=900) as r:
+        with urllib.request.urlopen(req, timeout=TASK_TIMEOUT) as r:
             for raw in r:
                 line = raw.decode("utf-8", "replace").strip()
                 if not line.startswith("data:") or line == "data: [DONE]":

@@ -464,6 +464,22 @@ struct InkMetalModel {
 
         prepare_preoriented_tables(cx);
 
+        if (std::getenv("STRATA_INK_FMT_HIST")) {
+            struct H { int fmt; size_t n; size_t bytes; } h[16]{};
+            int nh = 0;
+            for (const auto& kv : man.T) {
+                const auto& ti = kv.second;
+                int k = 0;
+                for (; k < nh; ++k) if (h[k].fmt == (int) ti.fmt) break;
+                if (k == nh) { if (nh >= 16) continue; h[nh].fmt = (int) ti.fmt; h[nh].n = 0; h[nh].bytes = 0; ++nh; }
+                h[k].n += 1;
+                h[k].bytes += ti.bytes;
+            }
+            std::fprintf(stderr, "[ink_metal] trunk formats:");
+            for (int k = 0; k < nh; ++k)
+                std::fprintf(stderr, " fmt%d=%zu/%.2fGiB", h[k].fmt, h[k].n, h[k].bytes / (1024.0 * 1024.0 * 1024.0));
+            std::fprintf(stderr, "\n");
+        }
         const size_t max_buf = cx.max_buffer_length();
         t_load = mtl::now_s() - t0;
         fprintf(stderr,
