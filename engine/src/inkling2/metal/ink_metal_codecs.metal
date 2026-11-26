@@ -3511,3 +3511,93 @@ kernel void ink_moe_dn_mm_gen(
         y_pairs[(size_t)pid_m * 2304 + gn0 + 9] = acc11.thread_elements()[1] * rw;
     }
 }
+
+// ============================================================================
+// 32-row tiled GEMM (matrix-free) for prefill: F32 / BF16 / Q8_ROW weights.
+//
+// The `mv` kernels above handle M <= 8, so a prefill chunk can only be 8 tokens
+// wide and every weight is re-read once per 8 tokens. This kernel tiles:
+//   BM = 32 rows of X, BN = 64 output columns, BK = 32 over K, 256 threads,
+//   each thread accumulating a 2x4 tile (16 threads in M x 16 in N = 256).
+// Weights are then read once per 32 tokens instead of once per 8.
+//   grid = (ceil(N/64), ceil(M/32)), threadgroup = 256
+// Y is [M][N] and X is [M][K], both row-major float; W depends on FMT:
+//   0 F32   : float  W[n*K + k]
+//   1 BF16  : ushort W[n*K + k]
+//   2 Q8_ROW: float scales[N] then int8 W[N*4 + n*K + k]
+// ============================================================================
+#define INK_GEMM_BM 32
+#define INK_GEMM_BN 64
+#define INK_GEMM_BK 32
+
+static inline float ink_w_at(device const uchar* W, int N, int K, int n, int k, int fmt) {
+    if (fmt == 0) return ((device const float*) W)[(size_t) n * K + k];
+    if (fmt == 1) return bf16_to_f32(((device const ushort*) W)[(size_t) n * K + k]);
+    const float sc = ((device const float*) W)[n];
+    return (float) ((device const char*) (W + (size_t) N * 4))[(size_t) n * K + k] * sc;
+}
+
+kernel void ink_linear_any_mm(
+    device const uchar* W [[buffer(0)]],
+    device const float* X [[buffer(1)]],
+    device float* Y       [[buffer(2)]],
+    constant int& N       [[buffer(3)]],
+    constant int& K       [[buffer(4)]],
+    constant int& M       [[buffer(5)]],
+    constant int& FMT     [[buffer(6)]],
+    uint2 tgid            [[threadgroup_position_in_grid]],
+    uint tid              [[thread_index_in_threadgroup]]) {
+    threadgroup float sX[INK_GEMM_BM][INK_GEMM_BK];
+    threadgroup float sW[INK_GEMM_BN][INK_GEMM_BK];
+
+    const int m0 = (int) tgid.y * INK_GEMM_BM;   // first row of X in this tile
+    const int n0 = (int) tgid.x * INK_GEMM_BN;   // first output column
+    const int rows = min(INK_GEMM_BM, M - m0);   // may be < BM at the edge
+    const int cols = min(INK_GEMM_BN, N - n0);
+    const int tr = (int) (tid >> 4);             // 0..15 -> 2 rows each
+    const int tc = (int) (tid & 15u);            // 0..15 -> 4 cols each
+    const int r0 = tr * 2, c0 = tc * 4;
+
+    float acc[2][4];
+    for (int i = 0; i < 2; ++i)
+        for (int j = 0; j < 4; ++j) acc[i][j] = 0.0f;
+
+    for (int k0 = 0; k0 < K; k0 += INK_GEMM_BK) {
+        // X tile: BM rows x BK cols, 256 threads x 4 elements
+        for (int e = (int) tid; e < INK_GEMM_BM * INK_GEMM_BK; e += 256) {
+            const int r = e >> 5, c = e & 31;         // BK = 32
+            const int gr = m0 + r, gk = k0 + c;
+            sX[r][c] = (gr < M && gk < K) ? X[(size_t) gr * K + gk] : 0.0f;
+        }
+        // W tile: BN output columns x BK, dequantised on the way in
+        for (int e = (int) tid; e < INK_GEMM_BN * INK_GEMM_BK; e += 256) {
+            const int c = e >> 5, kk = e & 31;
+            const int gn = n0 + c, gk = k0 + kk;
+            sW[c][kk] = (gn < N && gk < K) ? ink_w_at(W, N, K, gn, gk, (int) FMT) : 0.0f;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        #pragma unroll 2
+        for (int kk = 0; kk < INK_GEMM_BK; ++kk) {
+            float xv[2];
+            xv[0] = sX[r0 + 0][kk];
+            xv[1] = sX[r0 + 1][kk];
+            #pragma unroll 4
+            for (int j = 0; j < 4; ++j) {
+                const float wv = sW[c0 + j][kk];
+                acc[0][j] += xv[0] * wv;
+                acc[1][j] += xv[1] * wv;
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    for (int i = 0; i < 2; ++i) {
+        const int gr = m0 + r0 + i;
+        if (gr >= M) continue;
+        for (int j = 0; j < 4; ++j) {
+            const int gn = n0 + c0 + j;
+            if (gn < N) Y[(size_t) gr * N + gn] = acc[i][j];
+        }
+    }
+}

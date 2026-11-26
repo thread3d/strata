@@ -120,6 +120,7 @@ struct InkMetalRunner {
     mtl::Pipeline p_mpp_moe_combine, p_mpp_prep_qr, p_mpp_relpos_gqa_pf;
 
     // Pipelines
+    mtl::Pipeline p_lin_any_mm;   // tiled 32-row GEMM (F32/BF16/Q8_ROW), matrix-free
     mtl::Pipeline p_lin_bf16_mv1, p_lin_bf16_mv, p_lin_bf16_mm8, p_lin_bf16_mm;
     mtl::Pipeline p_lin_q8_mv1, p_lin_q8_mv, p_lin_q8_mm8, p_lin_q8_mm;
     mtl::Pipeline p_lin_f32, p_lin_f32_mm, p_lin_f32_exact_mm;
@@ -241,6 +242,9 @@ struct InkMetalRunner {
         mat_ok = cx->simd_width() == 32;   // the matrix kernels need 32-lane simdgroups; an AMD card has 64
         if (!mat_ok) {
             std::fprintf(stderr, "[ink_metal] simd_width=%d: no simdgroup_matrix on this card; matrix-free kernels only, batch and slots capped at 8\n", cx->simd_width());
+            // ink_linear_any_mm (tiled GEMM) covers M<=32, but raising this to 32 also reaches
+            // other M>8 paths that dispatch Apple-silicon MPP pipelines this card never creates,
+            // so the chunk stays at 8 until those gates are fixed. See the 2026-11-26 handoff.
             max_batch = std::min(max_batch, 8);
             max_slots = std::min(max_slots, 8);
         }
@@ -254,6 +258,9 @@ struct InkMetalRunner {
         if (!compile_shaders(kernel_dir, err)) return false;
 
         // Create pipelines
+        p_lin_any_mm   = cx->pipeline(lib_codecs, "ink_linear_any_mm");
+        std::fprintf(stderr, "[ink_metal] ink_linear_any_mm: max_threads=%d simd=%d tgmem=%d\n",
+                     p_lin_any_mm.max_threads, p_lin_any_mm.simd_width, p_lin_any_mm.static_tg_mem);
         p_lin_bf16_mv1 = cx->pipeline(lib_codecs, "ink_linear_bf16_mv1");
         p_lin_bf16_mv  = cx->pipeline(lib_codecs, "ink_linear_bf16_mv");
         p_lin_q8_mv1   = cx->pipeline(lib_codecs, "ink_linear_q8row_mv1");
@@ -864,6 +871,8 @@ struct InkMetalRunner {
                      bool barrier = true, bool exact_f32 = false) {
         mtl::Dispatch d;
         d.barrier = barrier;
+        // ink_linear_any_mm's own format tags: 0 F32, 1 BF16, 2 Q8_ROW
+        const int fmt_code = (ti.fmt == FMT_F32) ? 0 : (ti.fmt == FMT_BF16) ? 1 : 2;
         if (ti.fmt == FMT_BF16) {
             if (M == 1) {
                 d.p = &p_lin_bf16_mv1;
@@ -879,6 +888,14 @@ struct InkMetalRunner {
                 d.p = &p_lin_bf16_mv;
                 d.grid[0] = (uint32_t)((N + 15) / 16);
                 d.tg[0] = 256;
+            } else if (!mat_ok) {   // prefill on a 64-lane card: tiled matrix-free GEMM
+                d.p = &p_lin_any_mm;
+                d.grid[0] = (uint32_t)((N + 63) / 64);
+                d.grid[1] = (uint32_t)((M + 31) / 32);
+                d.tg[0] = 256;
+                d.args = {w_arg, x_arg, y_arg, mtl::Arg::V(N), mtl::Arg::V(K), mtl::Arg::V(M), mtl::Arg::V(fmt_code)};
+                ds.push_back(std::move(d));
+                return;
             } else {
                 d.p = &p_lin_bf16_mm;
                 d.grid[0] = (uint32_t)((N + 63) / 64);
@@ -1278,7 +1295,8 @@ struct InkMetalRunner {
             // Measured exact Apple10 crossover: BF16 mv beats MPP at M<=3, MPP wins at M>=4 (-6.7 ms at M=8!);
             // Q8_ROW 1B mv beats MPP at M<=4 (-4.4 ms at M=1!), MPP wins at M>=5 (-5.8 ms at M=8!).
             const bool trunk_is_q8 = (mod->man.get(p + ".attn.wq_du.weight").fmt == FMT_Q8ROW);
-            const int mpp_trunk_min_m = is_apple10 ? (trunk_is_q8 ? 5 : 4) : 16;
+            int mpp_trunk_min_m = is_apple10 ? (trunk_is_q8 ? 5 : 4) : 16;
+            if (lib_mpp < 0) mpp_trunk_min_m = INT_MAX;   // no MPP library here: never dispatch to it
             if (use_mpp && use_mpp_trunk_f16 && M >= mpp_trunk_min_m) {
                 const bool shared_qkv = (is_swa && !has_msgs);
                 const int n_in_floats = (shared_qkv ? 1 : 3) * M_stride;
@@ -1649,7 +1667,8 @@ struct InkMetalRunner {
             push_trunk_linear(ds, p + ".mlp.gate.weight", mtl::Arg::B(b_mlp_in), mtl::Arg::B(b_r_logits), M, -1, true, true);
             const size_t ex_off = (size_t)ip * c.n_experts * sizeof(InkExpertDev);
             const bool layer_has_gguf = (((layer_gu_mask[ip] | layer_dn_mask[ip]) & (1u << FMT_GGUF_RAW)) != 0);
-            const int mpp_moe_min_m = is_apple10 ? 10 : 16;
+            int mpp_moe_min_m = is_apple10 ? 10 : 16;
+            if (lib_mpp < 0) mpp_moe_min_m = INT_MAX;
             if (use_mpp && M >= mpp_moe_min_m && !layer_has_gguf) {
                 {
                     mtl::Dispatch d;
