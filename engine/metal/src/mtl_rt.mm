@@ -1375,6 +1375,10 @@ static std::unordered_map<std::string, uint64_t> g_kernel_counts;
 static std::atomic<uint64_t> g_t_pipe{0}, g_t_args{0}, g_t_disp{0};
 #endif
 static void encode(id<MTLComputeCommandEncoder> enc, const Dispatch& d) {
+    if (d.p->name.empty())   // an unset pipeline: name it by its grid so the caller can be found
+        std::fprintf(stderr, "[trace] unnamed pipeline: grid=%u,%u,%u tg=%u,%u,%u args=%zu indirect=%p\n",
+                     d.grid[0], d.grid[1], d.grid[2], d.tg[0], d.tg[1], d.tg[2], d.args.size(),
+                     (const void*) d.indirect);
     require_fit(d, "dispatch");
 #if defined(STRATA_DS4_RUNTIME)
     static const bool enc_times = std::getenv("DS4_ENC_TIMES") != nullptr;
