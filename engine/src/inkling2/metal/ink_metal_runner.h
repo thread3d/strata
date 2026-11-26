@@ -871,6 +871,8 @@ struct InkMetalRunner {
                      bool barrier = true, bool exact_f32 = false) {
         mtl::Dispatch d;
         d.barrier = barrier;
+        if (std::getenv("STRATA_INK_PUSH_TRACE"))
+            std::fprintf(stderr, "[push] fmt=%d M=%d N=%d K=%d\n", (int) ti.fmt, M, N, K);
         // ink_linear_any_mm's own format tags: 0 F32, 1 BF16, 2 Q8_ROW
         const int fmt_code = (ti.fmt == FMT_F32) ? 0 : (ti.fmt == FMT_BF16) ? 1 : 2;
         if (ti.fmt == FMT_BF16) {
