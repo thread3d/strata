@@ -245,8 +245,16 @@ struct InkMetalRunner {
             // ink_linear_any_mm (tiled GEMM) covers M<=32, but raising this to 32 also reaches
             // other M>8 paths that dispatch Apple-silicon MPP pipelines this card never creates,
             // so the chunk stays at 8 until those gates are fixed. See the 2026-11-26 handoff.
+            // The tiled GEMM covers the dense M>8 paths, but the serve flow's verify ring is only
+            // saved for M<=8 (save_ring below), so a >8-row prefill degenerates the second phase
+            // (thinking). Keep 8; STRATA_INK_MAX_BATCH raises it for experiments.
             max_batch = std::min(max_batch, 8);
             max_slots = std::min(max_slots, 8);
+            // STRATA_INK_MAX_BATCH raises the chunk for testing the tiled GEMM (M>8 paths).
+            if (const char* ev = std::getenv("STRATA_INK_MAX_BATCH")) {
+                int v = std::atoi(ev);
+                if (v >= 1 && v <= 64) { max_batch = v; max_slots = std::min(max_slots, v); }
+            }
         }
         use_dspark = enable_dspark && m.man.c.has_dspark;
         if (!mat_ok && use_dspark) {
@@ -409,7 +417,12 @@ struct InkMetalRunner {
         const auto& c = mod->man.c;
         {
             const uint64_t ws_lim = cx->recommended_working_set();
-            const uint64_t cur_alloc = cx->allocated();
+            // The .strata sections are mmap'd MAP_PRIVATE file mappings wrapped zero-copy: they live
+            // in host RAM and are read over PCIe, so they are not GPU working-set bytes. Counting
+            // them (9.75 GiB on SQ-10) makes the clamp below force ctx to 4096 on this 8 GiB card.
+            const uint64_t model_mapped = (uint64_t) mod->fsize;
+            const uint64_t cur_alloc = cx->allocated() > model_mapped
+                                     ? cx->allocated() - model_mapped : 0;
             if (ws_lim > (4ull << 30)) {
                 const uint64_t os_headroom = (ws_lim <= (14ull << 30)) ? (1024ull << 20) : (1536ull << 20);
                 // SWA KV (40 visits) + ShortConv + workspaces + compact DSpark SWA layers (0 & 2)
@@ -875,6 +888,18 @@ struct InkMetalRunner {
             std::fprintf(stderr, "[push] fmt=%d M=%d N=%d K=%d\n", (int) ti.fmt, M, N, K);
         // ink_linear_any_mm's own format tags: 0 F32, 1 BF16, 2 Q8_ROW
         const int fmt_code = (ti.fmt == FMT_F32) ? 0 : (ti.fmt == FMT_BF16) ? 1 : 2;
+        // Validation hook: force the tiled GEMM for every dense shape it supports, so it can be
+        // compared with the mv kernels at M<=8, where those are known good.
+        const bool gemm_ok_fmt = (ti.fmt == FMT_F32 || ti.fmt == FMT_BF16 || ti.fmt == FMT_Q8ROW);
+        if (gemm_ok_fmt && !exact_f32 && std::getenv("STRATA_INK_GEMM")) {
+            d.p = &p_lin_any_mm;
+            d.grid[0] = (uint32_t)((N + 63) / 64);
+            d.grid[1] = (uint32_t)((M + 31) / 32);
+            d.tg[0] = 256;
+            d.args = {w_arg, x_arg, y_arg, mtl::Arg::V(N), mtl::Arg::V(K), mtl::Arg::V(M), mtl::Arg::V(fmt_code)};
+            ds.push_back(std::move(d));
+            return;
+        }
         if (ti.fmt == FMT_BF16) {
             if (M == 1) {
                 d.p = &p_lin_bf16_mv1;
@@ -918,6 +943,14 @@ struct InkMetalRunner {
                 d.p = &p_lin_q8_mv;
                 d.grid[0] = (uint32_t)((N + 15) / 16);
                 d.tg[0] = 256;
+            } else if (!mat_ok) {   // prefill on a 64-lane card: tiled matrix-free GEMM
+                d.p = &p_lin_any_mm;
+                d.grid[0] = (uint32_t)((N + 63) / 64);
+                d.grid[1] = (uint32_t)((M + 31) / 32);
+                d.tg[0] = 256;
+                d.args = {w_arg, x_arg, y_arg, mtl::Arg::V(N), mtl::Arg::V(K), mtl::Arg::V(M), mtl::Arg::V(fmt_code)};
+                ds.push_back(std::move(d));
+                return;
             } else {
                 d.p = &p_lin_q8_mm;
                 d.grid[0] = (uint32_t)((N + 63) / 64);
@@ -925,7 +958,15 @@ struct InkMetalRunner {
                 d.tg[0] = 256;
             }
         } else if (ti.fmt == FMT_F32) {
-            if (mat_ok && M > 8 && !exact_f32) {
+            if (!mat_ok && M > 8 && !exact_f32) {   // prefill on a 64-lane card: tiled matrix-free GEMM
+                d.p = &p_lin_any_mm;
+                d.grid[0] = (uint32_t)((N + 63) / 64);
+                d.grid[1] = (uint32_t)((M + 31) / 32);
+                d.tg[0] = 256;
+                d.args = {w_arg, x_arg, y_arg, mtl::Arg::V(N), mtl::Arg::V(K), mtl::Arg::V(M), mtl::Arg::V(fmt_code)};
+                ds.push_back(std::move(d));
+                return;
+            } else if (mat_ok && M > 8 && !exact_f32) {
                 d.p = &p_lin_f32_mm;
                 d.grid[0] = (uint32_t)((N + 63) / 64);
                 d.grid[1] = (uint32_t)((M + 31) / 32);
