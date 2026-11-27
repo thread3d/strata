@@ -1,0 +1,294 @@
+{
+ "label": "inkling-sq-10-c8",
+ "summary": {
+  "code": {
+   "passed": 0,
+   "of": 6,
+   "median_first_s": 1058.2,
+   "median_total_s": 1381.9,
+   "worst_total_s": 1398.9,
+   "no_answer": 0
+  },
+  "reason": {
+   "passed": 1,
+   "of": 6,
+   "median_first_s": 1379.4,
+   "median_total_s": 1379.4,
+   "worst_total_s": 1384.3,
+   "no_answer": 0
+  },
+  "tool": {
+   "passed": 0,
+   "of": 4,
+   "median_first_s": 1143.9,
+   "median_total_s": 1489.9,
+   "worst_total_s": 1494.7,
+   "no_answer": 0
+  },
+  "reading": {
+   "passed": 0,
+   "of": 3,
+   "median_first_s": 2466.8,
+   "median_total_s": 3456.3,
+   "worst_total_s": 3464.8,
+   "no_answer": 0
+  },
+  "format": {
+   "passed": 2,
+   "of": 3,
+   "median_first_s": 36.0,
+   "median_total_s": 107.2,
+   "worst_total_s": 881.3,
+   "no_answer": 0
+  },
+  "all": {
+   "passed": 3,
+   "of": 22,
+   "total_minutes": 488.0
+  }
+ },
+ "rows": [
+  {
+   "group": "code",
+   "task": "`merge_intervals(intervals)` that me",
+   "ok": false,
+   "first_s": 1365.2,
+   "total_s": 1365.2,
+   "out_tokens": 1200,
+   "think_chars": 6073,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "code",
+   "task": "`roman_to_int(s)` that converts a Ro",
+   "ok": false,
+   "first_s": 7.8,
+   "total_s": 873.6,
+   "out_tokens": 1200,
+   "think_chars": 0,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "code",
+   "task": "`lru(capacity)` that returns an obje",
+   "ok": false,
+   "first_s": 1380.7,
+   "total_s": 1380.7,
+   "out_tokens": 1200,
+   "think_chars": 4896,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "code",
+   "task": "`parse_duration(s)` that turns strin",
+   "ok": false,
+   "first_s": 1028.6,
+   "total_s": 1383.4,
+   "out_tokens": 962,
+   "think_chars": 3292,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "code",
+   "task": "`top_k_words(text, k)` that returns ",
+   "ok": false,
+   "first_s": 1017.9,
+   "total_s": 1381.9,
+   "out_tokens": 1200,
+   "think_chars": 3798,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "code",
+   "task": " Fix it and return only the correcte",
+   "ok": false,
+   "first_s": 1058.2,
+   "total_s": 1398.9,
+   "out_tokens": 1080,
+   "think_chars": 2224,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reason",
+   "task": "A train leaves at 14:35 and arrive",
+   "ok": false,
+   "first_s": 1379.4,
+   "total_s": 1379.4,
+   "out_tokens": 1200,
+   "think_chars": 4040,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reason",
+   "task": "I have 3 boxes. Box A has twice as",
+   "ok": false,
+   "first_s": 11.9,
+   "total_s": 880.0,
+   "out_tokens": 1200,
+   "think_chars": 0,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reason",
+   "task": "What is 17 * 23 + 144 / 12 - 9? En",
+   "ok": false,
+   "first_s": 873.7,
+   "total_s": 873.7,
+   "out_tokens": 613,
+   "think_chars": 1589,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reason",
+   "task": "Five people finished a race. Ana f",
+   "ok": false,
+   "first_s": 1379.5,
+   "total_s": 1379.5,
+   "out_tokens": 1200,
+   "think_chars": 4322,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reason",
+   "task": "A password must be 4 characters, e",
+   "ok": false,
+   "first_s": 1384.3,
+   "total_s": 1384.3,
+   "out_tokens": 1200,
+   "think_chars": 4182,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reason",
+   "task": "A file is 3.2 GB. A link downloads",
+   "ok": true,
+   "first_s": 163.6,
+   "total_s": 168.6,
+   "out_tokens": 223,
+   "think_chars": 696,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "group": "tool",
+   "task": "Show me what is in config/settings",
+   "ok": false,
+   "first_s": 1494.7,
+   "total_s": 1494.7,
+   "out_tokens": 1200,
+   "think_chars": 5608,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "tool",
+   "task": "Find every place in the code that ",
+   "ok": false,
+   "first_s": 98.6,
+   "total_s": 107.1,
+   "out_tokens": 61,
+   "think_chars": 165,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "group": "tool",
+   "task": "How many lines does README.md have",
+   "ok": false,
+   "first_s": 64.5,
+   "total_s": 938.1,
+   "out_tokens": 1200,
+   "think_chars": 0,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "tool",
+   "task": "Create a file notes/todo.txt conta",
+   "ok": false,
+   "first_s": 1143.9,
+   "total_s": 1489.9,
+   "out_tokens": 962,
+   "think_chars": 2782,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reading",
+   "task": "the maintenance window",
+   "ok": false,
+   "first_s": 2466.8,
+   "total_s": 3456.3,
+   "out_tokens": 1039,
+   "think_chars": 0,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reading",
+   "task": "the port of the metrics exporter",
+   "ok": false,
+   "first_s": 2474.6,
+   "total_s": 3464.8,
+   "out_tokens": 580,
+   "think_chars": 0,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "reading",
+   "task": "the on-call engineer for storage",
+   "ok": false,
+   "first_s": 2465.9,
+   "total_s": 3453.9,
+   "out_tokens": 1200,
+   "think_chars": 0,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "format",
+   "task": "Return only a JSON object with key",
+   "ok": false,
+   "first_s": 9.5,
+   "total_s": 881.3,
+   "out_tokens": 1200,
+   "think_chars": 0,
+   "finish": "length",
+   "error": null
+  },
+  {
+   "group": "format",
+   "task": "List the first 6 prime numbers, co",
+   "ok": true,
+   "first_s": 98.6,
+   "total_s": 107.2,
+   "out_tokens": 144,
+   "think_chars": 407,
+   "finish": "stop",
+   "error": null
+  },
+  {
+   "group": "format",
+   "task": "Reply with exactly the word DONE i",
+   "ok": true,
+   "first_s": 36.0,
+   "total_s": 38.1,
+   "out_tokens": 48,
+   "think_chars": 152,
+   "finish": "stop",
+   "error": null
+  }
+ ]
+}

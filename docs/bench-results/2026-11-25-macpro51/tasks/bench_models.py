@@ -22,6 +22,10 @@ label = sys.argv[1]
 MAX_TOKENS = int(os.environ.get("BENCH_MAX_TOKENS", "6000"))
 TASK_TIMEOUT = float(os.environ.get("BENCH_TIMEOUT", "900"))
 REASONING = os.environ.get("BENCH_REASONING", "high")
+# At 1.4 tok/s a big thinking budget IS the wall: 1200 tokens of thinking + answer caps out.
+THINK_BUDGET = os.environ.get("BENCH_THINKING_BUDGET")      # None: the server decides
+GROUPS = [g for g in os.environ.get("BENCH_GROUPS", "").split(",") if g]   # "" : every group
+LIMIT = int(os.environ.get("BENCH_LIMIT", "0"))              # 0 : every task in a group
 
 
 def ask(messages, tools=None, max_tokens=None):
@@ -30,6 +34,8 @@ def ask(messages, tools=None, max_tokens=None):
             "max_tokens": max_tokens, "reasoning_effort": REASONING, "temperature": 0}
     if tools:
         body["tools"] = tools
+    if THINK_BUDGET is not None:
+        body["reasoning_budget_tokens"] = int(THINK_BUDGET)
     req = urllib.request.Request(URL, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
     t0 = time.time(); first = None; text = []; think = 0; calls = {}; usage = {}; finish = None
     try:
@@ -121,22 +127,28 @@ FORMAT = [
 
 rows = []
 def rec(group, name, ok, r):
-    rows.append({"group": group, "task": name, "ok": bool(ok), **{k: r.get(k) for k in ("first_s", "total_s", "out_tokens", "think_chars", "finish", "error")}})
+    rows.append({"group": group, "task": name, "ok": bool(ok), **{k: r.get(k) for k in ("first_s", "total_s", "out_tokens", "think_chars", "finish", "error")}, "reply_head": (r.get("content") or "")[:1500]})
     print(f"{group:8} {name[:34]:34} {'PASS' if ok else 'FAIL'}  first {r.get('first_s')} s  total {r.get('total_s')} s  out {r.get('out_tokens')}  {r.get('error') or ''}", flush=True)
 
+def sel(g):
+    return (not GROUPS or g in GROUPS)
+
+def take(seq):
+    return (seq[:LIMIT] if LIMIT else seq)
+
 ask([{"role": "user", "content": "Say hi."}], max_tokens=50)          # warm-up, not counted
-for q, tests in CODE:
+for q, tests in (take(CODE) if sel("code") else []):
     r = ask([{"role": "user", "content": q}]); rec("code", q[24:60], run_code(r["content"], tests), r)
-for q, want in REASON:
+for q, want in (take(REASON) if sel("reason") else []):
     r = ask([{"role": "user", "content": q}]); m = re.findall(r"Answer:\s*\**\s*([\w.,:]+)", r["content"])
     rec("reason", q[:34], bool(m) and m[-1].lower().replace(",", "").rstrip(".") == want, r)
-for q, tool, needle in TOOLQ:
+for q, tool, needle in (take(TOOLQ) if sel("tool") else []):
     r = ask([{"role": "user", "content": q}], tools=TOOLS)
     rec("tool", q[:34], any(c["name"] == tool and needle in c["arguments"] for c in r["calls"]), r)
-for what, val in FACTS:
+for what, val in (take(FACTS) if sel("reading") else []):
     r = ask([{"role": "user", "content": DOC + f"\n\nAccording to the text above, what is {what}? Answer in one short sentence."}])
     rec("reading", what, val.lower() in r["content"].lower(), r)
-for q, check in FORMAT:
+for q, check in (take(FORMAT) if sel("format") else []):
     r = ask([{"role": "user", "content": q}])
     try:
         ok = check(r["content"])
